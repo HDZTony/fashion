@@ -1,0 +1,74 @@
+# DeepAgent
+
+DeepAgent 是一个基于 LangChain 的自定义代理，结合 DeepSeek 语言模型与 FLUX 图像变装服务，实现“模特穿上服饰”的自动化工作流。
+
+## 功能概览
+
+- 使用 DeepSeek LLM（通过 OpenAI 兼容接口）规划调用流程。
+- 提供 `flux_outfit_generator` 工具，将服饰图像融合到模特照片中。
+- 基于 LangChain Deep Agents 的执行循环，自动利用规划、文件系统等中间件。
+- CLI 支持：`uv run python -m deepagent.main`，可指定模特图、服饰图，以及可选的风格提示与输出文件名。
+- 生成的图片会保存到 `outputs/` 目录。
+
+## 环境准备
+
+1. 安装 [uv](https://github.com/astral-sh/uv)（若尚未安装）。
+2. 同级目录创建 `.env` 文件，写入必要的凭证及配置（示例见下文）。
+3. 安装依赖：
+
+   ```bash
+   uv sync
+   ```
+
+## 环境变量
+
+所有配置都以 `DEEPAGENT_` 前缀读取，可集中写入 `.env`：
+
+```env
+DEEPAGENT_DEEPSEEK_API_KEY=18b3e627-b4f0-4da1-8ce9-f51f93272d5a
+DEEPAGENT_DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPAGENT_DEEPSEEK_MODEL=deepseek-chat
+DEEPAGENT_DEEPSEEK_TEMPERATURE=0.2
+DEEPAGENT_DEEPSEEK_MAX_OUTPUT_TOKENS=2048
+
+DEEPAGENT_FLUX_API_KEY=你的_flux_key
+DEEPAGENT_FLUX_API_URL=https://your.flux.endpoint/v1/outfit
+DEEPAGENT_FLUX_TIMEOUT_SECONDS=120
+DEEPAGENT_OUTPUT_DIR=outputs
+```
+
+> **安全提示**：请根据需求替换真实凭证，并妥善保管 `.env` 文件。生产环境建议改用安全的密钥管理方案。
+
+## 运行示例
+
+```bash
+uv run python -m deepagent.main \
+  --model-image ./samples/model.png \
+  --garment-image ./samples/garment.png \
+  --prompt "Ensure the jacket aligns naturally with the model's pose." \
+  --output-filename styled-model.png
+```
+
+执行成功后，终端会输出生成图片的绝对路径以及结果摘要。
+
+## 代码结构
+
+- `src/deepagent/config.py`：使用 Pydantic Settings 管理配置。
+- `src/deepagent/llm.py`：封装 DeepSeek LLM 构建逻辑。
+- `src/deepagent/tools.py`：定义 `flux_outfit_generator` 工具并处理 FLUX API 交互。
+- `src/deepagent/agent.py`：通过 `deepagents.create_deep_agent` 构建 DeepAgent。
+- `src/deepagent/main.py`：命令行入口。
+
+## 常见问题
+
+- **FLUX API 返回格式不同怎么办？**  
+  默认实现期望返回 JSON 中包含 `image`（base64），或嵌套在 `data.image`/`data[0].image`。若你的接口不同，请在 `build_flux_outfit_tool` 内调整解析逻辑。
+
+- **如何调试 Agent 行为？**  
+  深度代理默认会记录计划与工具调用，可通过 LangSmith 或自定义日志进一步排查。也可以调整系统提示或工具描述来影响推理。
+
+- **如何编写自动化测试？**  
+  可利用 `pytest` 对 `_call_flux` 函数进行 mock 测试，或对 `AgentExecutor` 做集成测试（需模拟 LangChain 工具调用）。
+
+欢迎按需扩展，例如增加人体解析、关键点对齐、输出格式选择等高级功能。
+

@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for fashion-rec-backend on 2025-11-23
+
+app = "fashion-rec-backend"
+primary_region = "hkg" # Hong Kong, close to user location
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[mounts]]
+  source = "chroma_data"
+  destination = "/data"
+
+[env]
+  CHROMA_DB_PATH = "/data/chroma_db"
+  # You will need to set other secrets via `fly secrets set`
+  # DASHSCOPE_API_KEY
+  # R2_ENDPOINT_URL
+  # R2_ACCESS_KEY_ID
+  # R2_SECRET_ACCESS_KEY
+  # R2_BUCKET_NAME
+  # R2_PUBLIC_URL

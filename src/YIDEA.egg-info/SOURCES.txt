@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/YIDEA/__init__.py
+src/YIDEA/agent.py
+src/YIDEA/config.py
+src/YIDEA/flux_kontext.py
+src/YIDEA/llm.py
+src/YIDEA/main.py
+src/YIDEA/qwen_image_edit.py
+src/YIDEA/tools.py
+src/YIDEA.egg-info/PKG-INFO
+src/YIDEA.egg-info/SOURCES.txt
+src/YIDEA.egg-info/dependency_links.txt
+src/YIDEA.egg-info/requires.txt
+src/YIDEA.egg-info/top_level.txt

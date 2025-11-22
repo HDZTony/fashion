@@ -1,0 +1,7 @@
+根据langchain文档帮我新建一个deepagent，llm选用deepseek。接入FLUX模型，api key是18b3e627-b4f0-4da1-8ce9-f51f93272d5a。 agent的功能是实现变装：传两张照片一张模特照片，一张服饰照片，返回模特穿上服装的照片。
+
+deepseek api key sk-84868968eac347f5a761cb819c661457
+
+uv run python -m deepagent.main `
+  --model-image <模特图路径> `
+  --garment-image <服饰图路径>

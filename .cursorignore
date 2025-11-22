@@ -1,0 +1,3 @@
+# Preserve default editor behavior but allow the project-level .env to be visible.
+!.env
+
