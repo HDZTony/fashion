@@ -15,7 +15,7 @@ if not api_key:
     print("Warning: DASHSCOPE_API_KEY not found in environment variables.")
 
 llm = ChatOpenAI(
-    model="qwen-vl-max", # Using max for better performance as requested
+    model="qwen3-vl-plus",
     api_key=api_key,
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     temperature=0.1,
@@ -23,29 +23,121 @@ llm = ChatOpenAI(
 
 SYSTEM_PROMPT = """
 You are a fashion expert AI. Your task is to analyze clothing images and extract structured data.
-Identify the following attributes:
-- Type (e.g., T-shirt, Jeans, Dress, Jacket)
-- Color (Main color and accent colors)
-- Pattern (e.g., Solid, Striped, Floral)
-- Style (e.g., Casual, Formal, Streetwear, Vintage)
-- Occasion (e.g., Daily, Work, Party, Sports)
-- Material (inferred, e.g., Cotton, Denim, Silk)
 
-Output the result ONLY as a valid JSON object. Do not include markdown formatting like ```json.
-Example:
-{
-    "type": "T-shirt",
-    "color": "White",
-    "pattern": "Logo print",
-    "style": "Casual",
-    "occasion": "Daily",
-    "material": "Cotton"
-}
+The image may contain one or multiple clothing items. For each clothing item visible in the image, identify the following attributes:
+
+- Type: Be specific about the clothing item type. Use detailed categories:
+  * Tops: T-shirt, graphic tee, long-sleeve tee, shirt (dress shirt, casual shirt, flannel), blouse, peplum top, wrap top, sweater, knitwear, sweatshirt, hoodie, zip-up hoodie, cardigan (longline, cropped, chunky), tank top, camisole, crop top, polo shirt, rugby shirt, vest (knitted, sweater, suit), tube top, bandeau, sports bra, athletic top.
+  * Bottoms: Jeans (skinny, straight, bootcut, mom, distressed), trousers, slacks, suit pants, chinos, khakis, joggers, sweatpants, track pants, shorts (denim, chino, athletic, bike), skirts (pencil, A-line, pleated, mini, midi, maxi, wrap), culottes, palazzo pants, leggings, jeggings, cargo pants, utility pants, overalls, jumpsuits, rompers.
+  * Outerwear: Jacket (denim, leather, moto, varsity, harrington), coat (trench, overcoat, pea coat, parka, duffle), blazer, suit jacket, windbreaker, rain jacket, bomber jacket, flight jacket, puffer jacket, down jacket, quilted coat, fleece jacket, sherpa jacket, cape, poncho, shawl.
+  * Dresses: Shift dress, sheath dress, A-line dress, skater dress, wrap dress, shirt dress, sundress, slip dress, camisole dress, maxi dress, midi dress, mini dress, bodycon dress, bandage dress, evening gown, cocktail dress, sweater dress, turtleneck dress, cheongsam/qipao.
+  * Shoes: Be precise—sneakers (running, basketball, skate), dress shoes (oxford, derby, brogue, monk strap), loafers, moccasins, boat shoes, boots (Chelsea, ankle, combat, hiking, cowboy, knee-high, thigh-high), sandals (strappy, gladiator, slides, flip-flops, espadrilles), heels (pumps, stilettos, block, kitten, wedges), flats (ballet, mary jane, d’Orsay), mules, clogs, slippers, house shoes, athletic cleats, specialty footwear (dance shoes, pointe shoes, tap shoes).
+  * Accessories: Belt (leather, chain, corset), hat (baseball cap, fedora, beanie, bucket, beret, sun hat), scarf, shawl, wrap, bandana, gloves (leather, knit, mittens), jewelry (necklace, bracelet, earrings, rings, anklet, brooch), watches, sunglasses, eyeglasses, bags (backpack, tote, crossbody, clutch, satchel, messenger, fanny pack), wallet, cardholder, hair accessories (headband, scrunchie, hair clip), socks, tights, stockings.
+  * Sportswear & Loungewear: Sports jersey, compression top, rash guard, yoga pants, performance leggings, tracksuit, warm-up jacket, swimwear (bikini, one-piece, swim trunks, boardshorts), activewear set, pajamas, lounge set, robe.
+  * Traditional & Formalwear (if present): Suit, tuxedo, hanfu, kimono, sari, dirndl, kebaya, costume uniforms, stage outfits.
+  Use the most specific type you can identify (e.g., "Leather dress shoes" instead of just "Shoes", "Denim jeans" instead of just "Jeans").
+- Color: Main color and accent colors. If uncertain, provide multiple possible colors as an array.
+- Pattern (e.g., Solid, Striped, Floral, Logo print)
+- Style (e.g., Casual, Formal, Streetwear, Vintage)
+- Occasion: Suitable occasions. If the item can be worn for multiple occasions, provide an array.
+- Material: Inferred material (e.g., Cotton, Denim, Silk). If uncertain, provide multiple possibilities as an array.
+
+IMPORTANT RULES:
+1. Output the result as a JSON array. Each element represents one clothing item.
+2. If the image contains only one item, return an array with one element.
+3. For attributes where you are uncertain or the item has multiple valid values, use an array of strings instead of a single string.
+4. Always include all attributes (type, color, pattern, style, occasion, material) for each item.
+
+Example for single item with certain attributes:
+[
+    {
+        "type": "T-shirt",
+        "color": "White",
+        "pattern": "Logo print",
+        "style": "Casual",
+        "occasion": "Daily",
+        "material": "Cotton"
+    }
+]
+
+Example for shoes (be specific):
+[
+    {
+        "type": "Leather dress shoes",
+        "color": "Black",
+        "pattern": "Solid",
+        "style": "Formal",
+        "occasion": ["Work", "Formal"],
+        "material": "Leather"
+    }
+]
+or
+[
+    {
+        "type": "Sandals",
+        "color": "Brown",
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Beach"],
+        "material": ["Leather", "Rubber"]
+    }
+]
+
+Example for single item with uncertain/multiple values:
+[
+    {
+        "type": "Jacket",
+        "color": ["Navy blue", "Dark blue"],
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Work"],
+        "material": ["Cotton", "Polyester blend"]
+    }
+]
+
+Example for multiple items:
+[
+    {
+        "type": "Navy blue cardigan",
+        "color": "Navy blue",
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Work"],
+        "material": "Cotton"
+    },
+    {
+        "type": "White dress shirt",
+        "color": "White",
+        "pattern": "Solid",
+        "style": "Formal",
+        "occasion": "Work",
+        "material": "Cotton"
+    },
+    {
+        "type": "Beige chinos",
+        "color": ["Beige", "Khaki"],
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Work"],
+        "material": "Cotton twill"
+    },
+    {
+        "type": "White canvas sneakers",
+        "color": "White",
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Sport"],
+        "material": ["Canvas", "Rubber"]
+    }
+]
+
+Output ONLY a valid JSON array. Do not include markdown formatting like ```json.
 """
 
-async def analyze_image(image_url: str) -> Dict[str, Any]:
+async def analyze_image(image_url: str) -> List[Dict[str, Any]]:
     """
     Analyze an image using Qwen-VL and return structured fashion features.
+    Returns a list of clothing items found in the image.
     Accepts a public URL.
     """
     # If it's a local path (legacy support or testing), convert to file://
@@ -64,7 +156,7 @@ async def analyze_image(image_url: str) -> Dict[str, Any]:
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=[
-            {"type": "text", "text": "Analyze this clothing item."},
+            {"type": "text", "text": "Analyze all clothing items in this image. Identify each distinct item and extract their features."},
             {"type": "image_url", "image_url": {"url": final_url}}
         ])
     ]
@@ -78,15 +170,30 @@ async def analyze_image(image_url: str) -> Dict[str, Any]:
             content = content[7:]
         if content.endswith("```"):
             content = content[:-3]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
             
-        return json.loads(content)
+        result = json.loads(content)
+        
+        # Ensure result is a list
+        if isinstance(result, dict):
+            # Single item returned as object, convert to list
+            return [result]
+        elif isinstance(result, list):
+            return result
+        else:
+            print(f"Unexpected result format: {type(result)}")
+            return [{"type": "Unknown", "error": "Unexpected response format"}]
+            
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {e}")
+        print(f"Response content: {content[:500]}")
+        return [{"type": "Unknown", "error": f"JSON decode error: {str(e)}"}]
     except Exception as e:
         print(f"Error analyzing image: {e}")
-        # Return a fallback or re-raise
-        return {
-            "type": "Unknown",
-            "error": str(e)
-        }
+        return [{"type": "Unknown", "error": str(e)}]
 
 async def generate_compatibility_queries(item_features: Dict[str, Any], occasion: str) -> List[str]:
     """

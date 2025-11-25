@@ -1,43 +1,47 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { supabase } from '../lib/supabase'
 
 const router = useRouter()
-const route = useRoute()
+const error = ref('')
 
 onMounted(async () => {
-  const code = route.query.code as string | undefined
-  if (code) {
-    try {
-      // In a real OAuth flow, we would exchange the code for a token via our backend
-      // But for this simple OpenAuth demo, the worker might return the token directly or we simulate it
-      // If the OpenAuth worker returns a code, we usually need to exchange it.
-      // However, to keep it simple and consistent with the "microservice" advice:
-      // We will treat the 'code' as the session token for now, OR we assume the implicit flow if we changed response_type.
-      // BUT, standard flow is: Frontend -> Backend (exchange code) -> Auth Server.
+  try {
+    // Get the session after the OAuth redirect
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    
+    if (sessionError) throw sessionError
+    
+    if (session) {
+      // Store the access token
+      localStorage.setItem('auth_token', session.access_token)
       
-      // For this demo, let's assume we send the code to OUR backend to verify and get a session.
-      // OR, if we want to be stateless, we might just use the code/token provided.
-      
-      // Let's store the code as a mock token for now to pass the AuthGuard
-      localStorage.setItem('auth_token', code)
+      // Redirect to home
       router.push('/')
-    } catch (e) {
-      console.error('Login failed', e)
-      alert('Login failed')
-      router.push('/login')
+    } else {
+      error.value = 'No session found'
+      setTimeout(() => router.push('/login'), 2000)
     }
-  } else {
-    router.push('/login')
+  } catch (err: any) {
+    console.error('Callback error:', err)
+    error.value = err.message || 'Authentication failed'
+    setTimeout(() => router.push('/login'), 2000)
   }
 })
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50">
-    <div class="text-center">
-      <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-      <p class="text-gray-500">Completing sign in...</p>
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+      <div v-if="!error">
+        <div class="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p class="text-gray-600">Completing sign-in...</p>
+      </div>
+      <div v-else class="text-red-600">
+        <p class="font-medium mb-2">{{ error }}</p>
+        <p class="text-sm text-gray-500">Redirecting to login...</p>
+      </div>
     </div>
   </div>
 </template>

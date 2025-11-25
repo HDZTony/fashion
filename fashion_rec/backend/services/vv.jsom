@@ -1,0 +1,58 @@
+[
+    {
+        "type": "Jacket",
+        "color": ["Navy blue", "Dark blue"],
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Work"],
+        "material": ["Cotton", "Polyester blend"]
+    },
+    {
+        "type": "Shirt",
+        "color": "White",
+        "pattern": "Solid",
+        "style": "Formal",
+        "occasion": "Work",
+        "material": "Cotton"
+    },
+    {
+        "type": "Trousers",
+        "color": ["Beige", "Khaki"],
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Work"],
+        "material": "Cotton twill"
+    },
+    {
+        "type": "Shoes",
+        "color": "White",
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": "Daily",
+        "material": ["Canvas", "Rubber sole"]
+    },
+    {
+        "type": "T-shirt",
+        "color": "White",
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": "Daily",
+        "material": "Cotton"
+    },
+    {
+        "type": "Trousers",
+        "color": ["Gray", "Light gray"],
+        "pattern": "Solid",
+        "style": "Casual",
+        "occasion": ["Daily", "Work"],
+        "material": "Cotton twill"
+    },
+    {
+        "type": "Shoes",
+        "color": "Black",
+        "pattern": "Solid",
+        "style": "Formal",
+        "occasion": ["Work", "Formal events"],
+        "material": "Leather"
+    }
+]

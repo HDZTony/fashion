@@ -56,7 +56,7 @@ collection = CHROMA_CLIENT.get_or_create_collection(
     metadata={"hnsw:space": "cosine"} # Use cosine similarity
 )
 
-async def add_to_wardrobe(image_path: str, features: Dict[str, Any]) -> str:
+async def add_to_wardrobe(image_path: str, features: Dict[str, Any], user_id: str) -> str:
     """
     Add an item to the vector database (wardrobe).
     Returns the generated Item ID.
@@ -66,14 +66,25 @@ async def add_to_wardrobe(image_path: str, features: Dict[str, Any]) -> str:
     # Generate embedding
     embedding = get_image_embedding(image_path)
     
+    # Helper function to convert array values to string for ChromaDB
+    def normalize_value(value):
+        """Convert array values to comma-separated string, keep strings as-is"""
+        if isinstance(value, list):
+            return ", ".join(str(v) for v in value) if value else "Unknown"
+        return str(value) if value else "Unknown"
+    
     # Prepare metadata (flatten dictionary for ChromaDB)
+    # ChromaDB metadata values must be strings, numbers, or booleans
+    # Convert arrays to comma-separated strings
     metadata = {
         "path": image_path,
-        "type": features.get("type", "Unknown"),
-        "color": features.get("color", "Unknown"),
-        "style": features.get("style", "Unknown"),
-        "occasion": features.get("occasion", "Unknown"),
-        # Store full features as JSON string if needed, or just key fields
+        "type": normalize_value(features.get("type", "Unknown")),
+        "color": normalize_value(features.get("color", "Unknown")),
+        "style": normalize_value(features.get("style", "Unknown")),
+        "occasion": normalize_value(features.get("occasion", "Unknown")),
+        "pattern": normalize_value(features.get("pattern", "Unknown")),  # Pattern: Solid, Striped, Floral, etc.
+        "material": normalize_value(features.get("material", "Unknown")),  # Material: Cotton, Denim, Silk, etc.
+        "user_id": user_id,  # Store user_id for filtering
     }
     
     collection.add(
@@ -85,22 +96,33 @@ async def add_to_wardrobe(image_path: str, features: Dict[str, Any]) -> str:
     
     return item_id
 
-async def search_similar(item_id: str, k: int = 3) -> List[Dict[str, Any]]:
+async def search_similar(item_id: str, k: int = 3, user_id: str = None) -> List[Dict[str, Any]]:
     """
     Search for similar items based on the item's embedding.
+    If user_id is provided, only search within that user's items.
     """
     # Get the item's embedding from the DB
-    item = collection.get(ids=[item_id], include=["embeddings"])
+    item = collection.get(ids=[item_id], include=["embeddings", "metadatas"])
     
     if not item or not item["embeddings"]:
         return []
     
+    # Verify the item belongs to the user if user_id is provided
+    if user_id and item.get("metadatas") and item["metadatas"][0].get("user_id") != user_id:
+        return []
+    
     query_embedding = item["embeddings"][0]
+    
+    # Build where clause for user filtering
+    where_clause = None
+    if user_id:
+        where_clause = {"user_id": user_id}
     
     # Query the collection
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=k + 1 # +1 because it will find itself
+        n_results=k + 1, # +1 because it will find itself
+        where=where_clause
     )
     
     formatted_results = []
@@ -121,9 +143,10 @@ async def search_similar(item_id: str, k: int = 3) -> List[Dict[str, Any]]:
             
     return formatted_results[:k]
 
-def search_by_text(query_text: str, k: int = 3) -> List[Dict[str, Any]]:
+def search_by_text(query_text: str, k: int = 3, user_id: str = None) -> List[Dict[str, Any]]:
     """
     Search for items that match the text description using CLIP text embeddings.
+    If user_id is provided, only search within that user's items.
     """
     if not embedding_model:
         return []
@@ -132,10 +155,16 @@ def search_by_text(query_text: str, k: int = 3) -> List[Dict[str, Any]]:
         # Encode text query
         query_embedding = embedding_model.encode(query_text).tolist()
         
+        # Build where clause for user filtering
+        where_clause = None
+        if user_id:
+            where_clause = {"user_id": user_id}
+        
         # Query the collection
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=k
+            n_results=k,
+            where=where_clause
         )
         
         formatted_results = []
@@ -154,5 +183,32 @@ def search_by_text(query_text: str, k: int = 3) -> List[Dict[str, Any]]:
         return formatted_results
     except Exception as e:
         print(f"Error searching by text '{query_text}': {e}")
+        return []
+
+
+def get_user_items(user_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all items belonging to a specific user.
+    """
+    try:
+        results = collection.get(
+            where={"user_id": user_id},
+            include=["metadatas"]
+        )
+        
+        formatted_results = []
+        if results["ids"]:
+            ids = results["ids"]
+            metadatas = results["metadatas"]
+            
+            for i, item_id in enumerate(ids):
+                formatted_results.append({
+                    "id": item_id,
+                    **metadatas[i]
+                })
+                
+        return formatted_results
+    except Exception as e:
+        print(f"Error getting user items: {e}")
         return []
 

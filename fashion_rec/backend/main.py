@@ -6,7 +6,7 @@ import shutil
 import os
 from pathlib import Path
 from services.recognition import analyze_image
-from services.vector_db import add_to_wardrobe, search_similar
+from services.vector_db import add_to_wardrobe, search_similar, get_user_items
 from services.try_on import generate_try_on
 from auth import get_current_user
 from fastapi import Depends
@@ -44,19 +44,42 @@ async def upload_item(
         # Upload to R2
         public_url = await upload_file_to_r2(file.file, file.filename, file.content_type)
         
-        # Analyze image using the public URL
-        features = await analyze_image(public_url)
+        # Analyze image using the public URL (returns list of items)
+        items_features = await analyze_image(public_url)
         
-        # Add to Vector DB using the public URL
-        item_id = await add_to_wardrobe(public_url, features)
-        
-        return {
-            "id": item_id,
-            "filename": file.filename,
-            "url": public_url,
-            "features": features,
-            "user_id": user_id
-        }
+        # If only one item detected, auto-add it (maintain current UX)
+        if len(items_features) == 1:
+            features = items_features[0]
+            # Check if there's an error in the features
+            if "error" in features:
+                raise HTTPException(status_code=500, detail=features.get("error", "Analysis failed"))
+            
+            # Add to Vector DB
+            item_id = await add_to_wardrobe(public_url, features, user_id)
+            
+            return {
+                "auto_added": True,
+                "items": [{
+                    "id": item_id,
+                    "filename": file.filename,
+                    "url": public_url,
+                    "features": features,
+                    "user_id": user_id
+                }]
+            }
+        else:
+            # Multiple items detected, return for user confirmation
+            return {
+                "auto_added": False,
+                "items": [{
+                    "filename": file.filename,
+                    "url": public_url,
+                    "features": features,
+                    "user_id": user_id
+                } for features in items_features if "error" not in features]
+            }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -82,12 +105,16 @@ async def recommend_outfit(
         
         item_features = item["metadatas"][0]
         
+        # Verify the item belongs to the current user
+        if item_features.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Item does not belong to current user")
+        
         # 2. Generate queries for complementary items
         queries = await generate_compatibility_queries(item_features, request.occasion)
         
-        # 3. Search for each query
+        # 3. Search for each query (filtered by user_id)
         for query in queries:
-            results = search_by_text(query, k=1)
+            results = search_by_text(query, k=1, user_id=user_id)
             if results:
                 # Add the best match for this query
                 rec = results[0]
@@ -100,9 +127,9 @@ async def recommend_outfit(
         # 1. Generate queries for a full look
         queries = await generate_outfit_queries(request.occasion)
         
-        # 2. Search for each query
+        # 2. Search for each query (filtered by user_id)
         for query in queries:
-            results = search_by_text(query, k=1)
+            results = search_by_text(query, k=1, user_id=user_id)
             if results:
                 rec = results[0]
                 rec["reason"] = f"Matches '{query}'"
@@ -118,6 +145,50 @@ async def recommend_outfit(
 async def search_items(query_image: UploadFile = File(...)):
     # Search by image
     pass
+
+@app.post("/items/batch")
+async def batch_add_items(
+    items: List[Dict[str, Any]],
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Batch add multiple items to the wardrobe.
+    Each item should have: url, features
+    """
+    try:
+        added_items = []
+        for item_data in items:
+            if "error" in item_data.get("features", {}):
+                continue  # Skip items with errors
+            
+            item_id = await add_to_wardrobe(
+                item_data["url"],
+                item_data["features"],
+                user_id
+            )
+            added_items.append({
+                "id": item_id,
+                "url": item_data["url"],
+                "features": item_data["features"],
+                "user_id": user_id
+            })
+        
+        return {"items": added_items}
+    except Exception as e:
+        print(f"Batch add failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/items")
+async def get_items(user_id: str = Depends(get_current_user)):
+    """
+    Get all items belonging to the current user.
+    """
+    try:
+        items = get_user_items(user_id)
+        return {"items": items}
+    except Exception as e:
+        print(f"Failed to get items: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/try-on")
 async def try_on(person_image: UploadFile = File(...), garment_image: UploadFile = File(...)):
