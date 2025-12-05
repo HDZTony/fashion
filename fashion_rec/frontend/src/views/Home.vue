@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Upload, Shirt, Wand2, LogOut } from 'lucide-vue-next'
+defineOptions({ name: 'Home' })
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { Wand2, LogOut, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, History } from 'lucide-vue-next'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
-import type { Item, Recommendation, PendingItem } from '../types'
+import type { Item, Recommendation, AgentOutfit } from '../types'
+import { supabase } from '../lib/supabase'
 
 const router = useRouter()
 const API_URL = 'http://localhost:8000'
@@ -16,30 +18,69 @@ const apiClient = axios.create({
   },
 })
 
-// 添加请求拦截器，自动添加认证 token
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+// 添加请求拦截器，自动添加认证 token（从 Supabase session 动态获取）
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (token) {
+      config.headers = config.headers || {}
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  } catch (e) {
+    console.warn('Failed to get Supabase session for request:', e)
   }
   return config
 })
 
 const uploadedItems = ref<Item[]>([])
-const isUploading = ref(false)
-const uploadProgress = ref<{ current: number; total: number; currentFile: string } | null>(null)
-const pendingItems = ref<PendingItem[]>([]) // Items waiting for user confirmation
-const showConfirmDialog = ref(false)
 const selectedItem = ref<Item | null>(null)
+const selectedItemIds = ref<string[]>([])
 const recommendations = ref<Recommendation[]>([])
+const agentOutfits = ref<AgentOutfit[]>([])
+const activeWardrobeIds = ref<string[]>([])
+// Store the mapping of wardrobe_id to role for applied outfit items
+const activeWardrobeRoleMap = ref<Map<string, string>>(new Map())
+// Store the original applied outfit to track all roles that should exist
+const originalAppliedOutfit = ref<AgentOutfit | null>(null)
+const modelImageFile = ref<File | null>(null)
+const tryOnImageUrl = ref<string | null>(null)
 const isGenerating = ref(false)
-const occasion = ref('Casual')
-const occasions = ['Casual', 'Business', 'Party', 'Sport', 'Date']
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const isTryingOn = ref(false)
+const customPrompt = ref('')
 
-const triggerFileInput = () => {
-  fileInputRef.value?.click()
+// Scene image for prompt context
+const sceneImageFile = ref<File | null>(null)
+const sceneImagePreviewUrl = ref<string | null>(null)
+const sceneImageUrl = ref<string | null>(null)
+
+// Historical images
+interface HistoricalImage {
+  id: string
+  image_url: string
+  image_type: 'scene' | 'model'
+  created_at: string
 }
+const historicalSceneImages = ref<HistoricalImage[]>([])
+const historicalModelImages = ref<HistoricalImage[]>([])
+const showSceneImageHistory = ref(false)
+const showModelImageHistory = ref(false)
+
+// Upload progress
+const sceneImageUploadProgress = ref(0)
+const isUploadingSceneImage = ref(false)
+
+// Model image upload progress
+const modelImageUploadProgress = ref(0)
+const isUploadingModelImage = ref(false)
+
+// Model image error state
+const showModelImageError = ref(false)
+
+// Image viewer for applied outfit items
+const showImageViewer = ref(false)
+const currentImageIndex = ref(0)
+const imageViewerImages = ref<string[]>([])
 
 // Load user's items from backend
 const loadUserItems = async () => {
@@ -66,171 +107,178 @@ const loadUserItems = async () => {
   }
 }
 
+// Load historical images
+const loadHistoricalImages = async () => {
+  try {
+    console.log('[loadHistoricalImages] Starting to load historical images...')
+    const [sceneResp, modelResp] = await Promise.all([
+      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=scene'),
+      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=model'),
+    ])
+    console.log('[loadHistoricalImages] Scene response:', sceneResp.data)
+    console.log('[loadHistoricalImages] Model response:', modelResp.data)
+    
+    // Ensure we handle both response formats: { images: [...] } or direct array
+    const sceneImages = sceneResp.data?.images || sceneResp.data || []
+    const modelImages = modelResp.data?.images || modelResp.data || []
+    
+    historicalSceneImages.value = Array.isArray(sceneImages) ? sceneImages : []
+    historicalModelImages.value = Array.isArray(modelImages) ? modelImages : []
+    
+    console.log('[loadHistoricalImages] Loaded scene images:', historicalSceneImages.value.length)
+    console.log('[loadHistoricalImages] Loaded model images:', historicalModelImages.value.length)
+  } catch (error) {
+    console.error('[loadHistoricalImages] Failed to load historical images:', error)
+    // Keep existing values on error, don't reset to empty
+    // This prevents button from disappearing if a subsequent request fails
+  }
+}
+
+// Keyboard navigation for image viewer
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (!showImageViewer.value) return
+  
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    prevImage()
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    nextImage()
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    closeImageViewer()
+  }
+}
+
 // Load items when component mounts
-onMounted(() => {
-  loadUserItems()
+onMounted(async () => {
+  // Wait for authentication to be ready before loading data
+  try {
+    const { data } = await supabase.auth.getSession()
+    if (data.session) {
+      // Authentication is ready, load data
+      await Promise.all([
+        loadUserItems(),
+        loadHistoricalImages()
+      ])
+    } else {
+      console.warn('No session found on mount, but still attempting to load data')
+      // Still try to load data even if session check failed
+      // API will handle authentication and return appropriate errors if needed
+      await Promise.all([
+        loadUserItems(),
+        loadHistoricalImages()
+      ])
+    }
+  } catch (error) {
+    console.error('Failed to check session on mount:', error)
+    // Still try to load data in case session is cached
+    await Promise.all([
+      loadUserItems(),
+      loadHistoricalImages()
+    ])
+  }
+  window.addEventListener('keydown', handleKeyDown)
 })
 
-const handleFileUpload = async (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const files = target.files
-  
-  if (!files || files.length === 0) {
-    console.warn('No files selected')
-    return
-  }
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
 
-  // Convert FileList to Array and validate all files
-  const fileArray = Array.from(files)
-  const maxSize = 10 * 1024 * 1024 // 10MB
-  const invalidFiles: string[] = []
-
-  // Validate all files first
-  for (const file of fileArray) {
-    if (!file.type.startsWith('image/')) {
-      invalidFiles.push(`${file.name} (not an image)`)
-    } else if (file.size > maxSize) {
-      invalidFiles.push(`${file.name} (exceeds 10MB)`)
-    }
-  }
-
-  if (invalidFiles.length > 0) {
-    alert(`Some files are invalid:\n${invalidFiles.join('\n')}`)
-    target.value = ''
-    return
-  }
-
-  // Start uploading all files
-  isUploading.value = true
-  uploadProgress.value = {
-    current: 0,
-    total: fileArray.length,
-    currentFile: fileArray[0]?.name || ''
-  }
-
-  const successfulUploads: Item[] = []
-  const failedUploads: { filename: string; error: string }[] = []
-
-  // Upload files sequentially to avoid overwhelming the server
-  for (let i = 0; i < fileArray.length; i++) {
-    const file = fileArray[i]
-    
-    uploadProgress.value = {
-      current: i + 1,
-      total: fileArray.length,
-      currentFile: file.name
-    }
-
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      console.log(`Uploading file ${i + 1}/${fileArray.length}: ${file.name}`)
-      const response = await apiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
-      console.log('Upload response:', response.data)
-      
-      if (response.data.auto_added) {
-        // Single item, automatically added
-        successfulUploads.push(...response.data.items)
-      } else {
-        // Multiple items detected, need user confirmation
-        const pending: PendingItem[] = response.data.items.map(item => ({
-          ...item,
-          selected: true // Default to selected
-        }))
-        pendingItems.value.push(...pending)
-        showConfirmDialog.value = true
-      }
-    } catch (error: any) {
-      console.error(`Upload failed for ${file.name}:`, error)
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Upload failed'
-      failedUploads.push({ filename: file.name, error: errorMessage })
-    }
-  }
-
-  // Add successful uploads to the list
-  uploadedItems.value.push(...successfulUploads)
-
-  // Show results
-  if (successfulUploads.length > 0 && failedUploads.length === 0) {
-    // All successful
-    console.log(`Successfully uploaded ${successfulUploads.length} file(s)`)
-  } else if (successfulUploads.length > 0 && failedUploads.length > 0) {
-    // Partial success
-    alert(`Uploaded ${successfulUploads.length} file(s) successfully.\n\nFailed:\n${failedUploads.map(f => `${f.filename}: ${f.error}`).join('\n')}`)
-  } else if (failedUploads.length > 0) {
-    // All failed
-    alert(`All uploads failed:\n${failedUploads.map(f => `${f.filename}: ${f.error}`).join('\n')}`)
-  }
-
-  // Reset the input
-  target.value = ''
-  isUploading.value = false
-  uploadProgress.value = null
-}
-
-const selectItem = (item: Item) => {
-  if (selectedItem.value?.id === item.id) {
-    selectedItem.value = null // Deselect
-  } else {
-    selectedItem.value = item
-  }
-  recommendations.value = [] // Reset recommendations
-}
+// Upload and direct selection are handled on the Wardrobe page now.
 
 const getRecommendations = async () => {
   isGenerating.value = true
   recommendations.value = []
-  
+  agentOutfits.value = []
+  tryOnImageUrl.value = null
+
   try {
-    const payload: { occasion: string; item_id?: string | number } = {
-      occasion: occasion.value
-    }
-    
-    if (selectedItem.value) {
-      payload.item_id = selectedItem.value.id
+    // Scene image should already be uploaded in handleSceneImageChange
+    // If we have a file but no URL, upload it now (fallback)
+    if (sceneImageFile.value && !sceneImageUrl.value) {
+      const formData = new FormData()
+      formData.append('file', sceneImageFile.value)
+
+      try {
+        const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+        sceneImageUrl.value = resp.data.url
+        await loadHistoricalImages()
+      } catch (e: any) {
+        console.error('Scene image upload failed:', e)
+        alert(`场景图片上传失败：${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+      }
     }
 
-    const response = await apiClient.post<{ recommendations: Recommendation[] }>('/recommend', payload)
-    recommendations.value = response.data.recommendations
+    const hasBaseSelection = selectedBaseItems.value.length > 0
+    // Get currently active items as base (for supplementing deleted items)
+    // Priority: activeWardrobeIds > selectedBaseItems
+    let activeItemIds: string[] | undefined = undefined
+    if (activeWardrobeIds.value.length > 0) {
+      activeItemIds = activeWardrobeIds.value
+    } else if (hasBaseSelection) {
+      activeItemIds = selectedBaseItems.value
+        .map((it) => it.id)
+        .filter((id): id is string | number => id !== undefined)
+        .map(id => String(id))
+    }
+
+    // Build prompt with information about missing roles (if any)
+    let enhancedPrompt = customPrompt.value
+    const missingRoles = getMissingRoles()
+    if (missingRoles.length > 0) {
+      const roleNames: Record<string, string> = {
+        top: '上装',
+        bottom: '下装',
+        shoes: '鞋子',
+        outer: '外套',
+        accessory: '配饰'
+      }
+      const missingRoleNames = missingRoles.map(r => roleNames[r] || r).join('、')
+      enhancedPrompt = `${customPrompt.value}\n\n请补充以下缺失的部位：${missingRoleNames}。`
+    }
+
+    // Build selected_items_roles map from activeWardrobeRoleMap
+    const selectedItemsRoles: Record<string, string> | undefined = 
+      activeWardrobeIds.value.length > 0
+        ? Object.fromEntries(
+            Array.from(activeWardrobeRoleMap.value.entries()).map(([id, role]) => [String(id), role])
+          )
+        : undefined
+
+    const requestPayload = {
+      base_item_ids: activeItemIds,
+      prompt: enhancedPrompt,
+      scene_image_url: sceneImageUrl.value || undefined,
+      selected_items_roles: selectedItemsRoles,
+    }
+    
+    console.log('=== Generate Outfit Request (to qwen-vl) ===')
+    console.log('Request payload:', JSON.stringify(requestPayload, null, 2))
+    console.log('Missing roles to supplement:', missingRoles)
+    console.log('Selected items roles:', selectedItemsRoles)
+    console.log('==========================================')
+    
+    const response = await apiClient.post<{
+      mode: 'agent'
+      weather_summary: string
+      wardrobe_count: number
+      outfits: AgentOutfit[]
+      raw_text: string
+    }>('/outfit', requestPayload)
+
+    console.log('Agent raw outfit text:', response.data.raw_text)
+    agentOutfits.value = response.data.outfits || []
   } catch (error) {
     console.error('Recommendation failed:', error)
     alert('Failed to get recommendations')
   } finally {
     isGenerating.value = false
   }
-}
-
-const confirmAddItems = async () => {
-  const selectedItems = pendingItems.value.filter(item => item.selected)
-  
-  if (selectedItems.length === 0) {
-    alert('Please select at least one item to add')
-    return
-  }
-
-  try {
-    const response = await apiClient.post<{ items: Item[] }>('/items/batch', selectedItems)
-    uploadedItems.value.push(...response.data.items)
-    console.log(`Added ${response.data.items.length} item(s) to wardrobe`)
-    
-    // Clear pending items and close dialog
-    pendingItems.value = []
-    showConfirmDialog.value = false
-  } catch (error: any) {
-    console.error('Failed to add items:', error)
-    const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to add items'
-    alert(`Failed to add items: ${errorMessage}`)
-  }
-}
-
-const cancelAddItems = () => {
-  pendingItems.value = []
-  showConfirmDialog.value = false
 }
 
 const formatFeatureValue = (value: string | string[] | undefined): string => {
@@ -241,9 +289,645 @@ const formatFeatureValue = (value: string | string[] | undefined): string => {
   return value
 }
 
+// Category helpers are currently unused on Home; kept for potential future UI.
+
 const logout = () => {
   localStorage.removeItem('auth_token')
   router.push('/login')
+}
+
+const findWardrobeItemById = (wardrobeId?: string | null): Item | null => {
+  if (!wardrobeId) return null
+  return uploadedItems.value.find((it) => String(it.id) === String(wardrobeId)) || null
+}
+
+const activeWardrobeItems = computed(() =>
+  activeWardrobeIds.value
+    .map((id) => uploadedItems.value.find((it) => String(it.id) === id) || null)
+    .filter((it): it is Item => it !== null),
+)
+
+const modelImagePreviewUrl = ref<string | null>(null)
+
+const selectedBaseItems = computed(() =>
+  selectedItemIds.value
+    .map((id) => uploadedItems.value.find((it) => String(it.id) === id) || null)
+    .filter((it): it is Item => it !== null),
+)
+
+const handleModelImageChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0] || null
+  if (!file) return
+
+  modelImageFile.value = file
+  showModelImageError.value = false // Reset error state when user uploads image
+  isUploadingModelImage.value = true
+  modelImageUploadProgress.value = 0
+
+  // Upload to backend and save to history
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    // Fallback progress simulation (in case onUploadProgress doesn't fire)
+    let hasRealProgress = false
+    const progressInterval = setInterval(() => {
+      if (!hasRealProgress && modelImageUploadProgress.value < 90) {
+        modelImageUploadProgress.value += 10
+      }
+    }, 200)
+    
+    await apiClient.post<{ url: string }>('/model-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        hasRealProgress = true
+        if (progressEvent.total) {
+          modelImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        } else if (progressEvent.loaded) {
+          // Estimate progress if total is unknown
+          modelImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
+        }
+      },
+    })
+    
+    clearInterval(progressInterval)
+    modelImageUploadProgress.value = 100
+    
+    // Reload historical images
+    await loadHistoricalImages()
+    
+    // Reset progress after a short delay
+    setTimeout(() => {
+      isUploadingModelImage.value = false
+      modelImageUploadProgress.value = 0
+    }, 500)
+  } catch (e: any) {
+    console.error('Model image upload failed:', e)
+    isUploadingModelImage.value = false
+    modelImageUploadProgress.value = 0
+    alert(`模特图片上传失败：${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+    return
+  }
+
+  if (modelImagePreviewUrl.value) {
+    URL.revokeObjectURL(modelImagePreviewUrl.value)
+    modelImagePreviewUrl.value = null
+  }
+  if (file) {
+    modelImagePreviewUrl.value = URL.createObjectURL(file)
+  }
+  showModelImageHistory.value = false
+}
+
+const selectHistoricalModelImage = (image: HistoricalImage) => {
+  modelImageFile.value = null
+  showModelImageError.value = false // Reset error state when user selects historical image
+  if (modelImagePreviewUrl.value) {
+    URL.revokeObjectURL(modelImagePreviewUrl.value)
+  }
+  modelImagePreviewUrl.value = image.image_url
+  showModelImageHistory.value = false
+}
+
+const removeModelImage = () => {
+  if (modelImagePreviewUrl.value) {
+    URL.revokeObjectURL(modelImagePreviewUrl.value)
+    modelImagePreviewUrl.value = null
+  }
+  modelImageFile.value = null
+}
+
+const handleSceneImageChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0] || null
+  if (!file) return
+
+  sceneImageFile.value = file
+  sceneImageUrl.value = null
+  isUploadingSceneImage.value = true
+  sceneImageUploadProgress.value = 0
+
+  // Upload to backend and save to history
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    // Fallback progress simulation (in case onUploadProgress doesn't fire)
+    let hasRealProgress = false
+    const progressInterval = setInterval(() => {
+      if (!hasRealProgress && sceneImageUploadProgress.value < 90) {
+        sceneImageUploadProgress.value += 10
+      }
+    }, 200)
+    
+    const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        hasRealProgress = true
+        if (progressEvent.total) {
+          sceneImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        } else if (progressEvent.loaded) {
+          // Estimate progress if total is unknown
+          sceneImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
+        }
+      },
+    })
+    
+    clearInterval(progressInterval)
+    sceneImageUploadProgress.value = 100
+    sceneImageUrl.value = resp.data.url
+    
+    // Reload historical images
+    await loadHistoricalImages()
+    
+    // Reset progress after a short delay
+    setTimeout(() => {
+      isUploadingSceneImage.value = false
+      sceneImageUploadProgress.value = 0
+    }, 500)
+  } catch (e: any) {
+    console.error('Scene image upload failed:', e)
+    isUploadingSceneImage.value = false
+    sceneImageUploadProgress.value = 0
+    alert(`场景图片上传失败：${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+    return
+  }
+
+  if (sceneImagePreviewUrl.value) {
+    URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    sceneImagePreviewUrl.value = null
+  }
+  if (file) {
+    sceneImagePreviewUrl.value = URL.createObjectURL(file)
+  }
+  showSceneImageHistory.value = false
+}
+
+const selectHistoricalSceneImage = (image: HistoricalImage) => {
+  sceneImageUrl.value = image.image_url
+  sceneImageFile.value = null
+  if (sceneImagePreviewUrl.value) {
+    URL.revokeObjectURL(sceneImagePreviewUrl.value)
+  }
+  sceneImagePreviewUrl.value = image.image_url
+  showSceneImageHistory.value = false
+}
+
+const removeSceneImage = () => {
+  if (sceneImagePreviewUrl.value) {
+    URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    sceneImagePreviewUrl.value = null
+  }
+  sceneImageFile.value = null
+  sceneImageUrl.value = null
+}
+
+const performTryOn = async () => {
+  // 确保场景图片（如果有）已经上传获得 URL
+  if (sceneImageFile.value && !sceneImageUrl.value) {
+    try {
+      const form = new FormData()
+      form.append('file', sceneImageFile.value)
+      const resp = await apiClient.post<{ url: string }>('/scene-image', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      sceneImageUrl.value = resp.data.url
+    } catch (e: any) {
+      console.error('Scene image upload failed before try-on:', e)
+      alert(`场景图片上传失败：${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+      return
+    }
+  }
+
+  if (!modelImageFile.value && !modelImagePreviewUrl.value) {
+    showModelImageError.value = true
+    alert('请先上传一张你的模特照片（图1）')
+    // Scroll to model image uploader
+    setTimeout(() => {
+      const modelUploader = document.querySelector('[data-model-uploader]')
+      if (modelUploader) {
+        modelUploader.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 100)
+    return
+  }
+  if (!activeWardrobeItems.value.length) {
+    alert('请先通过 Apply outfit 选择一套要试穿的搭配')
+    return
+  }
+
+  const garmentUrls = activeWardrobeItems.value
+    .map((item) => item.url || item.features.path)
+    .filter((u): u is string => !!u)
+
+  if (!garmentUrls.length) {
+    alert('当前搭配中的衣服缺少可用图片 URL')
+    return
+  }
+
+  tryOnImageUrl.value = null
+  isTryingOn.value = true
+  // Reset favorite state when starting a new try-on
+  favoriteSaved.value = false
+
+  const tryOnRequestData = {
+    person_image: modelImageFile.value?.name || 'file',
+    garment_urls: garmentUrls,
+    scene_image_url: sceneImageUrl.value || undefined,
+  }
+  
+  console.log('=== Try-On Request (to qwen-image-edit) ===')
+  console.log('Request data:', JSON.stringify(tryOnRequestData, null, 2))
+  console.log('Garment URLs:', garmentUrls)
+  console.log('Scene image URL:', sceneImageUrl.value || 'None')
+  console.log('==========================================')
+
+  try {
+    const formData = new FormData()
+    // Use modelImageFile if available, otherwise use modelImagePreviewUrl (from historical images)
+    if (modelImageFile.value) {
+      formData.append('person_image', modelImageFile.value)
+    } else if (modelImagePreviewUrl.value) {
+      // If it's a URL (e.g., from history), send it directly to backend to avoid CORS issues
+      formData.append('person_image_url', modelImagePreviewUrl.value)
+    }
+    formData.append('garment_urls', JSON.stringify(garmentUrls))
+    if (sceneImageUrl.value) {
+      formData.append('scene_image_url', sceneImageUrl.value)
+    }
+
+    const response = await apiClient.post<{ url: string }>('/try-on', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+
+    tryOnImageUrl.value = response.data.url
+  } catch (error) {
+    console.error('Try-on failed:', error)
+    alert('生成试穿效果失败，请稍后重试')
+  } finally {
+    isTryingOn.value = false
+  }
+}
+
+
+const applyOutfit = async (outfit: AgentOutfit) => {
+  try {
+    // Ensure uploadedItems is loaded before applying outfit
+    if (uploadedItems.value.length === 0) {
+      console.log('[Apply Outfit] Loading user items...')
+      await loadUserItems()
+    }
+    
+    console.log('[Apply Outfit] Starting...')
+    console.log('[Apply Outfit] Outfit items:', outfit.items)
+    console.log('[Apply Outfit] Available uploadedItems:', uploadedItems.value.length)
+    
+  // Get all currently selected items (from activeWardrobeItems or selectedBaseItems)
+  const currentSelectedIds = new Set<string>()
+  const currentSelectedRoles = new Set<string>()
+  
+  // Add active wardrobe items (already applied items)
+  activeWardrobeIds.value.forEach(id => {
+    currentSelectedIds.add(String(id))
+    const role = activeWardrobeRoleMap.value.get(String(id))
+    if (role) {
+      currentSelectedRoles.add(role)
+    }
+  })
+  
+  // Add selected base items (from Wardrobe page) and try to find their roles from outfit
+  selectedBaseItems.value.forEach(item => {
+    if (item.id) {
+      const id = String(item.id)
+      currentSelectedIds.add(id)
+      
+      // Try to find role from outfit first (most accurate)
+      const roleFromOutfit = outfit.items.find(outfitItem => 
+        outfitItem.wardrobe_id === id
+      )?.role
+      
+      if (roleFromOutfit) {
+        currentSelectedRoles.add(roleFromOutfit)
+        // Update role mapping
+        activeWardrobeRoleMap.value.set(id, roleFromOutfit)
+      } else {
+        // Fallback to existing mapping if available
+        const role = activeWardrobeRoleMap.value.get(id)
+        if (role) {
+          currentSelectedRoles.add(role)
+        }
+      }
+    }
+  })
+  
+  // If there are any selected items, only add items for roles that are not already selected
+  // Otherwise, add all items (first time application with no pre-selection)
+  const hasSelectedItems = currentSelectedIds.size > 0
+  
+  if (hasSelectedItems) {
+    // Supplement mode: only add items for roles that are not in current selection
+    const outfitRoles = new Set(outfit.items.map(item => item.role))
+    const missingRoles = Array.from(outfitRoles).filter(role => !currentSelectedRoles.has(role))
+    
+    // Add selected base items to activeWardrobeIds if not already there
+    selectedBaseItems.value.forEach(item => {
+      if (item.id) {
+        const id = String(item.id)
+        if (!activeWardrobeIds.value.includes(id)) {
+          activeWardrobeIds.value.push(id)
+          // Role mapping should already be set above
+        }
+      }
+    })
+    
+    // Add items for missing roles only (don't add items that are already selected)
+    outfit.items.forEach(item => {
+      if (item.wardrobe_id && missingRoles.includes(item.role)) {
+        const id = String(item.wardrobe_id)
+        // Double check: don't add if already in activeWardrobeIds or currentSelectedIds
+        if (!currentSelectedIds.has(id) && !activeWardrobeIds.value.includes(id)) {
+          activeWardrobeIds.value.push(id)
+          activeWardrobeRoleMap.value.set(id, item.role)
+        }
+      }
+    })
+    
+    // Update or create original outfit for tracking
+    if (originalAppliedOutfit.value) {
+      // Merge new items into original outfit
+      outfit.items.forEach(item => {
+        if (item.wardrobe_id && missingRoles.includes(item.role)) {
+          const existingItem = originalAppliedOutfit.value!.items.find(
+            origItem => origItem.role === item.role && origItem.wardrobe_id === item.wardrobe_id
+          )
+          if (!existingItem) {
+            originalAppliedOutfit.value!.items.push(item)
+          }
+        }
+      })
+      // Also add selected base items that are in outfit to original outfit
+      selectedBaseItems.value.forEach(item => {
+        if (item.id) {
+          const outfitItem = outfit.items.find(outfitItem => outfitItem.wardrobe_id === String(item.id))
+          if (outfitItem) {
+            const existingItem = originalAppliedOutfit.value!.items.find(
+              origItem => origItem.role === outfitItem.role && origItem.wardrobe_id === outfitItem.wardrobe_id
+            )
+            if (!existingItem) {
+              originalAppliedOutfit.value!.items.push(outfitItem)
+            }
+          }
+        }
+      })
+    } else {
+      // Create original outfit from current selection + new items
+      const allItems: typeof outfit.items = []
+      
+      // Add items from outfit that match selected base items
+      selectedBaseItems.value.forEach(item => {
+        if (item.id) {
+          const outfitItem = outfit.items.find(outfitItem => outfitItem.wardrobe_id === String(item.id))
+          if (outfitItem) {
+            allItems.push(outfitItem)
+          }
+        }
+      })
+      
+      // Add items for missing roles
+      outfit.items.forEach(item => {
+        if (item.wardrobe_id && missingRoles.includes(item.role)) {
+          allItems.push(item)
+        }
+      })
+      
+      originalAppliedOutfit.value = {
+        title: outfit.title,
+        items: allItems,
+        reason: outfit.reason,
+        long_text: outfit.long_text
+      }
+    }
+    
+    selectedItem.value = null
+    selectedItemIds.value = [] // Clear selected base items after applying
+    
+    console.log('=== Apply Outfit (Supplement Mode) ===')
+    console.log('Active wardrobe IDs after supplement:', activeWardrobeIds.value)
+    console.log('Current uploadedItems count:', uploadedItems.value.length)
+  } else {
+    // First time application with no pre-selection: add all items
+    const ids = outfit.items
+      .map((it) => it.wardrobe_id)
+      .filter((id): id is string => !!id)
+      .map((id) => String(id))
+
+    console.log('=== Apply Outfit (First Time) ===')
+    console.log('Outfit items:', outfit.items)
+    console.log('Extracted wardrobe IDs:', ids)
+    console.log('Current uploadedItems count:', uploadedItems.value.length)
+    console.log('Uploaded items IDs:', uploadedItems.value.map(it => String(it.id)))
+
+    activeWardrobeIds.value = ids
+    selectedItem.value = null
+    selectedItemIds.value = []
+
+    // Store the original outfit for tracking missing roles
+    originalAppliedOutfit.value = outfit
+
+    // Store the role mapping for each wardrobe item
+    activeWardrobeRoleMap.value.clear()
+    outfit.items.forEach(item => {
+      if (item.wardrobe_id) {
+        activeWardrobeRoleMap.value.set(String(item.wardrobe_id), item.role)
+      }
+    })
+    
+    // Check if items can be found
+    const foundItems = ids.map(id => uploadedItems.value.find(it => String(it.id) === id)).filter(Boolean)
+    console.log('Found items count:', foundItems.length, 'out of', ids.length)
+  }
+  
+  // Verify that activeWardrobeItems will have items after applying
+  console.log('[Apply Outfit] After applying:')
+  console.log('  activeWardrobeIds:', activeWardrobeIds.value)
+  console.log('  uploadedItems count:', uploadedItems.value.length)
+  console.log('  activeWardrobeItems will have:', activeWardrobeItems.value.length, 'items')
+
+  // Apply == auto-save to history
+  try {
+    // Map to backend SaveLookRequest format
+    const saveLookData = {
+      title: outfit.title,
+      items: outfit.items.map(item => ({
+        wardrobe_id: item.wardrobe_id || null,
+        role: item.role,
+        description: item.description,
+      })),
+      location: null, // Location is optional, can be extracted from prompt if needed
+      prompt: outfit.long_text || outfit.reason, // Use long_text if available, otherwise reason
+      scene_image_url: sceneImageUrl.value || null,
+    }
+    await apiClient.post('/looks', saveLookData)
+  } catch (error) {
+    console.error('Failed to auto-save applied outfit:', error)
+      // Don't throw - saving to history is optional
+    }
+  } catch (error) {
+    console.error('[Apply Outfit] Error:', error)
+    alert(`应用搭配失败：${error instanceof Error ? error.message : '未知错误'}`)
+  }
+}
+
+// Get missing roles (roles that were in the original outfit but are now deleted)
+const getMissingRoles = (): string[] => {
+  if (!originalAppliedOutfit.value) {
+    return []
+  }
+  
+  // Count roles in original outfit
+  const originalRoleCount = new Map<string, number>()
+  originalAppliedOutfit.value.items.forEach(item => {
+    if (item.wardrobe_id) {
+      const count = originalRoleCount.get(item.role) || 0
+      originalRoleCount.set(item.role, count + 1)
+    }
+  })
+  
+  // Count currently active roles
+  const activeRoleCount = new Map<string, number>()
+  activeWardrobeIds.value.forEach(id => {
+    const role = activeWardrobeRoleMap.value.get(String(id))
+    if (role) {
+      const count = activeRoleCount.get(role) || 0
+      activeRoleCount.set(role, count + 1)
+    }
+  })
+  
+  // Find missing roles (roles that had items in original but have fewer or no items now)
+  const missing: string[] = []
+  originalRoleCount.forEach((originalCount, role) => {
+    const activeCount = activeRoleCount.get(role) || 0
+    if (activeCount < originalCount) {
+      // This role is missing some items, but we only mark it as missing if all items are gone
+      // OR we can mark it as partially missing - for now, let's mark it if any items are missing
+      // Actually, let's be more precise: mark as missing only if all items of this role are gone
+      if (activeCount === 0) {
+        missing.push(role)
+      }
+    }
+  })
+  
+  return missing
+}
+
+// Remove an item from active outfit
+const removeActiveItem = (itemId: string) => {
+  activeWardrobeIds.value = activeWardrobeIds.value.filter(id => String(id) !== String(itemId))
+  // Note: We keep the role mapping even after deletion, so we can track what was deleted
+  
+  // If all items are removed, clear the original outfit
+  if (activeWardrobeIds.value.length === 0) {
+    originalAppliedOutfit.value = null
+    activeWardrobeRoleMap.value.clear()
+  }
+}
+
+// Image viewer functions
+const openImageViewer = (index: number) => {
+  const validImages = activeWardrobeItems.value
+    .map((item) => item.url || item.features.path)
+    .filter((url): url is string => !!url)
+  
+  if (validImages.length === 0) return
+  
+  imageViewerImages.value = validImages
+  // Find the actual index in the filtered array
+  let actualIndex = 0
+  let count = 0
+  for (let i = 0; i < activeWardrobeItems.value.length; i++) {
+    const item = activeWardrobeItems.value[i]
+    if (item.url || item.features.path) {
+      if (i === index) {
+        actualIndex = count
+        break
+      }
+      count++
+    }
+  }
+  currentImageIndex.value = actualIndex
+  showImageViewer.value = true
+}
+
+const closeImageViewer = () => {
+  showImageViewer.value = false
+  imageViewerImages.value = []
+  currentImageIndex.value = 0
+}
+
+const nextImage = () => {
+  if (currentImageIndex.value < imageViewerImages.value.length - 1) {
+    currentImageIndex.value++
+  } else {
+    currentImageIndex.value = 0
+  }
+}
+
+const prevImage = () => {
+  if (currentImageIndex.value > 0) {
+    currentImageIndex.value--
+  } else {
+    currentImageIndex.value = imageViewerImages.value.length - 1
+  }
+}
+
+// Open image viewer for try-on result
+const openTryOnImageViewer = () => {
+  if (!tryOnImageUrl.value) return
+  imageViewerImages.value = [tryOnImageUrl.value]
+  currentImageIndex.value = 0
+  showImageViewer.value = true
+}
+
+// Favorite functionality
+const isSavingFavorite = ref(false)
+const favoriteSaved = ref(false)
+
+const saveFavorite = async () => {
+  if (!tryOnImageUrl.value) {
+    alert('没有可收藏的试穿结果')
+    return
+  }
+
+  isSavingFavorite.value = true
+  favoriteSaved.value = false
+
+  try {
+    // The image is already uploaded to R2, so we can use the URL directly
+    const response = await apiClient.post<{ id: string; image_url: string }>('/favorites', {
+      image_url: tryOnImageUrl.value,
+      title: originalAppliedOutfit.value?.title || '试穿结果',
+    })
+    
+    favoriteSaved.value = true
+    console.log('Favorite saved:', response.data)
+    
+    // Reset the saved state after 3 seconds
+    setTimeout(() => {
+      favoriteSaved.value = false
+    }, 3000)
+  } catch (error: any) {
+    console.error('Failed to save favorite:', error)
+    alert(error?.response?.data?.detail || '收藏失败，请稍后重试')
+  } finally {
+    isSavingFavorite.value = false
+  }
 }
 </script>
 
@@ -251,242 +935,698 @@ const logout = () => {
   <div class="min-h-screen bg-gray-50 p-8 font-sans text-gray-900">
     <header class="mb-8 flex items-center justify-between">
       <h1 class="text-3xl font-bold tracking-tight">Fashion AI Wardrobe</h1>
-      <button @click="logout" class="text-sm text-gray-500 hover:text-black flex items-center gap-1">
-        <LogOut class="w-4 h-4" />
-        Sign Out
-      </button>
+      <div class="flex items-center gap-4">
+        <button
+          @click="$router.push('/wardrobe')"
+          class="text-sm text-gray-500 hover:text-black underline"
+        >
+          My Wardrobe
+        </button>
+        <button
+          @click="$router.push('/history')"
+          class="text-sm text-gray-500 hover:text-black underline"
+        >
+          My Outfit History
+        </button>
+        <button
+          @click="$router.push('/favorites')"
+          class="text-sm text-gray-500 hover:text-black underline flex items-center gap-1"
+        >
+          <Heart class="w-4 h-4" />
+          Favorites
+        </button>
+        <button
+          @click="$router.push('/tryon-history')"
+          class="text-sm text-gray-500 hover:text-black underline flex items-center gap-1"
+        >
+          <History class="w-4 h-4" />
+          Try-On History
+        </button>
+        <button @click="logout" class="text-sm text-gray-500 hover:text-black flex items-center gap-1">
+          <LogOut class="w-4 h-4" />
+          Sign Out
+        </button>
+      </div>
     </header>
 
-    <main class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <!-- Left Sidebar: Upload & Wardrobe -->
-      <div class="lg:col-span-4 space-y-8">
-        <!-- Upload -->
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Upload class="w-5 h-5" />
-            Add Item
-          </h2>
-          <div 
-            class="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-black transition-colors cursor-pointer relative bg-gray-50 hover:bg-gray-100"
-            @click="triggerFileInput"
-          >
-            <input 
-              ref="fileInputRef"
-              type="file" 
-              @change="handleFileUpload" 
-              class="hidden" 
-              accept="image/*"
-              multiple
-            />
-            <div v-if="isUploading && uploadProgress" class="flex flex-col items-center gap-2 pointer-events-none">
-              <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-              <span class="text-sm text-gray-500">
-                Uploading {{ uploadProgress.current }}/{{ uploadProgress.total }}
-              </span>
-              <span class="text-xs text-gray-400">{{ uploadProgress.currentFile }}</span>
-            </div>
-            <div v-else-if="isUploading" class="flex flex-col items-center gap-2 pointer-events-none">
-              <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-              <span class="text-sm text-gray-500">Analyzing...</span>
-            </div>
-            <div v-else class="pointer-events-none">
-              <p class="font-medium text-gray-700">Click or drag to upload</p>
-              <p class="text-xs text-gray-400 mt-2">Supports JPG, PNG (multiple files)</p>
-            </div>
-          </div>
+    <main class="space-y-8">
+      <!-- Step 1: Describe today & generate outfits -->
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+        <div>
+          <h2 class="text-2xl font-bold mb-2">Step 1 · Tell AI about your day</h2>
+          <p class="text-sm text-gray-500">
+            用自然语言描述今天的天气、城市、场景和风格偏好，AI 会结合你的衣橱生成穿搭。
+          </p>
         </div>
-
-        <!-- Wardrobe Grid -->
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 min-h-[400px]">
-          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Shirt class="w-5 h-5" />
-            My Wardrobe
-          </h2>
-          <div class="grid grid-cols-2 gap-4">
-            <div 
-              v-for="item in uploadedItems" 
-              :key="item.id" 
-              @click="selectItem(item)"
-              class="group relative rounded-xl overflow-hidden border aspect-[3/4] cursor-pointer transition-all hover:shadow-md"
-              :class="selectedItem?.id === item.id ? 'border-black ring-2 ring-black ring-offset-2' : 'border-gray-200'"
-            >
-              <!-- Display Image from URL -->
-              <img 
-                v-if="item.url || item.features.path" 
-                :src="item.url || item.features.path" 
-                class="absolute inset-0 w-full h-full object-cover"
-                alt="Clothing item"
-              />
-              <div v-else class="absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-400">
-                <span class="text-xs">{{ item.features.type }}</span>
+        <div class="flex flex-col gap-4">
+          <div class="w-full space-y-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Describe today and your style
+            </label>
+            <!-- Rich input wrapper with integrated image upload -->
+            <div class="relative border border-gray-200 rounded-xl bg-white transition-all focus-within:border-gray-400 focus-within:shadow-md">
+              <textarea
+                v-model="customPrompt"
+                rows="3"
+                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0"
+                placeholder="例如：今天在杭州，通勤极简风，避免白鞋；或者详细描述你今天的场景和穿衣偏好"
+              ></textarea>
+              
+              <!-- Scene image preview area -->
+              <div v-if="sceneImagePreviewUrl || isUploadingSceneImage" class="px-4 pb-2">
+                <div class="relative inline-block group">
+                  <div class="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+                    <img 
+                      v-if="sceneImagePreviewUrl"
+                      :src="sceneImagePreviewUrl" 
+                      alt="Scene preview" 
+                      class="w-full h-full object-cover"
+                    />
+                    <!-- Upload progress overlay -->
+                    <div
+                      v-if="isUploadingSceneImage"
+                      class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
+                    >
+                      <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
+                      <span class="text-white text-xs">{{ sceneImageUploadProgress }}%</span>
+                    </div>
+                    <!-- Progress bar -->
+                    <div
+                      v-if="isUploadingSceneImage"
+                      class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"
+                    >
+                      <div
+                        class="h-full bg-blue-500 transition-all duration-300"
+                        :style="{ width: `${sceneImageUploadProgress}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                  <button
+                    v-if="sceneImagePreviewUrl && !isUploadingSceneImage"
+                    @click="removeSceneImage"
+                    class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md"
+                    title="删除场景图片"
+                  >
+                    <X class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               
-              <div class="absolute bottom-0 left-0 right-0 bg-black/70 text-white p-2 text-xs translate-y-full group-hover:translate-y-0 transition-transform">
-                {{ formatFeatureValue(item.features.color) }}
+              <!-- Toolbar with image upload button -->
+              <div class="flex items-center justify-between px-4 py-2 border-t border-gray-100">
+                <div class="flex items-center gap-2">
+                  <label
+                    for="sceneImageInput"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                    title="上传场景图片参考"
+                  >
+                    <Upload class="w-4 h-4" />
+                    <span class="text-xs">上传新图片</span>
+                  </label>
+                  <input
+                    id="sceneImageInput"
+                    type="file"
+                    accept="image/*"
+                    @change="handleSceneImageChange"
+                    class="hidden"
+                  />
+                  <button
+                    @click="showSceneImageHistory = !showSceneImageHistory"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                    title="选择历史场景图片"
+                  >
+                    <Clock class="w-4 h-4" />
+                    <span class="text-xs">历史图片</span>
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400">
+                  场景图片（可选）
+                </p>
               </div>
             </div>
             
-            <div v-if="uploadedItems.length === 0" class="col-span-full flex flex-col items-center justify-center text-gray-400 py-12">
-              <Shirt class="w-12 h-12 mb-2 opacity-20" />
-              <p class="text-sm">No items yet.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Panel: Analysis & Recommendations -->
-      <div class="lg:col-span-8">
-        <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 h-full">
-          
-          <!-- Header / Context -->
-          <div class="mb-8">
-            <h2 class="text-2xl font-bold mb-4">Outfit Generator</h2>
+            <!-- Helper text below input -->
+            <p class="text-xs text-gray-500 px-1">
+              上传你今天所在环境的一张照片（例如办公室、咖啡馆、户外等），AI 会把它当成穿搭场景参考。
+            </p>
             
-            <div class="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-               <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium text-gray-600">Occasion:</span>
-                  <select v-model="occasion" class="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black">
-                    <option v-for="occ in occasions" :key="occ" :value="occ">{{ occ }}</option>
-                  </select>
-               </div>
-               
-               <div class="h-6 w-px bg-gray-200"></div>
-               
-               <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium text-gray-600">Mode:</span>
-                  <span v-if="selectedItem" class="text-sm bg-black text-white px-2 py-1 rounded">Match Item (Scheme A)</span>
-                  <span v-else class="text-sm bg-blue-600 text-white px-2 py-1 rounded">Full Outfit (Scheme B)</span>
-               </div>
-            </div>
-          </div>
-
-          <!-- Selected Item Preview (if any) -->
-          <div v-if="selectedItem" class="mb-8 p-4 border border-gray-100 rounded-xl flex items-center justify-between bg-gray-50/50">
-            <div class="flex items-center gap-4">
-                <div class="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs overflow-hidden">
-                    <img 
-                        v-if="selectedItem.url || selectedItem.features.path" 
-                        :src="selectedItem.url || selectedItem.features.path" 
+            <!-- Historical scene images modal -->
+            <div
+              v-if="showSceneImageHistory"
+              class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+              @click.self="showSceneImageHistory = false"
+            >
+              <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between p-6 border-b border-gray-200">
+                  <h3 class="text-lg font-semibold text-gray-900">选择历史场景图片</h3>
+                  <button
+                    @click="showSceneImageHistory = false"
+                    class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+                  >
+                    <X class="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6">
+                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-gray-400">
+                    <Clock class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>暂无历史场景图片</p>
+                  </div>
+                  <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    <div
+                      v-for="image in historicalSceneImages"
+                      :key="image.id"
+                      @click="selectHistoricalSceneImage(image)"
+                      class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"
+                    >
+                      <img
+                        :src="image.image_url"
+                        :alt="`Scene image ${image.id}`"
                         class="w-full h-full object-cover"
-                    />
-                    <span v-else>{{ selectedItem.features.type }}</span>
+                      />
+                      <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                      <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                          {{ new Date(image.created_at).toLocaleDateString('zh-CN') }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                    <p class="font-medium">Selected: {{ formatFeatureValue(selectedItem.features.color) }} {{ formatFeatureValue(selectedItem.features.type) }}</p>
-                    <p class="text-xs text-gray-500">{{ formatFeatureValue(selectedItem.features.style) }}</p>
-                </div>
+              </div>
             </div>
-            <button @click="selectedItem = null" class="text-sm text-gray-400 hover:text-black underline">
-              Clear Selection
-            </button>
           </div>
-
-          <!-- Actions -->
-          <div class="flex gap-4 mb-8">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <button 
               @click="getRecommendations" 
               :disabled="isGenerating"
               class="bg-black text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-gray-800 disabled:opacity-50 transition-colors shadow-lg shadow-black/20 w-full justify-center sm:w-auto"
             >
               <Wand2 class="w-5 h-5" />
-              {{ isGenerating ? 'AI is Thinking...' : (selectedItem ? 'Find Matching Items' : 'Generate Full Outfit') }}
+              {{ isGenerating ? 'AI is Thinking...' : 'Generate Outfit' }}
             </button>
+            <!-- AI品牌标识与透明度声明（生成按钮旁） -->
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <span class="font-medium text-gray-700">fashion</span>
+              <span class="text-gray-400">|</span>
+              <span>基于Qwen技术</span>
+              <span class="text-gray-400">|</span>
+              <span class="text-gray-400">独立服务</span>
+            </div>
           </div>
+          
+          <!-- AI Outfit Plans (moved here from Step 3) -->
+          <div v-if="agentOutfits.length && !isGenerating" class="mt-6 space-y-6">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-semibold">AI Outfit Plans</h3>
+                <!-- AI品牌标识与透明度声明 -->
+                <div class="flex items-center gap-2 text-xs text-gray-500">
+                  <span class="font-medium text-gray-700">fashion</span>
+                  <span class="text-gray-400">|</span>
+                  <span>基于Qwen技术</span>
+                  <span class="text-gray-400">|</span>
+                  <span class="text-gray-400">独立服务</span>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div
+                  v-for="(outfit, idx) in agentOutfits"
+                  :key="idx"
+                  class="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col justify-between"
+                >
+                  <div>
+                    <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
+                    <ul class="text-xs text-gray-700 space-y-1 mb-2">
+                      <li v-for="(it, i) in outfit.items" :key="i">
+                        <span class="font-medium capitalize">{{ it.role }}:</span>
+                        <span> {{ it.description }}</span>
+                        <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-green-600 ml-1">(in wardrobe)</span>
+                        <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">(已选择)</span>
+                      </li>
+                    </ul>
+                    <p class="text-xs text-gray-500 mb-2">
+                      {{ outfit.reason }}
+                    </p>
+                    <p class="text-xs text-gray-500 whitespace-pre-line">
+                      {{ outfit.long_text }}
+                    </p>
+                  </div>
+                  <div class="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      @click.prevent="applyOutfit(outfit)"
+                      class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      Apply outfit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Loading State (only show when actively generating) -->
+          <div v-else-if="isGenerating" class="mt-6 py-12 flex flex-col items-center justify-center">
+             <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
+             <p class="text-gray-500 animate-pulse mb-2">Consulting fashion knowledge base...</p>
+             <!-- AI品牌标识与透明度声明（加载状态） -->
+             <div class="flex items-center gap-2 text-xs text-gray-400">
+               <span class="font-medium text-gray-600">fashion</span>
+               <span>|</span>
+               <span>基于Qwen技术</span>
+               <span>|</span>
+               <span>独立服务</span>
+             </div>
+          </div>
+        </div>
+      </section>
 
-          <!-- Recommendations -->
-          <div v-if="recommendations.length > 0">
-            <h3 class="text-lg font-semibold mb-4">AI Suggestions</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div v-for="rec in recommendations" :key="rec.id" class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
-                <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-gray-400 overflow-hidden">
-                  <img 
-                    v-if="rec.path && rec.path.startsWith('http')" 
-                    :src="rec.path" 
+      <!-- Applied Outfit Items - Independent Section -->
+      <section v-if="activeWardrobeItems.length" class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+        <div>
+          <h2 class="text-2xl font-bold mb-2">Applied Outfit Items</h2>
+          <p class="text-sm text-gray-500">
+            当前已选择的穿搭单品，可以删除单品或生成剩余部位的搭配建议。
+          </p>
+        </div>
+        
+        <div class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-medium text-gray-700">
+              Applied outfit items ({{ activeWardrobeItems.length }})
+            </p>
+            <p v-if="getMissingRoles().length > 0" class="text-xs text-blue-600">
+              已删除 {{ getMissingRoles().length }} 个部位，再次生成将补充
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-3 mb-3">
+            <div
+              v-for="(item, index) in activeWardrobeItems"
+              :key="item.id"
+              class="group relative"
+            >
+              <div class="relative">
+                <div
+                  @click="openImageViewer(index)"
+                  class="cursor-pointer"
+                >
+                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 transition-all hover:shadow-lg bg-gray-200">
+                    <img
+                      v-if="item.url || item.features.path"
+                      :src="item.url || item.features.path"
+                      class="w-full h-full object-cover"
+                      :alt="`${formatFeatureValue(item.features.color)} ${formatFeatureValue(item.features.type)}`"
+                    />
+                  </div>
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg pointer-events-none"></div>
+                </div>
+                <!-- Delete button - always visible -->
+                <button
+                  @click.stop="removeActiveItem(String(item.id))"
+                  class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md z-10"
+                  title="删除此单品"
+                >
+                  <X class="w-4 h-4" />
+                </button>
+              </div>
+              <div class="mt-1 text-center">
+                <p class="text-xs text-gray-600 truncate max-w-[80px]">
+                  {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
+                </p>
+                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-gray-400 truncate max-w-[80px]">
+                  {{ activeWardrobeRoleMap.get(String(item.id)) }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 2 moved to dedicated Wardrobe page -->
+
+      <!-- Step 3: Review outfits & virtual try-on -->
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
+        <div>
+          <h2 class="text-2xl font-bold mb-2">Review outfits & try on</h2>
+          <p class="text-sm text-gray-500">
+            先从衣橱中选择你想要的单品，让 AI 补齐整套穿搭，然后上传模特照片进行虚拟试穿。
+          </p>
+        </div>
+
+        <!-- Model photo uploader with integrated empty state -->
+        <div 
+          data-model-uploader
+          :class="[
+            'border rounded-xl bg-white transition-all focus-within:shadow-md overflow-hidden',
+            showModelImageError 
+              ? 'border-red-500 border-2 shadow-red-200' 
+              : 'border-gray-200 focus-within:border-gray-400'
+          ]"
+        >
+          <!-- Model photo preview or empty state -->
+          <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <p class="text-sm font-medium text-gray-700 mb-1">Model photo (图1)</p>
+                <p class="text-xs text-gray-500">
+                  上传一张你的半身或全身照片，后续所有试穿都会使用这张模特图。
+                </p>
+              </div>
+              <button
+                v-if="modelImagePreviewUrl && !isUploadingModelImage"
+                @click="removeModelImage"
+                class="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md flex-shrink-0"
+                title="删除模特照片"
+              >
+                <X class="w-4 h-4" />
+              </button>
+            </div>
+            <div class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+              <img 
+                v-if="modelImagePreviewUrl"
+                :src="modelImagePreviewUrl" 
+                alt="Model preview" 
+                class="w-full h-full object-cover"
+              />
+              <!-- Upload progress overlay -->
+              <div
+                v-if="isUploadingModelImage"
+                class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
+              >
+                <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
+                <span class="text-white text-xs">{{ modelImageUploadProgress }}%</span>
+              </div>
+              <!-- Progress bar -->
+              <div
+                v-if="isUploadingModelImage"
+                class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"
+              >
+                <div
+                  class="h-full bg-blue-500 transition-all duration-300"
+                  :style="{ width: `${modelImageUploadProgress}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Empty state with upload button -->
+          <div v-else class="p-8">
+            <div class="text-center">
+              <!-- Show empty state message only when no results generated -->
+              <template v-if="!recommendations.length && !agentOutfits.length && !isGenerating">
+                <Wand2 class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p class="text-gray-500 font-medium mb-1">Ready to style!</p>
+                <p class="text-sm text-gray-400 mb-4">先上传衣橱，再描述你今天的需求，然后生成穿搭。</p>
+              </template>
+              <div class="flex flex-col items-center gap-3">
+                <div class="flex items-center gap-3">
+                  <label
+                    for="modelImageInput"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 cursor-pointer transition-colors"
+                  >
+                    <Upload class="w-4 h-4" />
+                    <span>上传新照片</span>
+                  </label>
+                  <input
+                    id="modelImageInput"
+                    type="file"
+                    accept="image/*"
+                    @change="handleModelImageChange"
+                    class="hidden"
+                  />
+                  <button
+                    v-if="historicalModelImages.length > 0"
+                    @click="showModelImageHistory = !showModelImageHistory"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 cursor-pointer transition-colors"
+                  >
+                    <Clock class="w-4 h-4" />
+                    <span>历史图片</span>
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400">
+                  上传一张你的半身或全身照片，后续所有试穿都会使用这张模特图。
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Upload button when photo exists (for replacement) -->
+          <div v-if="modelImagePreviewUrl" class="px-4 pb-4 border-t border-gray-100 pt-3">
+            <div class="flex items-center gap-2">
+              <label
+                for="modelImageInputReplace"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                <Upload class="w-4 h-4" />
+                <span>更换照片</span>
+              </label>
+              <input
+                id="modelImageInputReplace"
+                type="file"
+                accept="image/*"
+                @change="handleModelImageChange"
+                class="hidden"
+              />
+              <button
+                v-if="historicalModelImages.length > 0"
+                @click="showModelImageHistory = !showModelImageHistory"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                <Clock class="w-4 h-4" />
+                <span>历史图片</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Historical model images modal -->
+        <div
+          v-if="showModelImageHistory"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showModelImageHistory = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">选择历史模特图片</h3>
+              <button
+                @click="showModelImageHistory = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-gray-400">
+                <Clock class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p>暂无历史模特图片</p>
+              </div>
+              <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                <div
+                  v-for="image in historicalModelImages"
+                  :key="image.id"
+                  @click="selectHistoricalModelImage(image)"
+                  class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"
+                >
+                  <img
+                    :src="image.image_url"
+                    :alt="`Model image ${image.id}`"
                     class="w-full h-full object-cover"
                   />
-                  <span v-else>{{ rec.type }}</span>
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                      {{ new Date(image.created_at).toLocaleDateString('zh-CN') }}
+                    </div>
+                  </div>
                 </div>
-                <p class="font-medium text-sm">{{ rec.color }} {{ rec.type }}</p>
-                <p class="text-xs text-gray-500 mt-1">{{ rec.reason }}</p>
-                <p class="text-xs text-green-600 mt-1 font-medium">Match: {{ Math.round(rec.score * 100) }}%</p>
               </div>
             </div>
           </div>
-          
-          <!-- Empty State / Intro -->
-          <div v-else-if="!isGenerating" class="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-             <Wand2 class="w-12 h-12 mx-auto mb-3 text-gray-300" />
-             <p class="text-gray-500 font-medium">Ready to style!</p>
-             <p class="text-sm text-gray-400 mt-1">Select an item to find matches, or deselect all to generate a full outfit.</p>
-          </div>
-          
-          <!-- Loading State -->
-          <div v-else class="py-12 flex flex-col items-center justify-center">
-             <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p class="text-gray-500 animate-pulse">Consulting fashion knowledge base...</p>
-          </div>
         </div>
-      </div>
-    </main>
 
-    <!-- Confirmation Dialog for Multiple Items -->
-    <div v-if="showConfirmDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="cancelAddItems">
-      <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
-        <div class="p-6 border-b border-gray-200">
-          <h3 class="text-xl font-bold">Multiple Items Detected</h3>
-          <p class="text-sm text-gray-500 mt-1">Please review and select the items you want to add to your wardrobe.</p>
-        </div>
-        
-        <div class="flex-1 overflow-y-auto p-6">
-          <div class="space-y-4">
-            <div 
-              v-for="(item, index) in pendingItems" 
-              :key="index"
-              class="border border-gray-200 rounded-xl p-4 hover:border-black transition-colors"
-              :class="{ 'bg-gray-50': item.selected }"
+        <!-- Scheme A: Selected base items (multi-select) -->
+        <div
+          v-if="selectedBaseItems.length && !activeWardrobeItems.length"
+          class="p-4 border border-gray-100 rounded-xl bg-gray-50/50"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-sm font-medium text-gray-700">
+              Selected items for matching ({{ selectedBaseItems.length }})
+            </p>
+            <button
+              @click="selectedItemIds = []; selectedItem = null"
+              class="text-xs text-gray-400 hover:text-black underline"
             >
-              <div class="flex items-start gap-4">
-                <input 
-                  type="checkbox" 
-                  v-model="item.selected"
-                  class="mt-1 w-4 h-4 text-black border-gray-300 rounded focus:ring-black"
+              Clear
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <div
+              v-for="item in selectedBaseItems"
+              :key="item.id"
+              class="flex items-center gap-2 px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs"
+            >
+              <span class="inline-block w-6 h-6 rounded bg-gray-200 overflow-hidden">
+                <img
+                  v-if="item.url || item.features.path"
+                  :src="item.url || item.features.path"
+                  class="w-full h-full object-cover"
                 />
-                <div class="flex-1">
-                  <div class="flex items-center gap-2 mb-2">
-                    <h4 class="font-semibold">{{ formatFeatureValue(item.features.type) }}</h4>
-                    <span class="text-sm text-gray-500">{{ formatFeatureValue(item.features.color) }}</span>
-                  </div>
-                  <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                    <div><span class="font-medium">Style:</span> {{ formatFeatureValue(item.features.style) }}</div>
-                    <div><span class="font-medium">Occasion:</span> {{ formatFeatureValue(item.features.occasion) }}</div>
-                    <div><span class="font-medium">Pattern:</span> {{ formatFeatureValue(item.features.pattern) }}</div>
-                    <div><span class="font-medium">Material:</span> {{ formatFeatureValue(item.features.material) }}</div>
-                  </div>
-                </div>
-                <img 
-                  v-if="item.url" 
-                  :src="item.url" 
-                  class="w-16 h-16 object-cover rounded-lg"
-                  alt="Item preview"
-                />
-              </div>
+              </span>
+              <span class="text-gray-700 truncate max-w-[120px]">
+                {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
+              </span>
             </div>
           </div>
         </div>
+
+
+        <!-- Try-on controls -->
+        <div v-if="activeWardrobeItems.length" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <p class="text-sm font-medium text-gray-700 mb-1">Ready to try on</p>
+              <p class="text-xs text-gray-500">
+                当前已选择 {{ activeWardrobeItems.length }} 件单品，点击下方按钮进行虚拟试穿。
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+            <button
+              @click="performTryOn"
+              :disabled="!activeWardrobeItems.length || isTryingOn"
+              class="px-4 py-2 rounded-lg border border-purple-500 text-purple-600 hover:border-purple-700 hover:text-purple-800 hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <Wand2 v-if="!isTryingOn" class="w-4 h-4" />
+              <div v-else class="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+              <span>{{ isTryingOn ? '生成试穿效果中...' : '试穿这套搭配' }}</span>
+            </button>
+            <!-- AI品牌标识与透明度声明（虚拟试穿） -->
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <span class="font-medium text-gray-700">fashion</span>
+              <span class="text-gray-400">|</span>
+              <span>基于Qwen技术</span>
+              <span class="text-gray-400">|</span>
+              <span class="text-gray-400">独立服务</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Try-on Loading State -->
+        <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-gray-100 rounded-xl bg-gray-50">
+          <div class="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p class="text-gray-500 animate-pulse mb-2">正在生成虚拟试穿效果...</p>
+          <!-- AI品牌标识与透明度声明（加载状态） -->
+          <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span class="font-medium text-gray-600">fashion</span>
+            <span>|</span>
+            <span>基于Qwen技术</span>
+            <span>|</span>
+            <span>独立服务</span>
+          </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div v-if="selectedItem && recommendations.length > 0">
+          <h3 class="text-lg font-semibold mb-4">AI Suggestions</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div v-for="rec in recommendations" :key="rec.id" class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
+              <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-gray-400 overflow-hidden">
+                <img 
+                  v-if="rec.path && rec.path.startsWith('http')" 
+                  :src="rec.path" 
+                  class="w-full h-full object-cover"
+                />
+                <span v-else>{{ rec.type }}</span>
+              </div>
+              <p class="font-medium text-sm">{{ rec.color }} {{ rec.type }}</p>
+              <p class="text-xs text-gray-500 mt-1">{{ rec.reason }}</p>
+              <p class="text-xs text-green-600 mt-1 font-medium">Match: {{ Math.round(rec.score * 100) }}%</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Try-on Result -->
+        <div v-if="tryOnImageUrl" class="border-t border-gray-100 pt-6">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold">Virtual Try-On Result</h3>
+            <button
+              @click="saveFavorite"
+              :disabled="isSavingFavorite"
+              :class="[
+                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                favoriteSaved
+                  ? 'bg-green-50 text-green-600 border border-green-200'
+                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 hover:border-gray-300',
+                isSavingFavorite && 'opacity-50 cursor-not-allowed'
+              ]"
+            >
+              <Heart
+                :class="[
+                  'w-4 h-4 transition-all',
+                  favoriteSaved ? 'fill-current text-green-600' : ''
+                ]"
+              />
+              <span v-if="isSavingFavorite">保存中...</span>
+              <span v-else-if="favoriteSaved">已收藏</span>
+              <span v-else>收藏</span>
+            </button>
+          </div>
+          <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:border-gray-300 transition-colors" @click="openTryOnImageViewer">
+            <img :src="tryOnImageUrl" alt="Try-on result" class="w-full object-contain" />
+          </div>
+        </div>
+      </section>
+    </main>
+    
+    <!-- Image Viewer Modal -->
+    <div
+      v-if="showImageViewer && imageViewerImages.length > 0"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+      @click.self="closeImageViewer"
+    >
+      <div class="relative w-full h-full flex items-center justify-center p-4">
+        <!-- Close button -->
+        <button
+          @click="closeImageViewer"
+          class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
+        >
+          <X class="w-6 h-6" />
+        </button>
         
-        <div class="p-6 border-t border-gray-200 flex justify-end gap-3">
-          <button 
-            @click="cancelAddItems"
-            class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button 
-            @click="confirmAddItems"
-            class="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
-          >
-            Add Selected ({{ pendingItems.filter(i => i.selected).length }})
-          </button>
+        <!-- Previous button -->
+        <button
+          v-if="imageViewerImages.length > 1"
+          @click="prevImage"
+          class="absolute left-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
+        >
+          <ChevronLeft class="w-6 h-6" />
+        </button>
+        
+        <!-- Image -->
+        <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
+          <img
+            :src="imageViewerImages[currentImageIndex]"
+            alt="Outfit item"
+            class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+          />
+        </div>
+        
+        <!-- Next button -->
+        <button
+          v-if="imageViewerImages.length > 1"
+          @click="nextImage"
+          class="absolute right-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
+        >
+          <ChevronRight class="w-6 h-6" />
+        </button>
+        
+        <!-- Image counter -->
+        <div
+          v-if="imageViewerImages.length > 1"
+          class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm"
+        >
+          {{ currentImageIndex + 1 }} / {{ imageViewerImages.length }}
         </div>
       </div>
     </div>
