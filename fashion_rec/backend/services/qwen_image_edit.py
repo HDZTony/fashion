@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
 import warnings
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ SINGAPORE_ENDPOINT = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/m
 
 DEFAULT_ENV_PREFIX = "QWEN_IMAGE_EDIT_"
 DEFAULT_MODEL = "qwen-image-edit-plus"
-DEFAULT_REGION = "beijing"
+DEFAULT_REGION = "singapore"  # Default to Singapore region
 
 
 class QwenImageEditError(RuntimeError):
@@ -62,22 +63,15 @@ def _is_url(path_or_url: str) -> bool:
         return False
 
 
-def _read_image_as_base64(image_path: Path) -> str:
-    """Read the image from disk and return a base64-encoded string."""
-    try:
-        image_bytes = image_path.read_bytes()
-    except FileNotFoundError as exc:
-        raise QwenImageEditError(f"Image file not found: {image_path}") from exc
-    except OSError as exc:
-        raise QwenImageEditError(f"Failed to read image file: {image_path}") from exc
-
-    return base64.b64encode(image_bytes).decode("utf-8")
-
-
-def _prepare_image_content(image_input: Union[str, Path]) -> Dict[str, str]:
+async def _prepare_image_content(image_input: Union[str, Path], expires_in_days: int = None) -> Dict[str, str]:
     """
     Prepare image content for API request.
     Supports both local file paths and URLs.
+    For local files, uploads to R2 first to get a public URL (instead of using base64).
+    
+    Args:
+        image_input: Image path or URL
+        expires_in_days: Optional number of days after which the file should be deleted from R2
     """
     image_str = str(image_input)
     
@@ -85,22 +79,50 @@ def _prepare_image_content(image_input: Union[str, Path]) -> Dict[str, str]:
         # For URLs, use the URL directly
         return {"image": image_str}
     else:
-        # For local files, encode as base64
+        # For local files, upload to R2 to get a public URL
         image_path = Path(image_str).expanduser().resolve()
-        image_b64 = _read_image_as_base64(image_path)
-        # Determine MIME type from file extension
-        suffix = image_path.suffix.lower()
-        mime_type = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-        }.get(suffix, "image/jpeg")
         
-        return {"image": f"data:{mime_type};base64,{image_b64}"}
+        # Validate file exists and is readable
+        if not image_path.exists():
+            raise QwenImageEditError(f"Image file does not exist: {image_path}")
+        if not image_path.is_file():
+            raise QwenImageEditError(f"Path is not a file: {image_path}")
+        
+        # Validate file size (not too large, not empty)
+        file_size = image_path.stat().st_size
+        if file_size == 0:
+            raise QwenImageEditError(f"Image file is empty: {image_path}")
+        if file_size > 10 * 1024 * 1024:  # 10MB limit
+            raise QwenImageEditError(f"Image file too large ({file_size} bytes): {image_path}")
+        
+        # Upload to R2 to get public URL
+        try:
+            from services.storage import upload_file_to_r2
+            
+            # Determine MIME type from file extension
+            suffix = image_path.suffix.lower()
+            mime_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+                ".avif": "image/avif",
+            }.get(suffix, "image/jpeg")
+            
+            # Read file and upload to R2
+            with image_path.open("rb") as f:
+                public_url = await upload_file_to_r2(f, image_path.name, mime_type, expires_in_days=expires_in_days)
+            
+            if expires_in_days:
+                print(f"[QwenImageEdit] Uploaded local file to R2 (expires in {expires_in_days} days): {image_path} -> {public_url}")
+            else:
+                print(f"[QwenImageEdit] Uploaded local file to R2: {image_path} -> {public_url}")
+            return {"image": public_url}
+        except Exception as e:
+            raise QwenImageEditError(f"Failed to upload image to R2: {e}") from e
 
 
-def _prepare_payload(
+async def _prepare_payload(
     prompt: str,
     image_inputs: List[Union[str, Path]],
     *,
@@ -109,6 +131,7 @@ def _prepare_payload(
     negative_prompt: Optional[str] = None,
     prompt_extend: Optional[bool] = None,
     watermark: Optional[bool] = None,
+    garment_collage_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Build the JSON payload accepted by the Qwen Image Edit API.
@@ -121,13 +144,17 @@ def _prepare_payload(
         negative_prompt: Negative prompt to avoid certain elements.
         prompt_extend: Whether to extend the prompt automatically.
         watermark: Whether to add watermark.
+        garment_collage_index: Optional index of the garment collage image (will be set to expire in 7 days).
     """
     # Prepare content array with images and text
     content: List[Dict[str, str]] = []
     
-    # Add all images first
-    for image_input in image_inputs:
-        content.append(_prepare_image_content(image_input))
+    # Add all images first (upload local files to R2 to get URLs)
+    for idx, image_input in enumerate(image_inputs):
+        # If this is the garment collage (图2), set it to expire in 7 days
+        expires_in_days = 7 if idx == garment_collage_index else None
+        image_content = await _prepare_image_content(image_input, expires_in_days=expires_in_days)
+        content.append(image_content)
     
     # Add text prompt at the end
     content.append({"text": prompt})
@@ -163,11 +190,11 @@ class QwenImageEditClient:
     """Minimal client wrapper around the Qwen Image Edit API."""
 
     api_key: str
-    endpoint: str = BEIJING_ENDPOINT
+    endpoint: str = SINGAPORE_ENDPOINT  # Default to Singapore endpoint
     timeout_seconds: float = 300.0
     model: str = DEFAULT_MODEL
 
-    def edit_image(
+    async def edit_image(
         self,
         image_inputs: Union[str, Path, List[Union[str, Path]]],
         prompt: str,
@@ -178,6 +205,7 @@ class QwenImageEditClient:
         watermark: Optional[bool] = None,
         output_path: Optional[Path] = None,
         debug: bool = False,
+        garment_collage_index: Optional[int] = None,
     ) -> Union[Path, List[Path]]:
         """
         Submit an editing request and return the path(s) to the edited image(s).
@@ -211,7 +239,7 @@ class QwenImageEditClient:
         if watermark is None:
             watermark = False
 
-        payload = _prepare_payload(
+        payload = await _prepare_payload(
             prompt=prompt,
             image_inputs=image_list,
             model=self.model,
@@ -219,6 +247,7 @@ class QwenImageEditClient:
             negative_prompt=negative_prompt,
             prompt_extend=prompt_extend,
             watermark=watermark,
+            garment_collage_index=garment_collage_index,
         )
 
         headers = {
@@ -226,11 +255,73 @@ class QwenImageEditClient:
             "Authorization": f"Bearer {self.api_key}",
         }
 
+        # Prepare a readable version of payload for logging
+        log_payload = payload.copy()
+        if "input" in log_payload and "messages" in log_payload["input"]:
+            messages = log_payload["input"]["messages"]
+            for msg in messages:
+                if "content" in msg:
+                    content = msg["content"]
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and "image" in item:
+                                img_data = item["image"]
+                                # All images are now URLs, no need to truncate
+                                if isinstance(img_data, str) and img_data.startswith("http"):
+                                    # Keep URLs as-is for logging
+                                    pass
+
+        print("\n" + "="*80)
+        print("=== Qwen-Image-Edit Model Request (Try-On) ===")
+        print("="*80)
+        print(f"\n[Model]: {self.model}")
+        print(f"\n[Prompt]: {prompt}")
+        print(f"\n[Image Inputs Count]: {len(image_list)}")
+        for idx, img_input in enumerate(image_list):
+            if _is_url(str(img_input)):
+                print(f"  Image {idx + 1}: URL - {img_input}")
+            else:
+                print(f"  Image {idx + 1}: Local file - {img_input}")
+        print(f"\n[Parameters]:")
+        print(f"  n: {n}")
+        if negative_prompt:
+            print(f"  negative_prompt: {negative_prompt}")
+        print(f"  prompt_extend: {prompt_extend}")
+        print(f"  watermark: {watermark}")
+        print("\n[Full Payload (with image URLs)]:")
+        print(json.dumps(log_payload, indent=2, ensure_ascii=False))
+        print("\n" + "="*80 + "\n")
+
         if debug:
             print(f"[QwenImageEdit] Request payload: {payload}")
 
         with httpx.Client(timeout=self.timeout_seconds) as client:
             try:
+                # Validate payload before sending (all images should be URLs now)
+                import json as json_module
+                try:
+                    # Try to serialize payload to check for encoding issues
+                    json_str = json_module.dumps(payload)
+                    # Validate that all images are URLs (not base64)
+                    if "input" in payload and "messages" in payload["input"]:
+                        for msg in payload["input"]["messages"]:
+                            if "content" in msg:
+                                content = msg["content"]
+                                if isinstance(content, list):
+                                    for item in content:
+                                        if isinstance(item, dict) and "image" in item:
+                                            img_data = item["image"]
+                                            if isinstance(img_data, str):
+                                                if img_data.startswith("data:"):
+                                                    raise QwenImageEditError(f"Image data should be URL, not base64 data URL: {img_data[:50]}...")
+                                                elif not img_data.startswith("http"):
+                                                    raise QwenImageEditError(f"Image data should be a valid URL: {img_data[:50]}...")
+                                                else:
+                                                    print(f"[Validation] Image URL is valid: {img_data}")
+                except Exception as validation_err:
+                    print(f"[Error] Payload validation failed: {validation_err}")
+                    raise QwenImageEditError(f"Payload validation failed: {validation_err}")
+                
                 response = client.post(self.endpoint, headers=headers, json=payload)
             except httpx.HTTPError as exc:
                 raise QwenImageEditError(
@@ -242,6 +333,14 @@ class QwenImageEditClient:
                 try:
                     error_json = response.json()
                     error_text = str(error_json)
+                    # Print detailed error info
+                    print(f"\n[Qwen Image Edit API Error]")
+                    print(f"Status Code: {response.status_code}")
+                    print(f"Error Response: {error_json}")
+                    if isinstance(error_json, dict):
+                        print(f"Request ID: {error_json.get('request_id', 'N/A')}")
+                        print(f"Error Code: {error_json.get('code', 'N/A')}")
+                        print(f"Error Message: {error_json.get('message', 'N/A')}")
                 except ValueError:
                     pass
                 raise QwenImageEditError(
@@ -406,15 +505,26 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def _load_env_config() -> dict[str, Any]:
     """Read optional overrides from environment variables."""
     config: dict[str, Any] = {}
-    api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv(f"{DEFAULT_ENV_PREFIX}API_KEY")
-    if api_key:
-        config["api_key"] = api_key
-
-    region = os.getenv(f"{DEFAULT_ENV_PREFIX}REGION", DEFAULT_REGION)
+    
+    # Determine region (default to Singapore)
+    region = os.getenv(f"{DEFAULT_ENV_PREFIX}REGION", DEFAULT_REGION).lower()
     if region == "singapore":
         config["endpoint"] = SINGAPORE_ENDPOINT
+        # For Singapore endpoint, use Singapore API key
+        api_key = os.getenv("DASHSCOPE_API_KEY_SG") or os.getenv("DASHSCOPE_API_KEY") or os.getenv(f"{DEFAULT_ENV_PREFIX}API_KEY")
+        if api_key:
+            config["api_key"] = api_key
+            if os.getenv("DASHSCOPE_API_KEY_SG"):
+                print("[Qwen-Image-Edit] Using Singapore endpoint with Singapore API key")
+            else:
+                print("[Qwen-Image-Edit] Using Singapore endpoint with default API key (fallback)")
     else:
         config["endpoint"] = BEIJING_ENDPOINT
+        # For Beijing endpoint, use Beijing API key
+        api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv(f"{DEFAULT_ENV_PREFIX}API_KEY")
+        if api_key:
+            config["api_key"] = api_key
+            print("[Qwen-Image-Edit] Using Beijing endpoint with Beijing API key")
 
     model = os.getenv(f"{DEFAULT_ENV_PREFIX}MODEL")
     if model:

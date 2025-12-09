@@ -17,6 +17,10 @@ dependencies = [
     "PyJWT",
     "cryptography",
     "supabase",
+    "httpx",
+    "requests",
+    "beautifulsoup4",
+    "psycopg2-binary>=2.9.11",
 ]
 
 [tool.uv]

@@ -1,13 +1,30 @@
 <script setup lang="ts">
+defineOptions({ name: 'Callback' })
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '../lib/supabase'
 
 const router = useRouter()
+const route = useRoute()
 const error = ref('')
+const isPasswordReset = ref(false)
 
 onMounted(async () => {
   try {
+    // Check if this is a password reset callback
+    // Supabase password reset links include #access_token and #type=recovery in the hash
+    const hash = window.location.hash
+    const hashParams = new URLSearchParams(hash.substring(1))
+    const type = route.query.type as string || hashParams.get('type')
+    
+    if (type === 'recovery' || hash.includes('type=recovery')) {
+      // This is a password reset callback
+      isPasswordReset.value = true
+      // Preserve the hash for password reset
+      router.push(`/reset-password${hash}`)
+      return
+    }
+
     // Get the session after the OAuth redirect
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     

@@ -8,16 +8,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize Qwen-VL model
-# Using the same configuration as the reference code
-api_key = os.getenv("DASHSCOPE_API_KEY")
+# Using Singapore endpoint, so use Singapore API key
+SINGAPORE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+api_key = os.getenv("DASHSCOPE_API_KEY_SG") or os.getenv("DASHSCOPE_API_KEY")
 if not api_key:
-    # Fallback for development if env var not set immediately
-    print("Warning: DASHSCOPE_API_KEY not found in environment variables.")
+    print("Warning: DASHSCOPE_API_KEY_SG or DASHSCOPE_API_KEY not found in environment variables.")
+else:
+    # Prefer Singapore key for Singapore endpoint
+    if os.getenv("DASHSCOPE_API_KEY_SG"):
+        api_key = os.getenv("DASHSCOPE_API_KEY_SG")
+        print("[Qwen-VL] Using Singapore endpoint with Singapore API key")
+    else:
+        print("[Qwen-VL] Using Singapore endpoint with default API key (fallback)")
 
 llm = ChatOpenAI(
     model="qwen3-vl-plus",
     api_key=api_key,
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    base_url=SINGAPORE_BASE_URL,  # Singapore endpoint
     temperature=0.1,
 )
 

@@ -1,0 +1,15 @@
+[project]
+name = "weather-mcp"
+version = "0.1.0"
+description = "A simple MCP server for querying current weather via WeatherAPI.com"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.10.0",
+    "mcp>=1.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+

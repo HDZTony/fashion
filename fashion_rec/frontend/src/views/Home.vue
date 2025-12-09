@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Home' })
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { Wand2, LogOut, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, History } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
+import { Wand2, LogOut, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, History, Trash2, Shirt } from 'lucide-vue-next'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import type { Item, Recommendation, AgentOutfit } from '../types'
@@ -152,6 +152,9 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // Load items when component mounts
 onMounted(async () => {
+  // Load local selection state first and sync to activeWardrobeIds
+  syncSelectedItemsToActiveWardrobe()
+
   // Wait for authentication to be ready before loading data
   try {
     const { data } = await supabase.auth.getSession()
@@ -179,6 +182,34 @@ onMounted(async () => {
     ])
   }
   window.addEventListener('keydown', handleKeyDown)
+})
+
+// Sync selectedItemIds from localStorage to activeWardrobeIds when component is activated
+// This ensures items selected from Wardrobe page appear in Applied Outfit Items
+const syncSelectedItemsToActiveWardrobe = () => {
+  try {
+    const saved = localStorage.getItem('fashion_rec_selected_items')
+    if (saved) {
+      const ids = JSON.parse(saved)
+      if (Array.isArray(ids)) {
+        selectedItemIds.value = ids
+        // Merge selectedItemIds into activeWardrobeIds (add items that are not already there)
+        const newIds = ids.filter(id => !activeWardrobeIds.value.includes(String(id)))
+        if (newIds.length > 0) {
+          activeWardrobeIds.value.push(...newIds.map(id => String(id)))
+          console.log('[syncSelectedItemsToActiveWardrobe] Added new items to activeWardrobeIds:', newIds)
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to sync selected items from localStorage:', e)
+  }
+}
+
+onActivated(() => {
+  // When component is activated (e.g., user returns from Wardrobe page),
+  // sync selected items from localStorage to activeWardrobeIds
+  syncSelectedItemsToActiveWardrobe()
 })
 
 onUnmounted(() => {
@@ -243,10 +274,13 @@ const getRecommendations = async () => {
     }
 
     // Build selected_items_roles map from activeWardrobeRoleMap
+    // Only include items that are currently in activeWardrobeIds (filter out deleted items)
     const selectedItemsRoles: Record<string, string> | undefined = 
       activeWardrobeIds.value.length > 0
         ? Object.fromEntries(
-            Array.from(activeWardrobeRoleMap.value.entries()).map(([id, role]) => [String(id), role])
+            Array.from(activeWardrobeRoleMap.value.entries())
+              .filter(([id]) => activeWardrobeIds.value.includes(String(id)))
+              .map(([id, role]) => [String(id), role])
           )
         : undefined
 
@@ -392,6 +426,31 @@ const selectHistoricalModelImage = (image: HistoricalImage) => {
   showModelImageHistory.value = false
 }
 
+const deleteHistoricalModelImage = async (image: HistoricalImage, event: Event) => {
+  event.stopPropagation() // Prevent selecting the image when clicking delete
+  
+  if (!confirm(`确定要删除这张模特图片吗？此操作无法撤销。`)) {
+    return
+  }
+  
+  try {
+    await apiClient.delete(`/user-images/${image.id}`)
+    // Remove from local state
+    historicalModelImages.value = historicalModelImages.value.filter(img => img.id !== image.id)
+    
+    // If the deleted image was currently selected, clear the selection
+    if (modelImagePreviewUrl.value === image.image_url) {
+      if (modelImagePreviewUrl.value.startsWith('blob:')) {
+        URL.revokeObjectURL(modelImagePreviewUrl.value)
+      }
+      modelImagePreviewUrl.value = null
+    }
+  } catch (error: any) {
+    console.error('Failed to delete model image:', error)
+    alert(`删除失败：${error?.response?.data?.detail || error?.message || '未知错误'}`)
+  }
+}
+
 const removeModelImage = () => {
   if (modelImagePreviewUrl.value) {
     URL.revokeObjectURL(modelImagePreviewUrl.value)
@@ -476,6 +535,34 @@ const selectHistoricalSceneImage = (image: HistoricalImage) => {
   }
   sceneImagePreviewUrl.value = image.image_url
   showSceneImageHistory.value = false
+}
+
+const deleteHistoricalSceneImage = async (image: HistoricalImage, event: Event) => {
+  event.stopPropagation() // Prevent selecting the image when clicking delete
+  
+  if (!confirm(`确定要删除这张场景图片吗？此操作无法撤销。`)) {
+    return
+  }
+  
+  try {
+    await apiClient.delete(`/user-images/${image.id}`)
+    // Remove from local state
+    historicalSceneImages.value = historicalSceneImages.value.filter(img => img.id !== image.id)
+    
+    // If the deleted image was currently selected, clear the selection
+    if (sceneImageUrl.value === image.image_url) {
+      sceneImageUrl.value = null
+      if (sceneImagePreviewUrl.value === image.image_url) {
+        if (sceneImagePreviewUrl.value.startsWith('blob:')) {
+          URL.revokeObjectURL(sceneImagePreviewUrl.value)
+        }
+        sceneImagePreviewUrl.value = null
+      }
+    }
+  } catch (error: any) {
+    console.error('Failed to delete scene image:', error)
+    alert(`删除失败：${error?.response?.data?.detail || error?.message || '未知错误'}`)
+  }
 }
 
 const removeSceneImage = () => {
@@ -717,6 +804,7 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     
     selectedItem.value = null
     selectedItemIds.value = [] // Clear selected base items after applying
+    localStorage.removeItem('fashion_rec_selected_items')
     
     console.log('=== Apply Outfit (Supplement Mode) ===')
     console.log('Active wardrobe IDs after supplement:', activeWardrobeIds.value)
@@ -737,6 +825,7 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     activeWardrobeIds.value = ids
     selectedItem.value = null
     selectedItemIds.value = []
+    localStorage.removeItem('fashion_rec_selected_items')
 
     // Store the original outfit for tracking missing roles
     originalAppliedOutfit.value = outfit
@@ -829,8 +918,22 @@ const getMissingRoles = (): string[] => {
 
 // Remove an item from active outfit
 const removeActiveItem = (itemId: string) => {
-  activeWardrobeIds.value = activeWardrobeIds.value.filter(id => String(id) !== String(itemId))
-  // Note: We keep the role mapping even after deletion, so we can track what was deleted
+  const itemIdStr = String(itemId)
+  activeWardrobeIds.value = activeWardrobeIds.value.filter(id => String(id) !== itemIdStr)
+  // Also remove from role map to keep data consistent
+  activeWardrobeRoleMap.value.delete(itemIdStr)
+  
+  // Sync to localStorage so Wardrobe page can reflect the change
+  selectedItemIds.value = selectedItemIds.value.filter(id => String(id) !== itemIdStr)
+  try {
+    localStorage.setItem(
+      'fashion_rec_selected_items',
+      JSON.stringify(selectedItemIds.value)
+    )
+    console.log('[removeActiveItem] Updated localStorage, removed item:', itemIdStr)
+  } catch (e) {
+    console.error('Failed to update localStorage after removing item:', e)
+  }
   
   // If all items are removed, clear the original outfit
   if (activeWardrobeIds.value.length === 0) {
@@ -929,6 +1032,8 @@ const saveFavorite = async () => {
     isSavingFavorite.value = false
   }
 }
+
+
 </script>
 
 <template>
@@ -961,6 +1066,12 @@ const saveFavorite = async () => {
         >
           <History class="w-4 h-4" />
           Try-On History
+        </button>
+        <button
+          @click="$router.push('/pricing')"
+          class="text-sm text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+        >
+          💎 Pricing
         </button>
         <button @click="logout" class="text-sm text-gray-500 hover:text-black flex items-center gap-1">
           <LogOut class="w-4 h-4" />
@@ -1104,6 +1215,14 @@ const saveFavorite = async () => {
                         class="w-full h-full object-cover"
                       />
                       <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                      <!-- Delete button -->
+                      <button
+                        @click.stop="deleteHistoricalSceneImage(image, $event)"
+                        class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
+                        title="删除此图片"
+                      >
+                        <Trash2 class="w-4 h-4" />
+                      </button>
                       <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
                           {{ new Date(image.created_at).toLocaleDateString('zh-CN') }}
@@ -1202,7 +1321,7 @@ const saveFavorite = async () => {
       </section>
 
       <!-- Applied Outfit Items - Independent Section -->
-      <section v-if="activeWardrobeItems.length" class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
         <div>
           <h2 class="text-2xl font-bold mb-2">Applied Outfit Items</h2>
           <p class="text-sm text-gray-500">
@@ -1219,7 +1338,23 @@ const saveFavorite = async () => {
               已删除 {{ getMissingRoles().length }} 个部位，再次生成将补充
             </p>
           </div>
-          <div class="flex flex-wrap gap-3 mb-3">
+          
+          <!-- Empty state -->
+          <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
+            <Shirt class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p class="text-sm text-gray-500 mb-2">暂无已选择的单品</p>
+            <p class="text-xs text-gray-400 mb-4">前往衣橱页面添加单品到 Outfit Generator</p>
+            <button
+              @click="$router.push('/wardrobe')"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:border-black hover:text-black transition-colors"
+            >
+              <Shirt class="w-4 h-4" />
+              前往衣橱
+            </button>
+          </div>
+          
+          <!-- Items display -->
+          <div v-else class="flex flex-wrap gap-3 mb-3">
             <div
               v-for="(item, index) in activeWardrobeItems"
               :key="item.id"
@@ -1433,6 +1568,14 @@ const saveFavorite = async () => {
                     class="w-full h-full object-cover"
                   />
                   <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <!-- Delete button -->
+                  <button
+                    @click.stop="deleteHistoricalModelImage(image, $event)"
+                    class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
+                    title="删除此图片"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
                   <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
                       {{ new Date(image.created_at).toLocaleDateString('zh-CN') }}
@@ -1443,43 +1586,6 @@ const saveFavorite = async () => {
             </div>
           </div>
         </div>
-
-        <!-- Scheme A: Selected base items (multi-select) -->
-        <div
-          v-if="selectedBaseItems.length && !activeWardrobeItems.length"
-          class="p-4 border border-gray-100 rounded-xl bg-gray-50/50"
-        >
-          <div class="flex items-center justify-between mb-2">
-            <p class="text-sm font-medium text-gray-700">
-              Selected items for matching ({{ selectedBaseItems.length }})
-            </p>
-            <button
-              @click="selectedItemIds = []; selectedItem = null"
-              class="text-xs text-gray-400 hover:text-black underline"
-            >
-              Clear
-            </button>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <div
-              v-for="item in selectedBaseItems"
-              :key="item.id"
-              class="flex items-center gap-2 px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs"
-            >
-              <span class="inline-block w-6 h-6 rounded bg-gray-200 overflow-hidden">
-                <img
-                  v-if="item.url || item.features.path"
-                  :src="item.url || item.features.path"
-                  class="w-full h-full object-cover"
-                />
-              </span>
-              <span class="text-gray-700 truncate max-w-[120px]">
-                {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
-              </span>
-            </div>
-          </div>
-        </div>
-
 
         <!-- Try-on controls -->
         <div v-if="activeWardrobeItems.length" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
@@ -1578,6 +1684,22 @@ const saveFavorite = async () => {
         </div>
       </section>
     </main>
+    
+    <!-- Footer -->
+    <footer class="mt-12 pt-8 border-t border-gray-200 pb-8">
+      <div class="flex justify-center gap-6 text-sm text-gray-500">
+        <router-link to="/privacy-policy" class="hover:text-black transition-colors">
+          隐私政策
+        </router-link>
+        <span class="text-gray-300">|</span>
+        <router-link to="/terms-of-service" class="hover:text-black transition-colors">
+          服务条款
+        </router-link>
+      </div>
+      <p class="text-center text-xs text-gray-400 mt-4">
+        © 2024 Fashion Rec. 保留所有权利。
+      </p>
+    </footer>
     
     <!-- Image Viewer Modal -->
     <div

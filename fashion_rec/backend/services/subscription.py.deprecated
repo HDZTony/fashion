@@ -1,0 +1,12 @@
+"""
+⚠️ 此文件已弃用
+订阅管理功能已迁移到 subscription-service (TypeScript)
+请使用 subscription-service 的 API 端点
+
+迁移说明：
+- GET /subscription/status -> subscription-service:3001/subscription/status
+- POST /subscription/check-try -> subscription-service:3001/subscription/check-try
+- POST /subscription/update -> subscription-service:3001/subscription/update
+
+所有订阅管理逻辑现在都在 TypeScript 服务中统一处理。
+"""

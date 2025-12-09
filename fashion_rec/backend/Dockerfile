@@ -30,8 +30,16 @@ COPY . .
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
 
+# Set Hugging Face mirror to avoid SSL issues
+ENV HF_ENDPOINT=https://hf-mirror.com
+
+# Pre-download CLIP model during build to avoid download on first run
+# This makes deployment faster and more reliable
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')" || \
+    echo "Warning: Failed to pre-download model, will download on first run"
+
 # Clean up pip cache and unnecessary files
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && find /root/.local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true \
     && find /root/.local -type f -name "*.pyc" -delete \
@@ -41,4 +49,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 EXPOSE 8000
 
 # Run uvicorn when the container launches
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 增加超时设置以支持大图片上传和处理（下载、上传到R2、AI分析等）
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "300", "--timeout-graceful-shutdown", "30"]

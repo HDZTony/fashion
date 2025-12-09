@@ -1,0 +1,23 @@
+[
+  {
+    "id": "be4ed9e4-587e-4b3c-8624-70ba012d1c93",
+    "user_id": "cfdbf997-329c-470d-b961-500fe7090655",
+    "created_at": "2025-12-03T16:43:41.227312Z",
+    "image_url": "https://pub-da29e362d6934e738ef0234d04c252d5.r2.dev/9f83be0f-ef61-4ed6-95f9-f133b09db981.png",
+    "title": "街头风雪天休闲穿搭"
+  },
+  {
+    "id": "7e47e3fb-2a6a-4a90-8c3f-e1d0d3871c54",
+    "user_id": "cfdbf997-329c-470d-b961-500fe7090655",
+    "created_at": "2025-12-04T09:09:46.656854Z",
+    "image_url": "https://pub-da29e362d6934e738ef0234d04c252d5.r2.dev/f9a839cf-fd26-4b41-be2a-6766e2cf6800.png",
+    "title": "红毯风帅气通勤装"
+  },
+  {
+    "id": "de024688-76cb-47aa-b620-97f79d6ea6c5",
+    "user_id": "cfdbf997-329c-470d-b961-500fe7090655",
+    "created_at": "2025-12-09T03:33:24.098282Z",
+    "image_url": "https://pub-da29e362d6934e738ef0234d04c252d5.r2.dev/1d9b7b86-393c-49f9-b31e-ba118c68d37d.png",
+    "title": "叠穿混搭帅气风"
+  }
+]

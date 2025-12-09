@@ -28,3 +28,16 @@ export interface Recommendation {
   reason: string;
   score: number;
 }
+
+export interface AgentOutfitItem {
+  wardrobe_id?: string | null;
+  role: string;
+  description: string;
+}
+
+export interface AgentOutfit {
+  title: string;
+  items: AgentOutfitItem[];
+  reason: string;
+  long_text: string;
+}
