@@ -31,7 +31,7 @@ const buttonText = computed(() => {
       <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <!-- Logo/Brand -->
         <router-link to="/" class="flex items-center space-x-2">
-          <span class="text-2xl font-bold tracking-tight">Fashion AI Wardrobe</span>
+          <span class="text-2xl font-bold tracking-tight">Fashion Rec</span>
         </router-link>
 
         <!-- Right side - Get Started Button -->

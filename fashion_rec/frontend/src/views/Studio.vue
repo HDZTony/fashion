@@ -1687,15 +1687,15 @@ const saveFavorite = async () => {
     <footer class="mt-12 pt-8 border-t border-gray-200 pb-8">
       <div class="flex justify-center gap-6 text-sm text-gray-500">
         <router-link to="/privacy-policy" class="hover:text-black transition-colors">
-          隐私政策
+          Privacy Policy
         </router-link>
         <span class="text-gray-300">|</span>
         <router-link to="/terms-of-service" class="hover:text-black transition-colors">
-          服务条款
+          Terms of Service
         </router-link>
       </div>
       <p class="text-center text-xs text-gray-400 mt-4">
-        © 2024 Fashion Rec. All rights reserved.
+        © 2025 Fashion Rec. All rights reserved.
       </p>
     </footer>
     

@@ -8,7 +8,7 @@ import type { Item, PendingItem } from '../types'
 import { supabase } from '../lib/supabase'
 
 const route = useRoute()
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -172,7 +172,7 @@ const loadUserItems = async () => {
     let errorMessage = 'Unknown error'
     
     if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error') || error?.message?.includes('Connection')) {
-      errorMessage = 'Cannot reach backend service. Please ensure http://localhost:8000 is running.'
+      errorMessage = `Cannot reach backend service. Please ensure ${API_URL} is running.`
     } else if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
       errorMessage = 'Request timed out; backend may still be initializing. Wait a moment and refresh.'
     } else if (error?.response?.status === 401) {
@@ -379,7 +379,7 @@ const handleUrlUpload = async () => {
     
     // Handle connection refused error specifically
     if (error?.code === 'ERR_CONNECTION_REFUSED' || error?.message?.includes('Connection refused') || error?.message?.includes('ERR_CONNECTION_REFUSED')) {
-      errorMessage = 'Cannot reach backend (http://localhost:8000).\n\nIf the backend is down:\n1) Ensure it is running\n2) Check backend logs for errors\n3) Restart the backend'
+      errorMessage = `Cannot reach backend (${API_URL}).\n\nIf the backend is down:\n1) Ensure it is running\n2) Check backend logs for errors\n3) Restart the backend`
     } else if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error') || error?.message?.includes('ERR_CONNECTION_RESET')) {
       errorMessage = 'Network error or connection reset.\n\nPossible causes:\n1) Image too large, processing takes too long\n2) Unstable network\n3) Backend timed out\n\nTry:\n- Use a smaller image\n- Check your connection\n- Retry later\n- For large images, upload the file instead of URL'
     } else if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {

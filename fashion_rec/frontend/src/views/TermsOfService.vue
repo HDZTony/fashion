@@ -126,7 +126,7 @@ const router = useRouter()
 
       <!-- Footer -->
       <div class="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500">
-        <p>© 2024 Fashion Rec. All rights reserved.</p>
+        <p>© 2025 Fashion Rec. All rights reserved.</p>
       </div>
     </div>
   </div>

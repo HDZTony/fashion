@@ -7,7 +7,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const TABLE_NAME = 'user_subscriptions';
 
 interface SubscriptionStatus {
-  planName: '免费版' | '高级版';
+  planName: 'Free' | 'Premium' | 'Premium Plus';
   remainingTries: number;
   totalTries: number;
   period: 'daily' | 'monthly';
@@ -19,7 +19,7 @@ interface SubscriptionStatus {
 
 interface SubscriptionRecord {
   user_id: string;
-  plan: 'free' | 'premium';
+  plan: 'free' | 'premium' | 'premium_plus';
   remaining_tries: number;
   creem_subscription_id?: string | null;
   creem_customer_id?: string | null;
@@ -70,7 +70,7 @@ export class SubscriptionService {
           if (daysSinceReset >= 1) {
             await this.resetTries(userId, 'free');
             return {
-              planName: '免费版',
+              planName: 'Free',
               remainingTries: 1,
               totalTries: 1,
               period: 'daily',
@@ -82,7 +82,7 @@ export class SubscriptionService {
           } else {
             const nextReset = this.addDays(lastReset, 1);
             return {
-              planName: '免费版',
+              planName: 'Free',
               remainingTries: sub.remaining_tries || 1,
               totalTries: 1,
               period: 'daily',
@@ -92,7 +92,7 @@ export class SubscriptionService {
               status: sub.status || 'active',
             };
           }
-        } else {
+        } else if (plan === 'premium') {
           // 高级版：每月重置
           // 如果订阅已取消，检查是否还在计费周期内
           if (sub.status === 'canceled' || sub.status === 'expired') {
@@ -105,9 +105,9 @@ export class SubscriptionService {
               if (periodEnd > now) {
                 const nextReset = this.addDays(lastReset, 30);
                 return {
-                  planName: '高级版',
-                  remainingTries: sub.remaining_tries || 150,
-                  totalTries: 150,
+                  planName: 'Premium',
+                  remainingTries: sub.remaining_tries || 50,
+                  totalTries: 50,
                   period: 'monthly',
                   nextResetDate: nextReset.toISOString(),
                   subscriptionId: sub.creem_subscription_id || null,
@@ -120,7 +120,7 @@ export class SubscriptionService {
             // 计费周期已结束，降级为免费版
             const nextReset = this.addDays(new Date(), 1);
             return {
-              planName: '免费版',
+              planName: 'Free',
               remainingTries: 1,
               totalTries: 1,
               period: 'daily',
@@ -134,9 +134,9 @@ export class SubscriptionService {
           if (daysSinceReset >= 30) {
             await this.resetTries(userId, 'premium');
             return {
-              planName: '高级版',
-              remainingTries: 150,
-              totalTries: 150,
+              planName: 'Premium',
+              remainingTries: 50,
+              totalTries: 50,
               period: 'monthly',
               nextResetDate: this.addDays(lastReset, 30).toISOString(),
               subscriptionId: sub.creem_subscription_id || null,
@@ -146,9 +146,73 @@ export class SubscriptionService {
           } else {
             const nextReset = this.addDays(lastReset, 30);
             return {
-              planName: '高级版',
-              remainingTries: sub.remaining_tries || 150,
-              totalTries: 150,
+              planName: 'Premium',
+              remainingTries: sub.remaining_tries || 50,
+              totalTries: 50,
+              period: 'monthly',
+              nextResetDate: nextReset.toISOString(),
+              subscriptionId: sub.creem_subscription_id || null,
+              customerId: sub.creem_customer_id || null,
+              status: sub.status || 'active',
+            };
+          }
+        } else {
+          // Premium Plus：每月重置，200次
+          // 如果订阅已取消，检查是否还在计费周期内
+          if (sub.status === 'canceled' || sub.status === 'expired') {
+            // 检查是否有 period_end，如果有且还没过期，继续使用高级功能
+            if (sub.period_end) {
+              const periodEnd = new Date(sub.period_end);
+              const now = new Date();
+              
+              // 如果还在计费周期内，继续提供高级功能
+              if (periodEnd > now) {
+                const nextReset = this.addDays(lastReset, 30);
+                return {
+                  planName: 'Premium Plus',
+                  remainingTries: sub.remaining_tries || 200,
+                  totalTries: 200,
+                  period: 'monthly',
+                  nextResetDate: nextReset.toISOString(),
+                  subscriptionId: sub.creem_subscription_id || null,
+                  customerId: sub.creem_customer_id || null,
+                  status: sub.status || 'canceled', // 状态显示为已取消，但功能仍可用
+                };
+              }
+            }
+            
+            // 计费周期已结束，降级为免费版
+            const nextReset = this.addDays(new Date(), 1);
+            return {
+              planName: 'Free',
+              remainingTries: 1,
+              totalTries: 1,
+              period: 'daily',
+              nextResetDate: nextReset.toISOString(),
+              subscriptionId: sub.creem_subscription_id || null,
+              customerId: sub.creem_customer_id || null,
+              status: sub.status || 'canceled',
+            };
+          }
+          
+          if (daysSinceReset >= 30) {
+            await this.resetTries(userId, 'premium_plus');
+            return {
+              planName: 'Premium Plus',
+              remainingTries: 200,
+              totalTries: 200,
+              period: 'monthly',
+              nextResetDate: this.addDays(lastReset, 30).toISOString(),
+              subscriptionId: sub.creem_subscription_id || null,
+              customerId: sub.creem_customer_id || null,
+              status: sub.status || 'active',
+            };
+          } else {
+            const nextReset = this.addDays(lastReset, 30);
+            return {
+              planName: 'Premium Plus',
+              remainingTries: sub.remaining_tries || 200,
+              totalTries: 200,
               period: 'monthly',
               nextResetDate: nextReset.toISOString(),
               subscriptionId: sub.creem_subscription_id || null,
@@ -162,7 +226,7 @@ export class SubscriptionService {
         await this.createFreeSubscription(userId);
         const nextReset = this.addDays(new Date(), 1);
         return {
-          planName: '免费版',
+          planName: 'Free',
           remainingTries: 1,
           totalTries: 1,
           period: 'daily',
@@ -176,7 +240,7 @@ export class SubscriptionService {
       console.error('Error getting subscription status:', error);
       // 返回默认免费版
       return {
-        planName: '免费版',
+        planName: 'Free',
         remainingTries: 1,
         totalTries: 1,
         period: 'daily',
@@ -196,16 +260,16 @@ export class SubscriptionService {
       const status = await this.getSubscriptionStatus(userId);
 
       if (status.remainingTries <= 0) {
-        if (status.planName === '免费版') {
+        if (status.planName === 'Free') {
           return {
             success: false,
             message:
-              '今天的免费试穿次数已用完。请明天再试，或升级到高级版获得更多次数。',
+              'Your daily free try-on limit has been reached. Please try again tomorrow, or upgrade to a premium plan for more tries.',
           };
         } else {
           return {
             success: false,
-            message: '本月的试穿次数已用完。请等待下月重置，或联系客服。',
+            message: 'Your monthly try-on limit has been reached. Please wait for next month\'s reset, or contact support.',
           };
         }
       }
@@ -234,7 +298,7 @@ export class SubscriptionService {
    */
   async updateSubscription(
     userId: string,
-    plan: 'free' | 'premium',
+    plan: 'free' | 'premium' | 'premium_plus',
     creemSubscriptionId?: string | null,
     creemCustomerId?: string | null,
     status: 'active' | 'canceled' | 'expired' = 'active',
@@ -354,10 +418,10 @@ export class SubscriptionService {
   /**
    * 重置试穿次数
    */
-  private async resetTries(userId: string, plan: 'free' | 'premium'): Promise<void> {
+  private async resetTries(userId: string, plan: 'free' | 'premium' | 'premium_plus'): Promise<void> {
     try {
       const now = new Date().toISOString();
-      const remaining = plan === 'premium' ? 150 : 1;
+      const remaining = plan === 'premium_plus' ? 200 : (plan === 'premium' ? 50 : 1);
 
       await this.table
         .update({

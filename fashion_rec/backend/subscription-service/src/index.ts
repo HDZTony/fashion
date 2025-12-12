@@ -13,6 +13,10 @@ interface Env {
   CREEM_PROD_API_KEY?: string;
   CREEM_TEST_WEBHOOK_SECRET?: string;
   CREEM_PROD_WEBHOOK_SECRET?: string;
+  CREEM_TEST_PRODUCT_ID?: string;
+  CREEM_PROD_PRODUCT_ID?: string;
+  CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS?: string;
+  CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS?: string;
   NODE_ENV?: string;
 }
 
@@ -55,7 +59,7 @@ function getServices(c: { env: Env }) {
       testMode: isTestMode,
     });
 
-    return { subscriptionService, creem, isTestMode, creemApiKey, creemWebhookSecret };
+    return { subscriptionService, creem, isTestMode, creemApiKey, creemWebhookSecret, env: c.env };
   } catch (error: any) {
     // 提供更详细的错误信息
     if (error.message?.includes('Invalid supabaseUrl') || error.message?.includes('supabaseUrl')) {
@@ -154,9 +158,10 @@ app.get('/diagnostics', async (c) => {
     try {
       const productsResponse = await creem.products.list();
       // 处理不同的返回格式：可能是数组，也可能是 { data: [...] } 对象
-      const productsArray = Array.isArray(productsResponse) 
-        ? productsResponse 
-        : (productsResponse?.data || productsResponse?.products || []);
+      const productsResponseAny = productsResponse as any;
+      const productsArray: any[] = Array.isArray(productsResponse as any) 
+        ? (productsResponse as any) 
+        : ((productsResponseAny as any).data || (productsResponseAny as any).products || []);
       
       diagnostics.apiConnection = {
         status: 'success',
@@ -321,12 +326,45 @@ app.post('/subscription/update', async (c) => {
   }
 });
 
+// ==================== Helper Functions ====================
+
+/**
+ * 根据产品ID和环境确定套餐类型
+ */
+function getPlanFromProductId(
+  productId: string | undefined,
+  isTestMode: boolean,
+  env: Env
+): 'premium' | 'premium_plus' {
+  const premiumPlusIds = [
+    // 优先使用环境变量
+    isTestMode ? env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS : env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
+    // 兼容旧变量
+    env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
+    env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
+    // 默认测试产品ID（已知）
+    isTestMode ? 'prod_6YsIDqxb9lnMmVarSuUfBc' : undefined,
+  ].filter(Boolean);
+
+  if (productId && premiumPlusIds.includes(productId)) {
+    return 'premium_plus';
+  }
+
+  // 兜底为 premium
+  return 'premium';
+}
+
 // ==================== Webhook Routes ====================
 
 /**
  * 共享的 webhook 事件处理逻辑
  */
-const createWebhookHandler = (subscriptionService: SubscriptionService, creem: ReturnType<typeof createCreem>) => {
+const createWebhookHandler = (
+  subscriptionService: SubscriptionService,
+  creem: ReturnType<typeof createCreem>,
+  isTestMode: boolean,
+  env: Env
+) => {
   return {
       // 结账完成事件
       onCheckoutCompleted: async (data: any) => {
@@ -365,8 +403,25 @@ const createWebhookHandler = (subscriptionService: SubscriptionService, creem: R
         }
 
         try {
+          // 获取订阅详情以获取产品ID
+          const subscription = await creem.subscriptions.get({
+            subscriptionId: data.subscription.id,
+          });
+          
+          // 从订阅中获取产品ID
+          const subscriptionAny = subscription as any;
+          const productId = subscriptionAny.items?.[0]?.productId 
+            || subscriptionAny.productId 
+            || subscriptionAny.product?.id
+            || data.subscription?.items?.[0]?.productId
+            || data.subscription?.productId;
+          
+          // 根据产品ID确定套餐类型
+          const plan = getPlanFromProductId(productId, isTestMode, env);
+          
           console.log(`🔄 Updating subscription for user: ${userId}`, {
-            plan: 'premium',
+            plan,
+            productId,
             subscriptionId: data.subscription.id,
             customerId: data.customer?.id,
             status: 'active',
@@ -374,7 +429,7 @@ const createWebhookHandler = (subscriptionService: SubscriptionService, creem: R
           
             await subscriptionService.updateSubscription(
               userId,
-              'premium',
+            plan,
               data.subscription.id,
               data.customer?.id,
               'active'
@@ -398,9 +453,23 @@ const createWebhookHandler = (subscriptionService: SubscriptionService, creem: R
         const userId = context.metadata?.userId;
         if (userId && context.subscription?.id) {
           try {
+            // 获取订阅详情以获取产品ID
+            const subscription = await creem.subscriptions.get({
+              subscriptionId: context.subscription.id,
+            });
+            
+            const subscriptionAny = subscription as any;
+            const productId = subscriptionAny.items?.[0]?.productId 
+              || subscriptionAny.productId 
+              || subscriptionAny.product?.id
+              || context.subscription?.items?.[0]?.productId
+              || context.subscription?.productId;
+            
+            const plan = getPlanFromProductId(productId, isTestMode, env);
+            
             await subscriptionService.updateSubscription(
               userId,
-              'premium',
+              plan,
               context.subscription.id,
               context.customer?.id,
               'active'
@@ -480,13 +549,23 @@ const createWebhookHandler = (subscriptionService: SubscriptionService, creem: R
               || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
               || null;
             
-            console.log('📅 Subscription period end:', periodEnd);
+            // 获取产品ID以确定套餐类型
+            const productId = subscriptionAny.items?.[0]?.productId 
+              || subscriptionAny.productId 
+              || subscriptionAny.product?.id
+              || data.subscription?.items?.[0]?.productId
+              || data.subscription?.productId;
             
-            // 保持 premium plan，但状态设为 canceled，并保存 period_end
+            const plan = getPlanFromProductId(productId, isTestMode, env);
+            
+            console.log('📅 Subscription period end:', periodEnd);
+            console.log('📦 Plan determined from product ID:', { productId, plan });
+            
+            // 保持原套餐，但状态设为 canceled，并保存 period_end
             // 这样用户可以在剩余时间内继续使用高级功能
             await subscriptionService.updateSubscription(
               userId,
-              'premium', // 保持高级版，直到 period_end
+              plan, // 保持原套餐，直到 period_end
               data.subscription?.id,
               data.customer?.id,
               'canceled',
@@ -550,7 +629,7 @@ app.post('/webhook', async (c) => {
     }
 
     // 使用 Creem SDK 处理 webhook 事件（自动验证签名）
-    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem));
+    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem, isTestMode, c.env));
 
     return c.json({ received: true });
   } catch (error: any) {
@@ -623,7 +702,7 @@ app.post('/test-webhook', async (c) => {
     }
     
     // 使用 Creem SDK 处理 webhook 事件（自动验证签名）
-    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem));
+    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem, isTestMode, c.env));
 
     return c.json({ received: true, environment: 'test' });
   } catch (error: any) {
@@ -737,10 +816,11 @@ app.post('/subscriptions/:subscriptionId/update', async (c) => {
  * 升级或降级订阅到不同的产品
  */
 app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
+  let body: any = null;
   try {
     const { creem } = getServices(c);
     const subscriptionId = c.req.param('subscriptionId');
-    const body = await c.req.json();
+    body = await c.req.json();
 
     if (!subscriptionId) {
       return c.json({ error: 'Subscription ID is required' }, 400);
@@ -750,21 +830,47 @@ app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
       return c.json({ error: 'Product ID is required' }, 400);
     }
 
+    console.log('Upgrading subscription:', {
+      subscriptionId,
+      productId: body.productId,
+      updateBehavior: body.updateBehavior || 'proration-charge-immediately',
+    });
+
     const upgradedSubscription = await creem.subscriptions.upgrade({
       subscriptionId,
       productId: body.productId,
       updateBehavior: body.updateBehavior || 'proration-charge-immediately',
     });
 
+    console.log('Subscription upgraded successfully:', upgradedSubscription);
     return c.json(upgradedSubscription);
   } catch (error: any) {
     console.error('Error upgrading subscription:', error);
+    
+    // Provide more detailed error information
+    let errorMessage = error.message || 'Unknown error';
+    let statusCode: 403 | 404 | 500 = 500;
+    
+    if (error.message?.includes('Forbidden') || error.status === 403 || error.statusCode === 403) {
+      statusCode = 403;
+      errorMessage = 'Upgrade/downgrade operation is not permitted. This may be due to API permissions or subscription restrictions. Please use the customer portal to manage your subscription.';
+    } else if (error.message?.includes('Not Found') || error.status === 404 || error.statusCode === 404) {
+      statusCode = 404;
+      errorMessage = `Subscription or product not found. Please verify the subscription ID and product ID are correct.`;
+    }
+    
     return c.json(
       {
         error: 'Failed to upgrade subscription',
-        message: error.message || 'Unknown error',
+        message: errorMessage,
+        details: c.env.NODE_ENV === 'development' ? {
+          originalError: error.message,
+          status: error.status || error.statusCode,
+          subscriptionId: c.req.param('subscriptionId'),
+          productId: body?.productId,
+        } : undefined,
       },
-      500
+      statusCode
     );
   }
 });
@@ -833,9 +939,9 @@ app.post('/checkouts', async (c) => {
       const productsResponse = await creem.products.list();
       // 处理不同的返回格式：可能是数组，也可能是 { data: [...] } 对象
       const productsResponseAny = productsResponse as any;
-      const productsArray = Array.isArray(productsResponse) 
-        ? productsResponse 
-        : (productsResponseAny?.data || productsResponseAny?.products || []);
+      const productsArray: any[] = Array.isArray(productsResponse as any) 
+        ? (productsResponse as any) 
+        : ((productsResponseAny as any).data || (productsResponseAny as any).products || []);
       
       if (Array.isArray(productsArray)) {
         const productExists = productsArray.some((p: any) => p?.id === body.productId);
@@ -856,9 +962,9 @@ app.post('/checkouts', async (c) => {
     const checkout = await creem.checkouts.create({
       productId: body.productId,
       successUrl: body.successUrl,
-      cancelUrl: body.cancelUrl,
+      ...(body.cancelUrl && { cancelUrl: body.cancelUrl }),
       metadata: body.metadata || {},
-    });
+    } as any);
 
     console.log('✅ Checkout created successfully:', {
       checkoutId: checkout.id,
@@ -911,7 +1017,14 @@ app.post('/checkouts', async (c) => {
       errorMessage = 'API 密钥无效或权限不足。请检查 CREEM_API_KEY 是否正确，以及是否具有创建结账会话的权限。';
       statusCode = 403;
     } else if (error.message?.includes('Not Found') || error.status === 404 || error.statusCode === 404) {
-      const productId = body?.productId || 'unknown';
+      // 尝试从请求中获取产品ID，如果失败则使用默认值
+      let productId = 'unknown';
+      try {
+        const requestBody = await c.req.json();
+        productId = (requestBody as any)?.productId || 'unknown';
+      } catch {
+        // 如果无法解析请求体，使用默认值
+      }
       errorMessage = `产品 ID "${productId}" 不存在。请检查产品 ID 是否正确，以及在测试/生产环境中是否存在。`;
       statusCode = 404;
     } else if (error.message?.includes('Unauthorized') || error.status === 401 || error.statusCode === 401) {
@@ -970,7 +1083,7 @@ app.get('/checkouts/:checkoutId', async (c) => {
  */
 app.post('/subscription/sync-from-checkout', async (c) => {
   try {
-    const { subscriptionService, creem } = getServices(c);
+    const { subscriptionService, creem, isTestMode, env } = getServices(c);
     const body = await c.req.json();
     const { checkoutId, userId } = body;
 
@@ -1012,6 +1125,15 @@ app.post('/subscription/sync-from-checkout', async (c) => {
         customerId: subscriptionAny.customer?.id,
       });
 
+      // 获取产品ID以确定套餐类型
+      const productId = subscriptionAny.items?.[0]?.productId 
+        || subscriptionAny.productId 
+        || subscriptionAny.product?.id
+        || checkoutAny.productId;
+      
+      const plan = getPlanFromProductId(productId, isTestMode, env);
+      console.log('📦 Plan determined from product ID:', { productId, plan });
+
       // 获取 period_end
       const periodEnd = subscriptionAny.current_period_end 
         || subscriptionAny.period_end 
@@ -1026,7 +1148,7 @@ app.post('/subscription/sync-from-checkout', async (c) => {
         const customerId = subscriptionAny.customer?.id || checkoutAny.customer?.id;
         await subscriptionService.updateSubscription(
           userId,
-          'premium',
+          plan,
           subscriptionAny.id,
           typeof customerId === 'string' ? customerId : customerId?.id,
           'active',
@@ -1158,27 +1280,42 @@ app.post('/customers/:customerId/portal', async (c) => {
   try {
     const { creem } = getServices(c);
     const customerId = c.req.param('customerId');
-    const body = await c.req.json();
 
     if (!customerId) {
       return c.json({ error: 'Customer ID is required' }, 400);
     }
 
+    console.log('Creating customer portal for:', customerId);
+    
     const portal = await creem.customers.createPortal({
       customerId,
     });
+
+    console.log('Portal created successfully:', portal.customerPortalLink);
 
     return c.json({
       portalUrl: portal.customerPortalLink,
     });
   } catch (error: any) {
     console.error('Error creating portal link:', error);
+    
+    let errorMessage = error.message || 'Unknown error';
+    let statusCode: 400 | 404 | 500 = 500;
+    
+    if (error.message?.includes('Not Found') || error.status === 404 || error.statusCode === 404) {
+      statusCode = 404;
+      errorMessage = 'Customer not found. Please verify the customer ID is correct.';
+    } else if (error.message?.includes('Forbidden') || error.status === 403 || error.statusCode === 403) {
+      statusCode = 400;
+      errorMessage = 'Unable to create portal link. Please check API permissions.';
+    }
+    
     return c.json(
       {
         error: 'Failed to create portal link',
-        message: error.message || 'Unknown error',
+        message: errorMessage,
       },
-      500
+      statusCode
     );
   }
 });

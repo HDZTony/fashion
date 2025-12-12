@@ -5,7 +5,7 @@ import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { Heart, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 interface Favorite {
   id: string

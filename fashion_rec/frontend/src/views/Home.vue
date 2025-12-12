@@ -32,6 +32,10 @@ const buttonText = computed(() => {
 // FAQ data
 const faqs = [
   {
+    question: 'What is the difference between Fashion Rec and the many similar services already available in the market?',
+    answer: '1. Fashion Rec is a service designed for individual users. 2. It features a smart wardrobe for convenient personal clothing management. 3. It is affordable, and free users can also enjoy full functionality.'
+  },
+  {
     question: 'How do I use the AI virtual try-on?',
     answer: 'Upload your photo and the garments you want to try. Our AI will generate the try-on results automatically. You can start in the Studio page.'
   },
@@ -54,7 +58,7 @@ const faqs = [
 ]
 
 useSEO({
-  title: 'Fashion AI Wardrobe | Virtual Try-On & Smart Outfit Recommendations',
+  title: 'Fashion Rec | Virtual Try-On & Smart Outfit Recommendations',
   description: 'Build your AI-powered wardrobe, try on outfits virtually, and get personalized recommendations instantly.',
   path: '/',
   image: `${siteBaseUrl}/images/brand/hdz.png`,
@@ -92,26 +96,94 @@ useHead({
       <!-- Hero Section -->
       <header class="text-center py-20" aria-label="Hero section">
         <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
-          Intelligent Fashion Wardrobe
+          Your Style, Reimagined
         </h1>
         <p class="mt-6 text-lg leading-8 text-gray-600 max-w-2xl mx-auto">
-          Build your personal AI-powered try-on space and explore endless outfit ideas.
+          AI-powered virtual try-on and personalized outfit recommendations. Discover your perfect look instantly with Fashion Rec.
         </p>
         <div class="mt-10 flex items-center justify-center gap-x-6">
           <Button
             @click="handleGetStarted"
             variant="default"
             class="text-xl font-extrabold px-8 py-4 h-auto shadow-2xl hover:shadow-3xl transition-all transform hover:scale-105"
-            aria-label="Get started with Fashion AI Wardrobe"
+            aria-label="Get started with Fashion Rec"
           >
             {{ buttonText }}
           </Button>
         </div>
       </header>
 
+      <!-- Use Cases Section -->
+      <section class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto">
+          <h2 class="text-3xl font-bold text-center mb-12 text-gray-900">Solve Your Fashion Challenges</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Use Case 1: Avoid Duplicate Purchases -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+              <div class="aspect-[5/8] bg-gray-100 flex items-center justify-center">
+                <img
+                  src="/images/use-cases/duplicate-clothes.png"
+                  alt="Person organizing wardrobe to avoid duplicate purchases"
+                  class="w-full h-full object-cover"
+                />
+              </div>
+              <div class="p-6">
+                <h3 class="text-xl font-semibold mb-3 text-gray-900">Avoid Duplicate Purchases</h3>
+                <p class="text-gray-600">
+                  Keep track of your wardrobe in one place. Our smart wardrobe management helps you remember what you own, preventing you from buying the same clothes twice.
+                </p>
+              </div>
+            </div>
+
+            <!-- Use Case 2: Preview Before Buying -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+              <div class="aspect-[5/8] bg-gray-100 flex items-center justify-center">
+                <img
+                  src="/images/use-cases/online-preview.png"
+                  alt="Person using phone to preview online clothes"
+                  class="w-full h-full object-cover"
+                />
+              </div>
+              <div class="p-6">
+                <h3 class="text-xl font-semibold mb-3 text-gray-900">Preview Before Buying</h3>
+                <p class="text-gray-600">
+                  Unsure how that online purchase will look on you? Try it on virtually first. Our AI virtual try-on lets you see the fit and style before you buy.
+                </p>
+              </div>
+            </div>
+
+            <!-- Use Case 3: Daily Outfit Ideas -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+              <div class="aspect-[5/8] bg-gray-100 flex items-center justify-center">
+                <img
+                  src="/images/use-cases/daily-outfit.png"
+                  alt="Person deciding what to wear today"
+                  class="w-full h-full object-cover"
+                />
+              </div>
+              <div class="p-6">
+                <h3 class="text-xl font-semibold mb-3 text-gray-900">Get Daily Outfit Ideas</h3>
+                <p class="text-gray-600">
+                  Not sure what to wear today? Get personalized outfit recommendations based on your wardrobe, style preferences, and the occasion.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Features Section (示例内容，可以后续扩展) -->
       <section class="py-20">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="text-center">
+            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold mb-2">Personalized Wardrobe</h3>
+            <p class="text-gray-600">Manage your closet and keep your outfit history.</p>
+          </div>
           <div class="text-center">
             <div class="mx-auto h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mb-4">
               <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -129,15 +201,6 @@ useHead({
             </div>
             <h3 class="text-xl font-semibold mb-2">Smart Recommendations</h3>
             <p class="text-gray-600">Get outfit picks tailored to your style and preferences.</p>
-          </div>
-          <div class="text-center">
-            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
-              </svg>
-            </div>
-            <h3 class="text-xl font-semibold mb-2">Personalized Wardrobe</h3>
-            <p class="text-gray-600">Manage your closet and keep your outfit history.</p>
           </div>
         </div>
       </section>
@@ -232,7 +295,7 @@ useHead({
             </a>
           </div>
           <p class="text-center text-gray-600 mt-8 text-sm">
-            © 2024 Fashion AI Wardrobe. All rights reserved.
+            © 2025 Fashion Rec. All rights reserved.
           </p>
         </div>
       </div>

@@ -202,7 +202,7 @@ const backToLogin = () => {
             @click="showForgotPassword"
             class="text-sm text-gray-600 hover:text-black transition-colors"
           >
-            忘记密码？
+            Forgot password?
           </button>
         </div>
         
@@ -231,11 +231,11 @@ const backToLogin = () => {
       <!-- Footer Links -->
       <div class="mt-6 pt-4 border-t border-gray-200 flex justify-center gap-4 text-xs text-gray-500">
         <router-link to="/privacy-policy" class="hover:text-black transition-colors">
-          隐私政策
+          Privacy Policy
         </router-link>
         <span class="text-gray-300">|</span>
         <router-link to="/terms-of-service" class="hover:text-black transition-colors">
-          服务条款
+          Terms of Service
         </router-link>
       </div>
     </div>

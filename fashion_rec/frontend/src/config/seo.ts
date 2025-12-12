@@ -2,7 +2,7 @@ export const siteBaseUrl =
   import.meta.env.VITE_SITE_URL?.replace(/\/$/, '')
 
 export const defaultSEO = {
-  title: 'Fashion AI Wardrobe',
+  title: 'Fashion Rec',
   description: 'AI-powered virtual try-on, smart outfit recommendations, and personalized wardrobe management.',
   keywords: [
     'AI fashion',
@@ -12,9 +12,9 @@ export const defaultSEO = {
     'fashion ai',
     'try on clothes online',
   ].join(', '),
-  author: 'Fashion AI Wardrobe',
-  siteName: 'Fashion AI Wardrobe',
-  twitterHandle: '@fashion_ai',
+  author: 'Fashion Rec',
+  siteName: 'Fashion Rec',
+  twitterHandle: '@fashionrec',
   ogImage: `${siteBaseUrl}/images/brand/hdz.png`,
 }
 

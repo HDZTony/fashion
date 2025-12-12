@@ -8,7 +8,7 @@
       </div>
 
       <!-- Pricing Cards -->
-      <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+      <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
         <!-- Free Plan -->
         <div class="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-8 hover:border-blue-500 transition-all">
           <div class="text-center">
@@ -64,7 +64,7 @@
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>150 virtual try-ons per month</span>
+                <span>50 virtual try-ons per month</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,6 +99,55 @@
             </button>
           </div>
         </div>
+
+        <!-- Premium Plus Plan -->
+        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl border-2 border-purple-500 p-8 text-white relative transform hover:scale-105 transition-all">
+          <div class="text-center">
+            <h2 class="text-2xl font-bold mb-2">Premium Plus</h2>
+            <div class="mb-6">
+              <span class="text-5xl font-bold">$15</span>
+              <span class="text-purple-100 ml-2">/mo</span>
+            </div>
+            <ul class="text-left space-y-4 mb-8">
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>200 virtual try-ons per month</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>All premium features</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>Priority processing</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>Unlimited history</span>
+              </li>
+            </ul>
+            <button
+              @click="selectPlan('premium_plus')"
+              :disabled="isLoading"
+              :class="[
+                'w-full py-3 px-6 rounded-lg font-semibold transition-all',
+                isLoading
+                  ? 'bg-white/80 text-purple-600 cursor-wait'
+                  : 'bg-white text-purple-600 hover:bg-purple-50'
+              ]"
+            >
+              {{ isLoading ? 'Processing...' : 'Subscribe now' }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Error Message -->
@@ -126,6 +175,7 @@ const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http:
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const subscriptionInfo = ref<any>(null)
+const isTestMode = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
 
 // Create axios client with auth headers
 const apiClient = axios.create({
@@ -189,14 +239,14 @@ const loadSubscriptionInfo = async () => {
 }
 
 // Choose plan
-const selectPlan = async (plan: 'free' | 'premium') => {
+const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus') => {
   if (plan === 'free') {
     // Free plan does not require payment
     router.push('/studio')
     return
   }
 
-  if (plan === 'premium') {
+  if (plan === 'premium' || plan === 'premium_plus') {
     isLoading.value = true
     error.value = null
 
@@ -208,7 +258,17 @@ const selectPlan = async (plan: 'free' | 'premium') => {
       }
 
       // Create checkout session
-      const productId = import.meta.env.VITE_CREEM_PRODUCT_ID
+      // 根据环境和套餐类型选择产品ID
+      const premiumIds = isTestMode
+        ? (import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID)
+        : (import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID)
+
+      const premiumPlusIds = isTestMode
+        ? (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
+        : (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
+
+      const productId = plan === 'premium_plus' ? premiumPlusIds : premiumIds
+
       const response = await subscriptionClient.post('/checkouts', {
         productId: productId,
         successUrl: `${window.location.origin}/pricing?success=true`,
@@ -274,8 +334,9 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
       })
       
       const info = response.data
-      // 检查是否已升级为高级版
-      if (info.planName === 'Premium' || info.planName === 'premium') {
+      // 检查是否已升级为高级版或Premium Plus
+      if (info.planName === 'Premium' || info.planName === 'premium' || 
+          info.planName === 'Premium Plus' || info.planName === 'premium_plus') {
         subscriptionInfo.value = info
         return true
       }

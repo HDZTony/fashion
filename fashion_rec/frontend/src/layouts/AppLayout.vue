@@ -3,7 +3,7 @@
     <nav class="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <router-link to="/" class="flex items-center space-x-2">
-          <span class="text-2xl font-bold tracking-tight">Fashion AI Wardrobe</span>
+          <span class="text-2xl font-bold tracking-tight">Fashion Rec</span>
         </router-link>
         <div class="flex items-center gap-4">
           <router-link to="/studio" class="text-sm text-gray-600 hover:text-black">Studio</router-link>
