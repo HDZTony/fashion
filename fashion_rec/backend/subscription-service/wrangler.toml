@@ -1,0 +1,25 @@
+name = "fashion-rec-subscription-service"
+main = "src/index.ts"
+compatibility_date = "2025-11-17"
+compatibility_flags = ["nodejs_compat"]
+
+# 路由配置 - 可以根据实际需要配置自定义域名路由
+# routes = [
+#   { pattern = "api.subscription.example.com/*", zone_name = "example.com" }
+# ]
+
+# 环境变量 - 非敏感信息可以通过 vars 配置
+# 敏感信息（API keys, secrets）需要通过 wrangler secret put 或 Cloudflare Dashboard 设置
+[vars]
+CREEM_TEST_MODE = "true"  # 设置为 "true" 启用测试环境，设置为 "false" 或删除此行使用生产环境
+
+# 构建配置
+# Wrangler 会自动处理 TypeScript 编译，无需手动构建命令
+
+# 开发服务器配置
+[dev]
+port = 3001  # 与前端默认端口保持一致（前端使用 localhost:3001）
+local_protocol = "http"
+
+
+

@@ -34,8 +34,8 @@ onMounted(async () => {
       // Store the access token
       localStorage.setItem('auth_token', session.access_token)
       
-      // Redirect to home
-      router.push('/')
+      // Redirect to studio
+      router.push('/studio')
     } else {
       error.value = 'No session found'
       setTimeout(() => router.push('/login'), 2000)

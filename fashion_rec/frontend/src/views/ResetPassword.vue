@@ -35,29 +35,29 @@ onMounted(async () => {
     if (session) {
       isValidToken.value = true
     } else {
-      message.value = '密码重置链接无效或已过期，请重新申请'
+      message.value = 'The reset link is invalid or expired. Please request again.'
       setTimeout(() => router.push('/login'), 3000)
     }
   } catch (err: any) {
     console.error('Session check error:', err)
-    message.value = '无法验证重置链接，请重新申请'
+    message.value = 'Unable to verify reset link. Please request a new one.'
     setTimeout(() => router.push('/login'), 3000)
   }
 })
 
 const handleResetPassword = async () => {
   if (!password.value) {
-    message.value = '请输入新密码'
+    message.value = 'Please enter a new password'
     return
   }
   
   if (password.value.length < 6) {
-    message.value = '密码长度至少为6位'
+    message.value = 'Password must be at least 6 characters'
     return
   }
   
   if (password.value !== confirmPassword.value) {
-    message.value = '两次输入的密码不一致'
+    message.value = 'Passwords do not match'
     return
   }
 
@@ -71,7 +71,7 @@ const handleResetPassword = async () => {
 
     if (error) throw error
 
-    message.value = '密码重置成功！正在跳转到登录页面...'
+    message.value = 'Password reset successful! Redirecting to sign in...'
     
     // Clear session and redirect to login
     await supabase.auth.signOut()
@@ -80,7 +80,7 @@ const handleResetPassword = async () => {
     }, 2000)
   } catch (error: any) {
     console.error('Password reset error:', error)
-    message.value = error.message || '密码重置失败'
+    message.value = error.message || 'Password reset failed'
   } finally {
     isLoading.value = false
   }
@@ -90,14 +90,14 @@ const handleResetPassword = async () => {
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-      <h1 class="text-3xl font-bold mb-2 text-center">重置密码</h1>
-      <p class="text-gray-500 mb-8 text-center">请输入您的新密码</p>
+      <h1 class="text-3xl font-bold mb-2 text-center">Reset Password</h1>
+      <p class="text-gray-500 mb-8 text-center">Enter your new password</p>
       
       <div v-if="isValidToken" class="space-y-4">
         <input
           v-model="password"
           type="password"
-          placeholder="输入新密码（至少6位）"
+          placeholder="Enter new password (min 6 characters)"
           class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
           @keyup.enter="handleResetPassword"
         />
@@ -105,7 +105,7 @@ const handleResetPassword = async () => {
         <input
           v-model="confirmPassword"
           type="password"
-          placeholder="确认新密码"
+          placeholder="Confirm new password"
           class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
           @keyup.enter="handleResetPassword"
         />
@@ -115,18 +115,18 @@ const handleResetPassword = async () => {
           :disabled="isLoading"
           class="w-full bg-black text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {{ isLoading ? '重置中...' : '重置密码' }}
+          {{ isLoading ? 'Resetting...' : 'Reset password' }}
         </button>
 
-        <p v-if="message" class="text-sm text-center" :class="message.includes('成功') ? 'text-green-600' : 'text-red-600'">
+        <p v-if="message" class="text-sm text-center" :class="message.toLowerCase().includes('successful') ? 'text-green-600' : 'text-red-600'">
           {{ message }}
         </p>
       </div>
       
       <div v-else class="text-center">
         <div class="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p class="text-red-600 mb-2">{{ message || '正在验证重置链接...' }}</p>
-        <p class="text-sm text-gray-500">即将跳转到登录页面</p>
+        <p class="text-red-600 mb-2">{{ message || 'Validating reset link...' }}</p>
+        <p class="text-sm text-gray-500">Redirecting to sign-in page</p>
       </div>
     </div>
   </div>

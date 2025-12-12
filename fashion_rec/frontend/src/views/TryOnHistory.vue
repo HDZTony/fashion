@@ -1,12 +1,10 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { History, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
-const router = useRouter()
 const API_URL = 'http://localhost:8000'
 
 interface TryOnHistoryItem {
@@ -60,7 +58,7 @@ const loadHistory = async () => {
 }
 
 const deleteHistoryItem = async (historyId: string) => {
-  if (!confirm('确定要删除这条试穿历史吗？')) {
+if (!confirm('Delete this try-on history item?')) {
     return
   }
   
@@ -69,7 +67,7 @@ const deleteHistoryItem = async (historyId: string) => {
     await loadHistory()
   } catch (e: any) {
     console.error('Failed to delete history item:', e)
-    alert(e?.response?.data?.detail || e?.message || '删除失败')
+    alert(e?.response?.data?.detail || e?.message || 'Delete failed')
   }
 }
 
@@ -127,10 +125,6 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
 })
 
-const goBack = () => {
-  router.push('/')
-}
-
 const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString)
@@ -142,15 +136,15 @@ const formatDate = (dateString: string) => {
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
       if (diffHours === 0) {
         const diffMinutes = Math.floor(diffMs / (1000 * 60))
-        return diffMinutes <= 1 ? '刚刚' : `${diffMinutes} 分钟前`
+        return diffMinutes <= 1 ? 'just now' : `${diffMinutes} minutes ago`
       }
-      return `${diffHours} 小时前`
+      return `${diffHours} hours ago`
     } else if (diffDays === 1) {
-      return '昨天'
+      return 'yesterday'
     } else if (diffDays < 7) {
-      return `${diffDays} 天前`
+      return `${diffDays} days ago`
     } else {
-      return date.toLocaleDateString('zh-CN', {
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -177,15 +171,9 @@ const getDaysRemaining = (dateString: string) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 p-6 font-sans text-gray-900">
-    <header class="mb-6 flex items-center justify-between">
+  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <button
-          @click="goBack"
-          class="text-sm text-gray-500 hover:text-black underline"
-        >
-          ← Back to Home
-        </button>
         <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2">
           <History class="w-6 h-6 text-blue-500" />
           Try-On History
@@ -196,7 +184,7 @@ const getDaysRemaining = (dateString: string) => {
       </div>
     </header>
 
-    <main class="max-w-6xl mx-auto">
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl">
       <div
         v-if="isLoading"
         class="py-12 flex flex-col items-center justify-center"
@@ -211,8 +199,8 @@ const getDaysRemaining = (dateString: string) => {
 
       <div v-else-if="!historyItems.length" class="py-12 text-center">
         <History class="w-16 h-16 mx-auto mb-4 text-gray-300" />
-        <p class="text-gray-500 text-sm mb-2">还没有试穿历史</p>
-        <p class="text-gray-400 text-xs">在首页进行试穿后，结果会自动保存到这里</p>
+        <p class="text-gray-500 text-sm mb-2">No try-on history yet</p>
+        <p class="text-gray-400 text-xs">After you try on looks, results will be saved here automatically.</p>
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -234,7 +222,7 @@ const getDaysRemaining = (dateString: string) => {
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
             <!-- Days remaining badge -->
             <div class="absolute top-2 right-2 bg-blue-500/90 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-              {{ getDaysRemaining(item.created_at) }} 天后过期
+              Expires in {{ getDaysRemaining(item.created_at) }} days
             </div>
           </div>
           
@@ -246,7 +234,7 @@ const getDaysRemaining = (dateString: string) => {
                   {{ formatDate(item.created_at) }}
                 </p>
                 <p v-if="item.garment_urls && item.garment_urls.length > 0" class="text-xs text-gray-500">
-                  {{ item.garment_urls.length }} 件单品
+                  {{ item.garment_urls.length }} item(s)
                 </p>
                 <p v-if="item.scene_image_url" class="text-xs text-blue-500 mt-1">
                   包含场景

@@ -114,7 +114,7 @@ async def health_check():
     # Check if CLIP model is loaded
     model_ready = embedding_model is not None
     
-    # Check if ChromaDB collection is initialized
+    # Check if Supabase client is initialized
     db_ready = collection is not None
     
     if model_ready and db_ready:
@@ -779,7 +779,7 @@ async def upload_image(
                 logger.info("Direct analysis failed, falling back to download approach...")
                 try:
                     # Download and upload to R2, then analyze
-                    logger.info("Step 1: Downloading image from URL...")
+                    logger.info("Downloading image from URL...")
                     final_url = await _download_and_upload_image(image_url)
                     logger.info(f"✓ Image uploaded to R2: {final_url}")
                     

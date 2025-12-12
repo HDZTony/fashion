@@ -1,12 +1,10 @@
 <script setup lang="ts">
 defineOptions({ name: 'Favorites' })
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { Heart, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
-const router = useRouter()
 const API_URL = 'http://localhost:8000'
 
 interface Favorite {
@@ -59,7 +57,7 @@ const loadFavorites = async () => {
 }
 
 const deleteFavorite = async (favoriteId: string) => {
-  if (!confirm('确定要删除这个收藏吗？')) {
+if (!confirm('Delete this favorite?')) {
     return
   }
   
@@ -68,7 +66,7 @@ const deleteFavorite = async (favoriteId: string) => {
     await loadFavorites()
   } catch (e: any) {
     console.error('Failed to delete favorite:', e)
-    alert(e?.response?.data?.detail || e?.message || '删除失败')
+    alert(e?.response?.data?.detail || e?.message || 'Delete failed')
   }
 }
 
@@ -126,10 +124,6 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
 })
 
-const goBack = () => {
-  router.push('/')
-}
-
 const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString)
@@ -147,23 +141,15 @@ const formatDate = (dateString: string) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 p-6 font-sans text-gray-900">
-    <header class="mb-6 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <button
-          @click="goBack"
-          class="text-sm text-gray-500 hover:text-black underline"
-        >
-          ← Back to Home
-        </button>
-        <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Heart class="w-6 h-6 text-red-500 fill-current" />
-          My Favorites
-        </h1>
-      </div>
+  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
+      <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <Heart class="w-6 h-6 text-red-500 fill-current" />
+        My Favorites
+      </h1>
     </header>
 
-    <main class="max-w-6xl mx-auto">
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl">
       <div
         v-if="isLoading"
         class="py-12 flex flex-col items-center justify-center"
@@ -178,8 +164,8 @@ const formatDate = (dateString: string) => {
 
       <div v-else-if="!favorites.length" class="py-12 text-center">
         <Heart class="w-16 h-16 mx-auto mb-4 text-gray-300" />
-        <p class="text-gray-500 text-sm mb-2">还没有收藏任何试穿结果</p>
-        <p class="text-gray-400 text-xs">在首页试穿后，点击收藏按钮保存你喜欢的搭配</p>
+        <p class="text-gray-500 text-sm mb-2">No try-on results saved yet</p>
+        <p class="text-gray-400 text-xs">After you try on looks, tap Favorite to save what you like.</p>
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -205,12 +191,12 @@ const formatDate = (dateString: string) => {
           <div class="p-4">
             <div class="flex items-start justify-between gap-2 mb-2">
               <h3 class="font-semibold text-sm text-gray-900 flex-1 truncate">
-                {{ favorite.title || '试穿结果' }}
+                {{ favorite.title || 'Try-on result' }}
               </h3>
               <button
                 @click.stop="deleteFavorite(favorite.id)"
                 class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
-                title="删除收藏"
+                title="Delete favorite"
               >
                 <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
               </button>

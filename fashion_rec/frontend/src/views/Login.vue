@@ -15,11 +15,11 @@ const resetEmail = ref('')
 
 const handleLogin = async () => {
   if (!email.value) {
-    message.value = '请输入邮箱'
+    message.value = 'Please enter your email'
     return
   }
   if (!password.value) {
-    message.value = '请输入密码'
+    message.value = 'Please enter your password'
     return
   }
 
@@ -38,9 +38,9 @@ const handleLogin = async () => {
       })
 
       if (error) {
-        // 处理特定错误
+        // Handle specific errors
         if (error.message.includes('already registered')) {
-          message.value = '该邮箱已被注册，请直接登录'
+          message.value = 'This email is already registered. Please sign in.'
           isSignUp.value = false
         } else {
           throw error
@@ -49,30 +49,30 @@ const handleLogin = async () => {
       }
 
       if (data.user) {
-        // 检查是否需要邮箱验证
+        // Check whether email verification is needed
         if (data.session) {
-          // 如果直接返回session，说明不需要验证，直接登录
-          message.value = '注册成功！正在登录...'
+          // Session present; no verification needed
+          message.value = 'Sign-up successful! Signing you in...'
           localStorage.setItem('auth_token', data.session.access_token)
           router.push('/wardrobe')
         } else {
-          // 需要邮箱验证
-          message.value = '注册成功！请检查您的邮箱以验证账户'
+          // Verification required
+          message.value = 'Sign-up successful! Please check your email to verify your account.'
         }
       }
     } else {
-      // 登录
+      // Sign in
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.value,
         password: password.value,
       })
 
       if (error) {
-        // 处理特定错误
+        // Handle specific errors
         if (error.message.includes('Invalid login credentials')) {
-          message.value = '邮箱或密码错误'
+          message.value = 'Incorrect email or password'
         } else if (error.message.includes('Email not confirmed')) {
-          message.value = '请先验证您的邮箱'
+          message.value = 'Please verify your email first'
         } else {
           throw error
         }
@@ -80,14 +80,14 @@ const handleLogin = async () => {
       }
 
       if (data.session) {
-        // 保存token并跳转
+        // Save token and navigate
         localStorage.setItem('auth_token', data.session.access_token)
         router.push('/wardrobe')
       }
     }
   } catch (error: any) {
     console.error('Auth error:', error)
-    message.value = error.message || (isSignUp.value ? '注册失败' : '登录失败')
+    message.value = error.message || (isSignUp.value ? 'Sign-up failed' : 'Sign-in failed')
   } finally {
     isLoading.value = false
   }
@@ -102,7 +102,7 @@ const toggleMode = () => {
 
 const handleForgotPassword = async () => {
   if (!resetEmail.value) {
-    message.value = '请输入邮箱地址'
+    message.value = 'Please enter your email address'
     return
   }
 
@@ -116,10 +116,10 @@ const handleForgotPassword = async () => {
 
     if (error) throw error
 
-    message.value = '密码重置邮件已发送，请检查您的邮箱'
+    message.value = 'Password reset email sent. Please check your inbox.'
   } catch (error: any) {
     console.error('Password reset error:', error)
-    message.value = error.message || '发送密码重置邮件失败'
+    message.value = error.message || 'Failed to send password reset email'
   } finally {
     isLoading.value = false
   }
@@ -144,7 +144,7 @@ const backToLogin = () => {
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
       <h1 class="text-3xl font-bold mb-2 text-center">Welcome</h1>
       <p class="text-gray-500 mb-8 text-center">
-        {{ isForgotPassword ? '重置密码' : isSignUp ? '创建账户' : '登录以访问您的AI衣橱' }}
+        {{ isForgotPassword ? 'Reset password' : isSignUp ? 'Create account' : 'Sign in to access your AI wardrobe' }}
       </p>
       
       <!-- 密码找回表单 -->
@@ -152,7 +152,7 @@ const backToLogin = () => {
         <input
           v-model="resetEmail"
           type="email"
-          placeholder="输入您的邮箱地址"
+          placeholder="Enter your email address"
           class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
           @keyup.enter="handleForgotPassword"
         />
@@ -162,10 +162,10 @@ const backToLogin = () => {
           :disabled="isLoading"
           class="w-full bg-black text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {{ isLoading ? '发送中...' : '发送重置链接' }}
+          {{ isLoading ? 'Sending...' : 'Send reset link' }}
         </button>
 
-        <p v-if="message" class="text-sm text-center" :class="message.includes('已发送') ? 'text-green-600' : 'text-red-600'">
+        <p v-if="message" class="text-sm text-center" :class="message.toLowerCase().includes('sent') ? 'text-green-600' : 'text-red-600'">
           {{ message }}
         </p>
         
@@ -184,7 +184,7 @@ const backToLogin = () => {
         <input
           v-model="email"
           type="email"
-          placeholder="输入邮箱"
+          placeholder="Enter email"
           class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
           @keyup.enter="handleLogin"
         />
@@ -192,7 +192,7 @@ const backToLogin = () => {
         <input
           v-model="password"
           type="password"
-          placeholder="输入密码"
+          placeholder="Enter password"
           class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
           @keyup.enter="handleLogin"
         />
@@ -211,10 +211,10 @@ const backToLogin = () => {
           :disabled="isLoading"
           class="w-full bg-black text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {{ isLoading ? (isSignUp ? '注册中...' : '登录中...') : (isSignUp ? '注册' : '登录') }}
+          {{ isLoading ? (isSignUp ? 'Signing up...' : 'Signing in...') : (isSignUp ? 'Sign up' : 'Sign in') }}
         </button>
 
-        <p v-if="message" class="text-sm text-center" :class="message.includes('成功') ? 'text-green-600' : 'text-red-600'">
+        <p v-if="message" class="text-sm text-center" :class="message.toLowerCase().includes('success') ? 'text-green-600' : 'text-red-600'">
           {{ message }}
         </p>
         
@@ -223,7 +223,7 @@ const backToLogin = () => {
             @click="toggleMode"
             class="w-full text-sm text-gray-600 hover:text-black transition-colors"
           >
-            {{ isSignUp ? '已有账户？点击登录' : '没有账户？点击注册' }}
+            {{ isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up' }}
           </button>
         </div>
       </div>

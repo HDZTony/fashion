@@ -9,11 +9,6 @@ primary_region = 'sin'
 [build]
 
 [env]
-  CHROMA_DB_PATH = '/data/chroma_db'
-
-[[mounts]]
-  source = 'chroma_data'
-  destination = '/data'
 
 [http_service]
   internal_port = 8000

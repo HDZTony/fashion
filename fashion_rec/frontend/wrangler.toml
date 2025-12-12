@@ -1,0 +1,13 @@
+# Cloudflare Pages 配置文件
+# 用于通过 Wrangler CLI 部署
+
+name = "fashion-rec-frontend"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "dist"
+
+[env.production]
+# 生产环境配置
+
+[env.preview]
+# 预览环境配置
+

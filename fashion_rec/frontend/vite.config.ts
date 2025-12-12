@@ -15,4 +15,13 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  // Configure prerender routes for public pages only
+  ssgOptions: {
+    includedRoutes: () => [
+      '/',
+      '/pricing',
+      '/privacy-policy',
+      '/terms-of-service',
+    ],
+  },
 })

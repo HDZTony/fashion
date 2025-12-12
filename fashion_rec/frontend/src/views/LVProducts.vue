@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 
 const API_URL = 'http://localhost:8000'
 
-// 创建配置了认证头的 axios 实例
+// Axios client with auth headers
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
@@ -15,7 +15,7 @@ const apiClient = axios.create({
   },
 })
 
-// 添加请求拦截器，自动添加认证 token
+// Add interceptor to inject auth token
 apiClient.interceptors.request.use(async (config) => {
   try {
     const { data } = await supabase.auth.getSession()
@@ -83,7 +83,7 @@ const loadProducts = async (page: number = 1) => {
     currentPage.value = page
   } catch (error: any) {
     console.error('Failed to load products:', error)
-    alert(`加载商品失败: ${error.response?.data?.detail || error.message}`)
+    alert(`Failed to load products: ${error.response?.data?.detail || error.message}`)
   } finally {
     isLoading.value = false
   }
@@ -115,7 +115,7 @@ const searchProducts = async () => {
     currentPage.value = 1
   } catch (error: any) {
     console.error('Failed to search products:', error)
-    alert(`搜索失败: ${error.response?.data?.detail || error.message}`)
+    alert(`Search failed: ${error.response?.data?.detail || error.message}`)
   } finally {
     isLoading.value = false
   }
@@ -124,7 +124,7 @@ const searchProducts = async () => {
 // 抓取商品
 const scrapeProducts = async () => {
   if (!scrapeCategoryUrl.value.trim()) {
-    alert('请输入商品分类页面URL')
+    alert('Please enter a product category page URL')
     return
   }
   
@@ -141,7 +141,7 @@ const scrapeProducts = async () => {
     })
     
     scrapeResult.value = response.data
-    alert(`成功抓取 ${response.data.total_added} 个商品`)
+    alert(`Successfully scraped ${response.data.total_added} products`)
     
     // 重新加载商品列表
     await loadProducts(1)
@@ -150,7 +150,7 @@ const scrapeProducts = async () => {
     showScrapeDialog.value = false
   } catch (error: any) {
     console.error('Failed to scrape products:', error)
-    alert(`抓取失败: ${error.response?.data?.detail || error.message}`)
+    alert(`Scrape failed: ${error.response?.data?.detail || error.message}`)
   } finally {
     isScraping.value = false
   }
@@ -163,29 +163,12 @@ const generateThumbnail = async (productId: string) => {
       watermark_text: watermarkText.value || null,
     })
     
-    alert('缩略图生成成功')
+    alert('Thumbnail generated')
     // 重新加载商品列表
     await loadProducts(currentPage.value)
   } catch (error: any) {
     console.error('Failed to generate thumbnail:', error)
-    alert(`生成缩略图失败: ${error.response?.data?.detail || error.message}`)
-  }
-}
-
-// 删除商品
-const deleteProduct = async (productId: string) => {
-  if (!confirm('确定要删除这个商品吗？')) {
-    return
-  }
-  
-  try {
-    await apiClient.delete(`/lv-products/${productId}`)
-    alert('商品已删除')
-    // 重新加载商品列表
-    await loadProducts(currentPage.value)
-  } catch (error: any) {
-    console.error('Failed to delete product:', error)
-    alert(`删除失败: ${error.response?.data?.detail || error.message}`)
+    alert(`Thumbnail generation failed: ${error.response?.data?.detail || error.message}`)
   }
 }
 
@@ -194,14 +177,9 @@ const totalPages = computed(() => {
   return Math.ceil(totalProducts.value / pageSize.value)
 })
 
-// 跳转到LV官网
-const openLVWebsite = (url: string) => {
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
 // 格式化价格
 const formatPrice = (price: string | null) => {
-  if (!price) return '价格未知'
+  if (!price) return 'Price unavailable'
   return price
 }
 
@@ -218,7 +196,7 @@ onMounted(() => {
       <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <ShoppingBag class="w-8 h-8 text-purple-600" />
-          <h1 class="text-3xl font-bold text-gray-900">LV商品索引</h1>
+          <h1 class="text-3xl font-bold text-gray-900">LV Product Index</h1>
         </div>
         <button
           @click="showScrapeDialog = true"
@@ -237,7 +215,7 @@ onMounted(() => {
             v-model="searchKeyword"
             @keyup.enter="searchProducts"
             type="text"
-            placeholder="搜索商品名称..."
+            placeholder="Search product name..."
             class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
         </div>
@@ -258,7 +236,7 @@ onMounted(() => {
 
       <!-- 商品统计 -->
       <div class="mb-4 text-sm text-gray-600">
-        共找到 {{ totalProducts }} 个商品
+        Found {{ totalProducts }} product(s)
       </div>
 
       <!-- 加载状态 -->

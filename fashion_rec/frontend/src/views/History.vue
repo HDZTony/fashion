@@ -1,11 +1,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'History' })
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
 
-const router = useRouter()
 const API_URL = 'http://localhost:8000'
 
 const looks = ref<any[]>([])
@@ -51,26 +49,15 @@ onMounted(() => {
   loadLooks()
 })
 
-const goBack = () => {
-  router.push('/')
-}
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 p-6 font-sans text-gray-900">
-    <header class="mb-6 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <button
-          @click="goBack"
-          class="text-sm text-gray-500 hover:text-black underline"
-        >
-          ← Back to Wardrobe
-        </button>
-        <h1 class="text-2xl font-bold tracking-tight">My Outfit History</h1>
-      </div>
+  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
+      <h1 class="text-2xl font-bold tracking-tight">My Outfit History</h1>
     </header>
 
-    <main class="max-w-3xl mx-auto">
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl">
       <div
         v-if="isLoading"
         class="py-12 flex flex-col items-center justify-center"

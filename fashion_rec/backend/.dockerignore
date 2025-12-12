@@ -1,4 +1,6 @@
 __pycache__
+node_modules
+subscription-service
 *.pyc
 *.pyo
 *.pyd
@@ -12,13 +14,18 @@ build
 .gitignore
 .env
 .env.local
+*.lock
+uv.lock
 *.log
 chroma_db
 uploads
+*.json
 *.sqlite3
 .DS_Store
 .vscode
 .idea
+*.txt
+*.sql
 *.md
 README.md
 

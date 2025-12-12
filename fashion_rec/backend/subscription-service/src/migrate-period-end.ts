@@ -72,7 +72,7 @@ END $$;
 
   console.log('方法 2: 使用 Supabase CLI (如果已安装)');
   console.log('───────────────────────────────────────────────────────────');
-  console.log('1. 安装 Supabase CLI: npm install -g supabase');
+  console.log('1. 安装 Supabase CLI: pnpm add -g supabase');
   console.log('2. 登录: supabase login');
   console.log('3. 链接项目: supabase link --project-ref YOUR_PROJECT_REF');
   console.log('4. 执行迁移: supabase db push\n');

@@ -1,49 +1,69 @@
 import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { createCreem } from 'creem_io';
-import { config } from 'dotenv';
 import { SubscriptionService } from './subscription-service';
 
-// Load environment variables
-config();
-
-// Initialize Supabase client for subscription management
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_KEY!;
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('SUPABASE_URL and SUPABASE_KEY must be set');
-  process.exit(1);
+// Define environment variables interface for Cloudflare Workers
+interface Env {
+  SUPABASE_URL: string;
+  SUPABASE_KEY: string;
+  CREEM_TEST_MODE?: string;
+  CREEM_TEST_API_KEY?: string;
+  CREEM_PROD_API_KEY?: string;
+  CREEM_TEST_WEBHOOK_SECRET?: string;
+  CREEM_PROD_WEBHOOK_SECRET?: string;
+  NODE_ENV?: string;
 }
 
-// Initialize subscription service
-const subscriptionService = new SubscriptionService(SUPABASE_URL, SUPABASE_KEY);
+// Create Hono app with environment bindings
+const app = new Hono<{ Bindings: Env }>();
 
-// 根据环境自动选择配置（只需要修改 CREEM_TEST_MODE 即可切换环境）
-const isTestMode = process.env.CREEM_TEST_MODE === 'true';
-const creemApiKey = isTestMode 
-  ? process.env.CREEM_TEST_API_KEY! 
-  : process.env.CREEM_PROD_API_KEY!;
-const creemWebhookSecret = isTestMode
-  ? process.env.CREEM_TEST_WEBHOOK_SECRET
-  : process.env.CREEM_PROD_WEBHOOK_SECRET;
+// Helper function to get Creem client and subscription service from env
+function getServices(c: { env: Env }) {
+  const SUPABASE_URL = c.env.SUPABASE_URL?.trim();
+  const SUPABASE_KEY = c.env.SUPABASE_KEY?.trim();
 
-if (!creemApiKey) {
-  console.error(`❌ ${isTestMode ? '测试' : '生产'}环境 API Key 未配置`);
-  process.exit(1);
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('SUPABASE_URL and SUPABASE_KEY must be set');
+  }
+
+  // 验证 URL 格式
+  if (!SUPABASE_URL.startsWith('http://') && !SUPABASE_URL.startsWith('https://')) {
+    throw new Error(`Invalid SUPABASE_URL format: "${SUPABASE_URL}". Must start with http:// or https://`);
+  }
+
+  try {
+    const subscriptionService = new SubscriptionService(SUPABASE_URL, SUPABASE_KEY);
+
+    const isTestMode = c.env.CREEM_TEST_MODE === 'true';
+    const creemApiKey = isTestMode 
+      ? c.env.CREEM_TEST_API_KEY 
+      : c.env.CREEM_PROD_API_KEY;
+
+    if (!creemApiKey) {
+      throw new Error(`❌ ${isTestMode ? '测试' : '生产'}环境 API Key 未配置`);
+    }
+
+    const creemWebhookSecret = isTestMode
+      ? c.env.CREEM_TEST_WEBHOOK_SECRET
+      : c.env.CREEM_PROD_WEBHOOK_SECRET;
+
+    const creem = createCreem({
+      apiKey: creemApiKey,
+      webhookSecret: creemWebhookSecret,
+      testMode: isTestMode,
+    });
+
+    return { subscriptionService, creem, isTestMode, creemApiKey, creemWebhookSecret };
+  } catch (error: any) {
+    // 提供更详细的错误信息
+    if (error.message?.includes('Invalid supabaseUrl') || error.message?.includes('supabaseUrl')) {
+      throw new Error(`Invalid SUPABASE_URL: "${SUPABASE_URL}". Error: ${error.message}. Please check your SUPABASE_URL secret value in Cloudflare Workers.`);
+    }
+    throw error;
+  }
 }
-
-// Initialize Creem client
-const creem = createCreem({
-  apiKey: creemApiKey,
-  webhookSecret: creemWebhookSecret, // 可选，仅在需要接收 webhook 时使用
-  testMode: isTestMode,
-});
-
-// Create Hono app
-const app = new Hono();
 
 // Middleware
 app.use('*', logger());
@@ -64,9 +84,10 @@ app.get('/health', (c) => {
 // Diagnostic endpoint for database connection
 app.get('/diagnostics/db', async (c) => {
   try {
+    const { subscriptionService } = getServices(c);
     const diagnostics: any = {
-      supabaseUrl: process.env.SUPABASE_URL ? 'Set' : 'Not set',
-      supabaseKey: process.env.SUPABASE_KEY ? 'Set' : 'Not set',
+      supabaseUrl: c.env.SUPABASE_URL ? 'Set' : 'Not set',
+      supabaseKey: c.env.SUPABASE_KEY ? 'Set' : 'Not set',
       tableName: 'user_subscriptions',
     };
 
@@ -113,6 +134,7 @@ app.get('/diagnostics/db', async (c) => {
 // Diagnostic endpoint for debugging Creem API connection
 app.get('/diagnostics', async (c) => {
   try {
+    const { creem, isTestMode, creemApiKey, creemWebhookSecret } = getServices(c);
     const diagnostics: any = {
       environment: isTestMode ? 'TEST' : 'PRODUCTION',
       apiKey: {
@@ -177,6 +199,7 @@ app.get('/diagnostics', async (c) => {
  */
 app.get('/subscription/status', async (c) => {
   try {
+    const { subscriptionService } = getServices(c);
     // 优先从查询参数获取 user_id
     let userId = c.req.query('user_id');
 
@@ -215,6 +238,7 @@ app.get('/subscription/status', async (c) => {
  */
 app.post('/subscription/check-try', async (c) => {
   try {
+    const { subscriptionService } = getServices(c);
     const body = await c.req.json();
     const userId = body.user_id;
 
@@ -247,6 +271,7 @@ app.post('/subscription/check-try', async (c) => {
  */
 app.post('/subscription/update', async (c) => {
   try {
+    const { subscriptionService } = getServices(c);
     const body = await c.req.json();
     const { user_id, plan, creem_subscription_id, creem_customer_id, status } = body;
 
@@ -284,7 +309,7 @@ app.post('/subscription/update', async (c) => {
       {
         error: 'Failed to update subscription',
         message: error.message || 'Unknown error',
-        details: process.env.NODE_ENV === 'development' ? {
+        details: c.env.NODE_ENV === 'development' ? {
           error: error.message,
           details: error.details,
           hint: error.hint,
@@ -301,10 +326,10 @@ app.post('/subscription/update', async (c) => {
 /**
  * 共享的 webhook 事件处理逻辑
  */
-const createWebhookHandler = () => {
+const createWebhookHandler = (subscriptionService: SubscriptionService, creem: ReturnType<typeof createCreem>) => {
   return {
       // 结账完成事件
-      onCheckoutCompleted: async (data) => {
+      onCheckoutCompleted: async (data: any) => {
         console.log('✅ Checkout completed:', {
           checkoutId: data.checkout?.id,
           customerEmail: data.customer?.email,
@@ -363,7 +388,7 @@ const createWebhookHandler = () => {
       },
 
       // 授予访问权限事件
-      onGrantAccess: async (context) => {
+      onGrantAccess: async (context: any) => {
         console.log('🔓 Grant access:', {
           customerId: context.customer?.id,
           subscriptionId: context.subscription?.id,
@@ -388,7 +413,7 @@ const createWebhookHandler = () => {
       },
 
       // 撤销访问权限事件
-      onRevokeAccess: async (context) => {
+      onRevokeAccess: async (context: any) => {
         console.log('🔒 Revoke access:', {
           customerId: context.customer?.id,
           subscriptionId: context.subscription?.id,
@@ -413,7 +438,7 @@ const createWebhookHandler = () => {
       },
 
       // 订阅创建事件
-      onSubscriptionCreated: async (data) => {
+      onSubscriptionCreated: async (data: any) => {
         console.log('📝 Subscription created:', {
           subscriptionId: data.subscription?.id,
           customerId: data.customer?.id,
@@ -422,7 +447,7 @@ const createWebhookHandler = () => {
       },
 
       // 订阅更新事件
-      onSubscriptionUpdated: async (data) => {
+      onSubscriptionUpdated: async (data: any) => {
         console.log('🔄 Subscription updated:', {
           subscriptionId: data.subscription?.id,
           customerId: data.customer?.id,
@@ -430,7 +455,7 @@ const createWebhookHandler = () => {
       },
 
       // 订阅取消事件
-      onSubscriptionCanceled: async (data) => {
+      onSubscriptionCanceled: async (data: any) => {
         console.log('❌ Subscription canceled:', {
           subscriptionId: data.subscription?.id,
           customerId: data.customer?.id,
@@ -448,9 +473,11 @@ const createWebhookHandler = () => {
             });
             
             // 获取 period_end（可能是 current_period_end 或 period_end）
-            const periodEnd = subscription.current_period_end 
-              || subscription.period_end 
-              || (subscription.periods && subscription.periods[0]?.end_date)
+            const subscriptionAny = subscription as any;
+            const periodEnd = subscriptionAny.current_period_end 
+              || subscriptionAny.period_end 
+              || (subscriptionAny.currentPeriodEndDate)
+              || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
               || null;
             
             console.log('📅 Subscription period end:', periodEnd);
@@ -473,7 +500,7 @@ const createWebhookHandler = () => {
       },
 
       // 支付成功事件
-      onPaymentSucceeded: async (data) => {
+      onPaymentSucceeded: async (data: any) => {
         console.log('💳 Payment succeeded:', {
           transactionId: data.transaction?.id,
           amount: data.transaction?.amount,
@@ -482,7 +509,7 @@ const createWebhookHandler = () => {
       },
 
       // 支付失败事件
-      onPaymentFailed: async (data) => {
+      onPaymentFailed: async (data: any) => {
         console.log('⚠️ Payment failed:', {
           transactionId: data.transaction?.id,
           customerId: data.customer?.id,
@@ -499,6 +526,7 @@ const createWebhookHandler = () => {
  */
 app.post('/webhook', async (c) => {
   try {
+    const { subscriptionService, creem, isTestMode, creemWebhookSecret } = getServices(c);
     // 获取原始请求体（字符串格式）
     const rawBody = await c.req.text();
     
@@ -522,7 +550,7 @@ app.post('/webhook', async (c) => {
     }
 
     // 使用 Creem SDK 处理 webhook 事件（自动验证签名）
-    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler());
+    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem));
 
     return c.json({ received: true });
   } catch (error: any) {
@@ -556,6 +584,7 @@ app.post('/webhook', async (c) => {
  */
 app.post('/test-webhook', async (c) => {
   try {
+    const { subscriptionService, creem, isTestMode, creemWebhookSecret } = getServices(c);
     // 获取原始请求体（字符串格式）
     const rawBody = await c.req.text();
     
@@ -594,7 +623,7 @@ app.post('/test-webhook', async (c) => {
     }
     
     // 使用 Creem SDK 处理 webhook 事件（自动验证签名）
-    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler());
+    await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem));
 
     return c.json({ received: true, environment: 'test' });
   } catch (error: any) {
@@ -629,6 +658,7 @@ app.post('/test-webhook', async (c) => {
  */
 app.get('/subscriptions/:subscriptionId', async (c) => {
   try {
+    const { creem } = getServices(c);
     const subscriptionId = c.req.param('subscriptionId');
 
     if (!subscriptionId) {
@@ -658,6 +688,7 @@ app.get('/subscriptions/:subscriptionId', async (c) => {
  */
 app.post('/subscriptions/:subscriptionId/update', async (c) => {
   try {
+    const { creem } = getServices(c);
     const subscriptionId = c.req.param('subscriptionId');
     const body = await c.req.json();
 
@@ -707,6 +738,7 @@ app.post('/subscriptions/:subscriptionId/update', async (c) => {
  */
 app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
   try {
+    const { creem } = getServices(c);
     const subscriptionId = c.req.param('subscriptionId');
     const body = await c.req.json();
 
@@ -743,6 +775,7 @@ app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
  */
 app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
   try {
+    const { creem } = getServices(c);
     const subscriptionId = c.req.param('subscriptionId');
 
     if (!subscriptionId) {
@@ -774,6 +807,7 @@ app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
  */
 app.post('/checkouts', async (c) => {
   try {
+    const { creem, isTestMode, creemApiKey } = getServices(c);
     const body = await c.req.json();
 
     if (!body.productId) {
@@ -798,9 +832,10 @@ app.post('/checkouts', async (c) => {
     try {
       const productsResponse = await creem.products.list();
       // 处理不同的返回格式：可能是数组，也可能是 { data: [...] } 对象
+      const productsResponseAny = productsResponse as any;
       const productsArray = Array.isArray(productsResponse) 
         ? productsResponse 
-        : (productsResponse?.data || productsResponse?.products || []);
+        : (productsResponseAny?.data || productsResponseAny?.products || []);
       
       if (Array.isArray(productsArray)) {
         const productExists = productsArray.some((p: any) => p?.id === body.productId);
@@ -870,13 +905,14 @@ app.post('/checkouts', async (c) => {
 
     // 根据错误类型返回更详细的错误信息
     let errorMessage = error.message || 'Unknown error';
-    let statusCode = 500;
+    let statusCode: 401 | 403 | 404 | 500 = 500;
 
     if (error.message?.includes('Forbidden') || error.status === 403 || error.statusCode === 403) {
       errorMessage = 'API 密钥无效或权限不足。请检查 CREEM_API_KEY 是否正确，以及是否具有创建结账会话的权限。';
       statusCode = 403;
     } else if (error.message?.includes('Not Found') || error.status === 404 || error.statusCode === 404) {
-      errorMessage = `产品 ID "${body.productId}" 不存在。请检查产品 ID 是否正确，以及在测试/生产环境中是否存在。`;
+      const productId = body?.productId || 'unknown';
+      errorMessage = `产品 ID "${productId}" 不存在。请检查产品 ID 是否正确，以及在测试/生产环境中是否存在。`;
       statusCode = 404;
     } else if (error.message?.includes('Unauthorized') || error.status === 401 || error.statusCode === 401) {
       errorMessage = 'API 密钥未授权。请检查 CREEM_API_KEY 是否正确。';
@@ -887,10 +923,10 @@ app.post('/checkouts', async (c) => {
       {
         error: 'Failed to create checkout',
         message: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? {
+        details: c.env.NODE_ENV === 'development' ? {
           originalError: error.message,
           status: error.status || error.statusCode,
-          response: error.response?.data,
+          response: (error as any).response?.data,
         } : undefined,
       },
       statusCode
@@ -904,6 +940,7 @@ app.post('/checkouts', async (c) => {
  */
 app.get('/checkouts/:checkoutId', async (c) => {
   try {
+    const { creem } = getServices(c);
     const checkoutId = c.req.param('checkoutId');
 
     if (!checkoutId) {
@@ -933,6 +970,7 @@ app.get('/checkouts/:checkoutId', async (c) => {
  */
 app.post('/subscription/sync-from-checkout', async (c) => {
   try {
+    const { subscriptionService, creem } = getServices(c);
     const body = await c.req.json();
     const { checkoutId, userId } = body;
 
@@ -951,41 +989,46 @@ app.post('/subscription/sync-from-checkout', async (c) => {
       checkoutId,
     });
 
+    const checkoutAny = checkout as any;
     console.log('📦 Checkout data:', {
-      id: checkout.id,
-      status: checkout.status,
-      subscriptionId: checkout.subscription?.id,
-      customerId: checkout.customer?.id,
-      metadata: checkout.metadata,
+      id: checkoutAny.id,
+      status: checkoutAny.status,
+      subscriptionId: checkoutAny.subscription?.id,
+      customerId: checkoutAny.customer?.id,
+      metadata: checkoutAny.metadata,
     });
 
     // 如果 checkout 有订阅 ID，获取订阅详情
-    if (checkout.subscription?.id) {
+    const subscriptionId = checkoutAny.subscription?.id || checkoutAny.subscriptionId;
+    if (subscriptionId) {
       const subscription = await creem.subscriptions.get({
-        subscriptionId: checkout.subscription.id,
+        subscriptionId: typeof subscriptionId === 'string' ? subscriptionId : subscriptionId.id,
       });
 
+      const subscriptionAny = subscription as any;
       console.log('📦 Subscription data:', {
-        id: subscription.id,
-        status: subscription.status,
-        customerId: subscription.customer?.id,
+        id: subscriptionAny.id,
+        status: subscriptionAny.status,
+        customerId: subscriptionAny.customer?.id,
       });
 
       // 获取 period_end
-      const periodEnd = subscription.current_period_end 
-        || subscription.period_end 
-        || (subscription.periods && subscription.periods[0]?.end_date)
+      const periodEnd = subscriptionAny.current_period_end 
+        || subscriptionAny.period_end 
+        || subscriptionAny.currentPeriodEndDate
+        || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
         || null;
       
       console.log('📅 Subscription period end:', periodEnd);
 
       // 更新订阅状态
-      if (subscription.status === 'active' || subscription.status === 'trialing') {
+      if (subscriptionAny.status === 'active' || subscriptionAny.status === 'trialing') {
+        const customerId = subscriptionAny.customer?.id || checkoutAny.customer?.id;
         await subscriptionService.updateSubscription(
           userId,
           'premium',
-          subscription.id,
-          subscription.customer?.id || checkout.customer?.id,
+          subscriptionAny.id,
+          typeof customerId === 'string' ? customerId : customerId?.id,
           'active',
           periodEnd
         );
@@ -1030,6 +1073,7 @@ app.post('/subscription/sync-from-checkout', async (c) => {
  */
 app.get('/products', async (c) => {
   try {
+    const { creem } = getServices(c);
     const products = await creem.products.list();
     return c.json(products);
   } catch (error: any) {
@@ -1050,6 +1094,7 @@ app.get('/products', async (c) => {
  */
 app.get('/products/:productId', async (c) => {
   try {
+    const { creem } = getServices(c);
     const productId = c.req.param('productId');
 
     if (!productId) {
@@ -1081,6 +1126,7 @@ app.get('/products/:productId', async (c) => {
  */
 app.get('/customers/:customerId', async (c) => {
   try {
+    const { creem } = getServices(c);
     const customerId = c.req.param('customerId');
 
     if (!customerId) {
@@ -1110,6 +1156,7 @@ app.get('/customers/:customerId', async (c) => {
  */
 app.post('/customers/:customerId/portal', async (c) => {
   try {
+    const { creem } = getServices(c);
     const customerId = c.req.param('customerId');
     const body = await c.req.json();
 
@@ -1136,16 +1183,5 @@ app.post('/customers/:customerId/portal', async (c) => {
   }
 });
 
-// Start server
-const port = Number(process.env.PORT) || 3001;
-
-console.log(`🚀 Subscription service starting on port ${port}`);
-console.log(`🌍 Environment: ${isTestMode ? 'TEST' : 'PRODUCTION'}`);
-console.log(`📝 Creem API Key: ${creemApiKey ? creemApiKey.substring(0, 15) + '...' : 'Not set'}`);
-console.log(`🔐 Webhook Secret: ${creemWebhookSecret ? 'Set' : 'Not set (optional)'}`);
-console.log(`🧪 Test Mode: ${isTestMode ? 'Enabled' : 'Disabled'}`);
-
-serve({
-  fetch: app.fetch,
-  port,
-});
+// Export default handler for Cloudflare Workers
+export default app;

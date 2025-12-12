@@ -1,5 +1,5 @@
 # Multi-stage build to reduce image size
-FROM python:3.11-slim as builder
+FROM python:3.12-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,10 +12,12 @@ WORKDIR /app
 # Copy requirements and install dependencies
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --user .
+# Install with CPU wheels and no cache to keep image small
+RUN pip install --no-cache-dir --user --extra-index-url https://download.pytorch.org/whl/cpu . \
+    && rm -rf /root/.cache/pip
 
 # Final stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set the working directory in the container
 WORKDIR /app
@@ -33,14 +35,10 @@ ENV PYTHONUNBUFFERED=1
 # Set Hugging Face mirror to avoid SSL issues
 ENV HF_ENDPOINT=https://hf-mirror.com
 
-# Pre-download CLIP model during build to avoid download on first run
-# This makes deployment faster and more reliable
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')" || \
-    echo "Warning: Failed to pre-download model, will download on first run"
-
-# Clean up pip cache and unnecessary files
+# Clean up caches and unnecessary files to shrink image
 RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /root/.cache \
     && find /root/.local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true \
     && find /root/.local -type f -name "*.pyc" -delete \
     && find /root/.local -type f -name "*.pyo" -delete

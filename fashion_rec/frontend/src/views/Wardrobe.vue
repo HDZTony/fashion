@@ -1,13 +1,12 @@
 <script setup lang="ts">
 defineOptions({ name: 'Wardrobe' })
 import { ref, onMounted, onUnmounted, onActivated, watch, computed } from 'vue'
-import { Upload, Shirt, LogOut, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle } from 'lucide-vue-next'
+import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle } from 'lucide-vue-next'
 import axios from 'axios'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import type { Item, PendingItem } from '../types'
 import { supabase } from '../lib/supabase'
 
-const router = useRouter()
 const route = useRoute()
 const API_URL = 'http://localhost:8000'
 
@@ -47,7 +46,7 @@ const pendingUploadSignatures = new Set<string>()
 const imageUrlInput = ref('')
 const isUploadingUrl = ref(false)
 
-// Persistent selection for outfit generation (synced with Home.vue)
+// Persistent selection for outfit generation (synced with Studio.vue)
 const selectedForOutfitIds = ref<Set<string>>(new Set())
 
 // Load selection from localStorage on mount
@@ -170,23 +169,23 @@ const loadUserItems = async () => {
     console.log('Loaded user items:', uploadedItems.value.length)
   } catch (error: any) {
     console.error('Failed to load user items:', error)
-    let errorMessage = '未知错误'
+    let errorMessage = 'Unknown error'
     
     if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error') || error?.message?.includes('Connection')) {
-      errorMessage = '无法连接到后端服务。请确认后端服务（http://localhost:8000）是否正在运行。'
+      errorMessage = 'Cannot reach backend service. Please ensure http://localhost:8000 is running.'
     } else if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
-      errorMessage = '请求超时，后端服务可能还在初始化中。请稍等片刻后刷新页面重试。'
+      errorMessage = 'Request timed out; backend may still be initializing. Wait a moment and refresh.'
     } else if (error?.response?.status === 401) {
-      errorMessage = '认证失败，请重新登录。'
+      errorMessage = 'Authentication failed. Please sign in again.'
     } else if (error?.response?.status === 503) {
-      errorMessage = '后端服务正在初始化中，请稍等片刻后刷新页面重试。'
+      errorMessage = 'Backend is initializing; please wait a moment and refresh.'
     } else if (error?.response?.data?.detail) {
       errorMessage = error.response.data.detail
     } else if (error?.message) {
       errorMessage = error.message
     }
     
-    alert(`加载衣橱数据失败：${errorMessage}\n\n请检查后端服务是否正常运行，或刷新页面重试。`)
+    alert(`Failed to load wardrobe data: ${errorMessage}\n\nCheck that the backend is running, or refresh and retry.`)
   } finally {
     isLoadingItems.value = false
   }
@@ -326,7 +325,7 @@ const handleUrlUpload = async () => {
   const url = imageUrlInput.value.trim()
   
   if (!url) {
-    alert('请输入图片URL')
+    alert('Please enter an image URL')
     return
   }
   
@@ -334,13 +333,13 @@ const handleUrlUpload = async () => {
   try {
     new URL(url)
   } catch {
-    alert('无效的URL格式，请输入有效的http://或https://链接')
+    alert('Invalid URL. Please enter a valid http:// or https:// link.')
     return
   }
   
   // Check if URL is already uploaded
   if (uploadedFileSignatures.has(url) || pendingUploadSignatures.has(url)) {
-    alert('该URL已经上传过了')
+    alert('This URL was already uploaded.')
     return
   }
   
@@ -362,7 +361,7 @@ const handleUrlUpload = async () => {
     
     if (response.data.auto_added) {
       uploadedItems.value.push(...response.data.items)
-      alert(`成功添加 ${response.data.items.length} 件物品`)
+      alert(`Added ${response.data.items.length} item(s) successfully.`)
     } else {
       const pending: PendingItem[] = response.data.items.map((item) => ({
         ...item,
@@ -376,19 +375,19 @@ const handleUrlUpload = async () => {
   } catch (error: any) {
     console.error(`URL upload failed:`, error)
     console.error('Error response:', error?.response?.data)
-    let errorMessage = '上传失败'
+    let errorMessage = 'Upload failed'
     
     // Handle connection refused error specifically
     if (error?.code === 'ERR_CONNECTION_REFUSED' || error?.message?.includes('Connection refused') || error?.message?.includes('ERR_CONNECTION_REFUSED')) {
-      errorMessage = '无法连接到后端服务。请确认后端服务（http://localhost:8000）是否正在运行。\n\n如果后端服务未运行，请：\n1. 检查后端服务是否已启动\n2. 查看后端控制台是否有错误信息\n3. 尝试重新启动后端服务'
+      errorMessage = 'Cannot reach backend (http://localhost:8000).\n\nIf the backend is down:\n1) Ensure it is running\n2) Check backend logs for errors\n3) Restart the backend'
     } else if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error') || error?.message?.includes('ERR_CONNECTION_RESET')) {
-      errorMessage = '网络连接错误或连接被重置。\n\n可能的原因：\n1. 图片太大，处理时间过长\n2. 网络连接不稳定\n3. 后端服务处理超时\n\n建议：\n- 尝试使用较小的图片\n- 检查网络连接\n- 稍后重试\n- 如果图片很大，建议直接上传文件而不是使用URL'
+      errorMessage = 'Network error or connection reset.\n\nPossible causes:\n1) Image too large, processing takes too long\n2) Unstable network\n3) Backend timed out\n\nTry:\n- Use a smaller image\n- Check your connection\n- Retry later\n- For large images, upload the file instead of URL'
     } else if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
-      errorMessage = '请求超时（已等待10分钟）。\n\n可能的原因：\n1. 图片太大，下载或处理时间过长\n2. 网络速度较慢\n3. 服务器响应慢\n\n建议：\n- 尝试使用较小的图片URL\n- 直接上传图片文件（通常更快）\n- 检查网络连接\n- 稍后重试'
+      errorMessage = 'Request timed out (waited 10 minutes).\n\nPossible causes:\n1) Image too large; download or processing is slow\n2) Slow network\n3) Server responding slowly\n\nTry:\n- Use a smaller image URL\n- Upload the image file directly (often faster)\n- Check your network\n- Retry later'
     } else if (error?.response?.status === 500) {
       // 500 Internal Server Error - show backend error details
-      const backendError = error?.response?.data?.detail || error?.response?.data?.message || '服务器内部错误'
-      errorMessage = `服务器错误 (500): ${backendError}\n\n请查看后端控制台的详细错误信息，或稍后重试。`
+      const backendError = error?.response?.data?.detail || error?.response?.data?.message || 'Server internal error'
+      errorMessage = `Server error (500): ${backendError}\n\nCheck backend logs for details, or try again later.`
     } else if (error?.response?.data?.detail) {
       errorMessage = error.response.data.detail
     } else if (error?.response?.data?.message) {
@@ -397,7 +396,7 @@ const handleUrlUpload = async () => {
       errorMessage = error.message
     }
     
-    alert(`上传失败：${errorMessage}`)
+    alert(`Upload failed: ${errorMessage}`)
   } finally {
     isUploadingUrl.value = false
     pendingUploadSignatures.delete(url)
@@ -502,11 +501,11 @@ const isAllSelected = computed(() => {
 
 const deleteSelectedItems = async () => {
   if (selectedItemIds.value.size === 0) {
-    alert('请先选择要删除的物品')
+    alert('Select items to delete first.')
     return
   }
 
-  if (!confirm(`确定要删除选中的 ${selectedItemIds.value.size} 件物品吗？此操作无法撤销。`)) {
+  if (!confirm(`Delete ${selectedItemIds.value.size} selected item(s)? This cannot be undone.`)) {
     return
   }
 
@@ -524,11 +523,11 @@ const deleteSelectedItems = async () => {
     // Reload items from server to ensure data consistency
     await loadUserItems()
 
-    alert(`成功删除 ${response.data.deleted_count} 件物品`)
+    alert(`Deleted ${response.data.deleted_count} item(s)`)
   } catch (error: any) {
     console.error('Failed to delete items:', error)
-    const errorMessage = error?.response?.data?.detail || error?.message || '删除失败'
-    alert(`删除失败：${errorMessage}`)
+    const errorMessage = error?.response?.data?.detail || error?.message || 'Delete failed'
+    alert(`Delete failed: ${errorMessage}`)
     
     // Reload items even on error to ensure UI is in sync
     await loadUserItems()
@@ -623,7 +622,7 @@ onMounted(() => {
 
 onActivated(() => {
   // Reload selection from localStorage when component is activated
-  // This ensures the selection state is synced when user returns from Home page
+  // This ensures the selection state is synced when user returns from Studio page
   loadOutfitSelection()
   console.log('[Wardrobe onActivated] Reloaded outfit selection from localStorage')
 })
@@ -640,31 +639,15 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
 })
 
-const logout = () => {
-  localStorage.removeItem('auth_token')
-  router.push('/login')
-}
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 p-8 font-sans text-gray-900">
-    <header class="mb-8 flex items-center justify-between">
+  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8 flex items-center justify-between">
       <h1 class="text-3xl font-bold tracking-tight">My Wardrobe</h1>
-      <div class="flex items-center gap-4">
-        <button
-          @click="$router.push('/')"
-          class="text-sm text-gray-500 hover:text-black underline"
-        >
-          ← Back to Outfit Generator
-        </button>
-        <button @click="logout" class="text-sm text-gray-500 hover:text-black flex items-center gap-1">
-          <LogOut class="w-4 h-4" />
-          Sign Out
-        </button>
-      </div>
     </header>
 
-    <main class="space-y-6">
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
       <!-- Upload -->
       <section class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -696,18 +679,18 @@ const logout = () => {
           </div>
           <div v-else class="pointer-events-none">
             <p class="font-medium text-gray-700">Click or drag to upload</p>
-            <p class="text-xs text-gray-400 mt-2">支持同时选择多张照片 (JPG, PNG, WEBP, AVIF)</p>
+            <p class="text-xs text-gray-400 mt-2">You can select multiple photos (JPG, PNG, WEBP, AVIF)</p>
           </div>
         </div>
         
         <!-- URL Upload -->
         <div class="mt-4 pt-4 border-t border-gray-200">
-          <p class="text-sm font-medium text-gray-700 mb-2">或通过URL添加图片</p>
+          <p class="text-sm font-medium text-gray-700 mb-2">Or add via URL</p>
           <div class="flex gap-2">
             <input
               v-model="imageUrlInput"
               type="text"
-              placeholder="输入图片公网URL (http:// 或 https://)"
+              placeholder="Enter a public image URL (http:// or https://)"
               class="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
               :disabled="isUploadingUrl || isUploading"
               @keyup.enter="handleUrlUpload"
@@ -717,8 +700,8 @@ const logout = () => {
               :disabled="isUploadingUrl || isUploading || !imageUrlInput.trim()"
               class="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              <span v-if="isUploadingUrl">上传中...</span>
-              <span v-else>上传</span>
+              <span v-if="isUploadingUrl">Uploading...</span>
+              <span v-else>Upload</span>
               <div v-if="isUploadingUrl" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             </button>
           </div>
@@ -732,7 +715,7 @@ const logout = () => {
             <Shirt class="w-5 h-5" />
             My Wardrobe
             <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-gray-500 ml-2">
-              ({{ uploadedItems.length }} 件)
+              ({{ uploadedItems.length }} items)
             </span>
           </h2>
           <div class="flex items-center gap-2">
@@ -740,17 +723,17 @@ const logout = () => {
               @click="loadUserItems"
               :disabled="isLoadingItems"
               class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:border-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              title="刷新数据"
+              title="Refresh data"
             >
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoadingItems }" />
-              <span>刷新</span>
+              <span>Refresh</span>
             </button>
             <button
               @click="toggleSelectionMode"
               class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
               :class="isSelectionMode ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'"
             >
-              {{ isSelectionMode ? '取消选择' : '批量选择' }}
+              {{ isSelectionMode ? 'Cancel selection' : 'Bulk select' }}
             </button>
             <button
               v-if="isSelectionMode && selectedCount > 0"
@@ -759,7 +742,7 @@ const logout = () => {
               class="px-3 py-1.5 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
               <Trash2 class="w-4 h-4" />
-              <span>删除 ({{ selectedCount }})</span>
+              <span>Delete ({{ selectedCount }})</span>
             </button>
           </div>
         </div>
@@ -768,9 +751,9 @@ const logout = () => {
             @click="toggleSelectAll"
             class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-gray-600 hover:border-black transition-colors"
           >
-            {{ isAllSelected ? '取消全选' : '全选' }}
+            {{ isAllSelected ? 'Unselect all' : 'Select all' }}
           </button>
-          <span class="text-sm text-gray-500">已选择 {{ selectedCount }} / {{ filteredItems.length }} 件</span>
+          <span class="text-sm text-gray-500">Selected {{ selectedCount }} / {{ filteredItems.length }} items</span>
         </div>
         <div class="flex flex-wrap gap-2 mb-4">
           <button
