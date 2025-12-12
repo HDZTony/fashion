@@ -19022,7 +19022,7 @@ function wrapWorkerEntrypoint(klass) {
           () => {
           }
         );
-        return super.scheduled(controller);
+        return super.scheduled(controller, this.env, this.ctx);
       }
     }, "#dispatcher");
     fetch(request) {

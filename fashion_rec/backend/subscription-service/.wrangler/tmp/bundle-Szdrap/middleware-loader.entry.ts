@@ -109,7 +109,7 @@ function wrapWorkerEntrypoint(
 					init.cron ?? "",
 					() => {}
 				);
-				return super.scheduled(controller);
+				return super.scheduled(controller, this.env, this.ctx);
 			}
 		};
 
