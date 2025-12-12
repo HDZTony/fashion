@@ -63,10 +63,13 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: fashion_rec/backend/subscription-service/pnpm-lock.yaml
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          # Clear any proxy settings that might interfere
+          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
+          pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/backend/subscription-service
       - name: Deploy to Cloudflare Workers
-        run: pnpm exec wrangler deploy
+        run: pnpm exec wrangler deploy --account-id ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: ./fashion_rec/backend/subscription-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -95,7 +98,14 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: fashion_rec/frontend/pnpm-lock.yaml
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          # Clear any proxy settings that might interfere
+          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
+          # Temporarily remove proxy settings from .npmrc if they exist
+          if [ -f .npmrc ]; then
+            sed -i.bak '/^proxy=/d; /^https-proxy=/d' .npmrc || true
+          fi
+          pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/frontend
       - name: Build
         run: pnpm build
