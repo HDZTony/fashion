@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2025-11-17"
 compatibility_flags = ["nodejs_compat"]
 
+# Account ID configuration
+# Wrangler automatically reads CLOUDFLARE_ACCOUNT_ID from environment variables
+# For local development, you can uncomment and set the account_id below:
+# account_id = "your-account-id-here"
+
 # 路由配置 - 可以根据实际需要配置自定义域名路由
 # routes = [
 #   { pattern = "api.subscription.example.com/*", zone_name = "example.com" }
