@@ -25,20 +25,36 @@ onMounted(async () => {
       return
     }
 
-    // Get the session after the OAuth redirect
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    // Handle email confirmation callback
+    // Supabase sends confirmation tokens in the URL hash
+    const { data, error: sessionError } = await supabase.auth.getSession()
     
-    if (sessionError) throw sessionError
+    if (sessionError) {
+      // Try to handle the email confirmation token from URL hash
+      const hash = window.location.hash
+      if (hash && hash.includes('access_token')) {
+        // Wait a moment for Supabase to process the token
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const { data: retryData, error: retryError } = await supabase.auth.getSession()
+        if (retryError) throw sessionError
+        if (retryData.session) {
+          localStorage.setItem('auth_token', retryData.session.access_token)
+          router.push('/studio')
+          return
+        }
+      }
+      throw sessionError
+    }
     
-    if (session) {
+    if (data.session) {
       // Store the access token
-      localStorage.setItem('auth_token', session.access_token)
+      localStorage.setItem('auth_token', data.session.access_token)
       
       // Redirect to studio
       router.push('/studio')
     } else {
-      error.value = 'No session found'
-      setTimeout(() => router.push('/login'), 2000)
+      error.value = 'No session found. Please check your email confirmation link or try signing in again.'
+      setTimeout(() => router.push('/login'), 3000)
     }
   } catch (err: any) {
     console.error('Callback error:', err)
@@ -57,7 +73,8 @@ onMounted(async () => {
       </div>
       <div v-else class="text-red-600">
         <p class="font-medium mb-2">{{ error }}</p>
-        <p class="text-sm text-gray-500">Redirecting to login...</p>
+        <p class="text-sm text-gray-500 mt-2">If you just confirmed your email, please try signing in.</p>
+        <p class="text-sm text-gray-500 mt-1">Redirecting to login...</p>
       </div>
     </div>
   </div>
