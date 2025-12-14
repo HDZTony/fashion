@@ -36,7 +36,7 @@ onMounted(async () => {
         // Wait a moment for Supabase to process the token
         await new Promise(resolve => setTimeout(resolve, 500))
         const { data: retryData, error: retryError } = await supabase.auth.getSession()
-        if (retryError) throw sessionError
+        if (retryError) throw retryError
         if (retryData.session) {
           localStorage.setItem('auth_token', retryData.session.access_token)
           router.push('/studio')
