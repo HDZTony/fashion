@@ -8,18 +8,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize Qwen-VL model
-# Using Singapore endpoint, so use Singapore API key
+# Using Singapore endpoint, so must use Singapore API key
 SINGAPORE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-api_key = os.getenv("DASHSCOPE_API_KEY_SG") or os.getenv("DASHSCOPE_API_KEY")
+api_key = os.getenv("DASHSCOPE_API_KEY_SG")
 if not api_key:
-    print("Warning: DASHSCOPE_API_KEY_SG or DASHSCOPE_API_KEY not found in environment variables.")
-else:
-    # Prefer Singapore key for Singapore endpoint
-    if os.getenv("DASHSCOPE_API_KEY_SG"):
-        api_key = os.getenv("DASHSCOPE_API_KEY_SG")
-        print("[Qwen-VL] Using Singapore endpoint with Singapore API key")
-    else:
-        print("[Qwen-VL] Using Singapore endpoint with default API key (fallback)")
+    raise RuntimeError(
+        "DASHSCOPE_API_KEY_SG must be set in environment variables for Singapore endpoint. "
+        "Please set this environment variable in Fly.io using: "
+        "fly secrets set DASHSCOPE_API_KEY_SG=your_singapore_key_here"
+    )
+
+print("[Qwen-VL] Using Singapore endpoint with Singapore API key")
 
 llm = ChatOpenAI(
     model="qwen3-vl-plus",

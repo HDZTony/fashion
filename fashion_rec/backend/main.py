@@ -1115,6 +1115,16 @@ async def generate_outfit(
     except Exception as e:
         import traceback
 
+        error_msg = str(e)
+        
+        # 检查是否是 API 密钥相关的错误
+        if "API key" in error_msg or "invalid_api_key" in error_msg or "401" in error_msg or "DASHSCOPE_API_KEY" in error_msg:
+            logger.error(f"API key authentication error: {e}")
+            raise HTTPException(
+                status_code=500, 
+                detail="API 密钥配置错误。新加坡端点必须使用 DASHSCOPE_API_KEY_SG，北京端点必须使用 DASHSCOPE_API_KEY。请检查环境变量是否正确设置。"
+            )
+        
         print(f"Error generating outfit: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate outfit: {e}")
 

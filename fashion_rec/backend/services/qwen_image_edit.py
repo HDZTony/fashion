@@ -510,21 +510,31 @@ def _load_env_config() -> dict[str, Any]:
     region = os.getenv(f"{DEFAULT_ENV_PREFIX}REGION", DEFAULT_REGION).lower()
     if region == "singapore":
         config["endpoint"] = SINGAPORE_ENDPOINT
-        # For Singapore endpoint, use Singapore API key
-        api_key = os.getenv("DASHSCOPE_API_KEY_SG") or os.getenv("DASHSCOPE_API_KEY") or os.getenv(f"{DEFAULT_ENV_PREFIX}API_KEY")
-        if api_key:
-            config["api_key"] = api_key
-            if os.getenv("DASHSCOPE_API_KEY_SG"):
-                print("[Qwen-Image-Edit] Using Singapore endpoint with Singapore API key")
-            else:
-                print("[Qwen-Image-Edit] Using Singapore endpoint with default API key (fallback)")
+        # For Singapore endpoint, must use Singapore API key
+        api_key = os.getenv("DASHSCOPE_API_KEY_SG") or os.getenv(f"{DEFAULT_ENV_PREFIX}API_KEY")
+        if not api_key:
+            raise QwenImageEditError(
+                "DASHSCOPE_API_KEY_SG must be set for Singapore endpoint. "
+                "Please set this environment variable in Fly.io using: "
+                "fly secrets set DASHSCOPE_API_KEY_SG=your_singapore_key_here"
+            )
+        config["api_key"] = api_key
+        if os.getenv("DASHSCOPE_API_KEY_SG"):
+            print("[Qwen-Image-Edit] Using Singapore endpoint with Singapore API key")
+        else:
+            print("[Qwen-Image-Edit] Using Singapore endpoint with custom API key")
     else:
         config["endpoint"] = BEIJING_ENDPOINT
-        # For Beijing endpoint, use Beijing API key
+        # For Beijing endpoint, must use Beijing API key (not Singapore key)
         api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv(f"{DEFAULT_ENV_PREFIX}API_KEY")
-        if api_key:
-            config["api_key"] = api_key
-            print("[Qwen-Image-Edit] Using Beijing endpoint with Beijing API key")
+        if not api_key:
+            raise QwenImageEditError(
+                "DASHSCOPE_API_KEY must be set for Beijing endpoint. "
+                "Please set this environment variable in Fly.io using: "
+                "fly secrets set DASHSCOPE_API_KEY=your_beijing_key_here"
+            )
+        config["api_key"] = api_key
+        print("[Qwen-Image-Edit] Using Beijing endpoint with Beijing API key")
 
     model = os.getenv(f"{DEFAULT_ENV_PREFIX}MODEL")
     if model:
