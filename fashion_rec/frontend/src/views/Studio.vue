@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
-import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt } from 'lucide-vue-next'
+import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
 import axios from 'axios'
 import type { Item, Recommendation, AgentOutfit } from '../types'
 import { supabase } from '../lib/supabase'
@@ -1073,6 +1073,29 @@ const saveFavorite = async () => {
   }
 }
 
+// Helper functions for outfit items
+const getMissingItems = (outfit: AgentOutfit): AgentOutfitItem[] => {
+  return outfit.items.filter(item => {
+    // Item is missing if it has no wardrobe_id or the wardrobe_id doesn't exist in uploadedItems
+    if (!item.wardrobe_id) return true
+    return !findWardrobeItemById(item.wardrobe_id)
+  })
+}
+
+const hasAnyWardrobeItem = (outfit: AgentOutfit): boolean => {
+  // Check if at least one item in the outfit exists in the wardrobe
+  return outfit.items.some(item => {
+    if (!item.wardrobe_id) return false
+    return !!findWardrobeItemById(item.wardrobe_id)
+  })
+}
+
+const searchOnGoogle = (description: string) => {
+  const searchQuery = encodeURIComponent(description)
+  const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`
+  window.open(googleSearchUrl, '_blank', 'noopener,noreferrer')
+}
+
 
 </script>
 
@@ -1274,11 +1297,21 @@ const saveFavorite = async () => {
                   <div>
                     <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
                     <ul class="text-xs text-gray-700 space-y-1 mb-2">
-                      <li v-for="(it, i) in outfit.items" :key="i">
-                        <span class="font-medium capitalize">{{ it.role }}:</span>
-                        <span> {{ it.description }}</span>
-                        <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-green-600 ml-1">(in wardrobe)</span>
-                        <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">(selected)</span>
+                      <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
+                        <div class="flex-1">
+                          <span class="font-medium capitalize">{{ it.role }}:</span>
+                          <span> {{ it.description }}</span>
+                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-green-600 ml-1">(in wardrobe)</span>
+                          <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">(selected)</span>
+                        </div>
+                        <button
+                          v-if="!findWardrobeItemById(it.wardrobe_id)"
+                          @click.stop="searchOnGoogle(it.description)"
+                          class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
+                          :title="`Search for ${it.description} on Google`"
+                        >
+                          <Search class="w-3.5 h-3.5 text-gray-600" />
+                        </button>
                       </li>
                     </ul>
                     <p class="text-xs text-gray-500 mb-2">
@@ -1288,14 +1321,28 @@ const saveFavorite = async () => {
                       {{ outfit.long_text }}
                     </p>
                   </div>
-                  <div class="mt-3 flex justify-end">
+                  <div class="mt-3 flex flex-col gap-2">
+                    <!-- Apply outfit button - only show if at least one item is in wardrobe -->
                     <button
+                      v-if="hasAnyWardrobeItem(outfit)"
                       type="button"
                       @click.prevent="applyOutfit(outfit)"
-                      class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors"
+                      class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
                     >
                       Apply outfit
                     </button>
+                    <!-- Google search buttons for missing items -->
+                    <div v-if="getMissingItems(outfit).length > 0" class="flex flex-wrap gap-2">
+                      <button
+                        v-for="(missingItem, idx) in getMissingItems(outfit)"
+                        :key="idx"
+                        @click.stop="searchOnGoogle(missingItem.description)"
+                        class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                      >
+                        <Search class="w-3 h-3" />
+                        <span>Search {{ missingItem.role }}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
