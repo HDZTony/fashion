@@ -53,6 +53,9 @@ async def fetch_weather(location: str) -> Dict[str, Any]:
 
 
 def summarize_weather(raw: Dict[str, Any]) -> str:
+  """
+  Build a concise, English weather summary to keep the model outputs English-first.
+  """
   location = raw.get("location") or {}
   current = raw.get("current") or {}
   cond = (current.get("condition") or {}).get("text", "")
@@ -66,20 +69,20 @@ def summarize_weather(raw: Dict[str, Any]) -> str:
 
   parts: List[str] = []
   if name or country:
-    parts.append(f"地点: {name}, {country}")
+    parts.append(f"Location: {name}, {country}".strip().rstrip(","))
   if cond:
-    parts.append(f"天气: {cond}")
+    parts.append(f"Condition: {cond}")
   if temp_c is not None:
     if feelslike_c is not None:
-      parts.append(f"温度: {temp_c}°C (体感 {feelslike_c}°C)")
+      parts.append(f"Temperature: {temp_c}°C (feels like {feelslike_c}°C)")
     else:
-      parts.append(f"温度: {temp_c}°C")
+      parts.append(f"Temperature: {temp_c}°C")
   if humidity is not None:
-    parts.append(f"湿度: {humidity}%")
+    parts.append(f"Humidity: {humidity}%")
   if wind_kph is not None:
-    parts.append(f"风速: {wind_kph} km/h")
+    parts.append(f"Wind: {wind_kph} km/h")
 
-  return "；".join(parts)
+  return " | ".join(parts)
 
 
 def summarize_wardrobe(items: List[Dict[str, Any]]) -> str:
@@ -87,17 +90,17 @@ def summarize_wardrobe(items: List[Dict[str, Any]]) -> str:
   Convert get_user_items(user_id) result into a compact text list.
   """
   if not items:
-    return "用户衣橱为空。"
+    return "Wardrobe is empty."
 
   lines: List[str] = []
   for item in items[:30]:
     lines.append(
       f"- id={item.get('id')}, "
       f"{item.get('color', 'Unknown')} {item.get('type', 'Unknown')} "
-      f"({item.get('style', 'Unknown')}, 材质: {item.get('material', 'Unknown')}, 场合: {item.get('occasion', 'Unknown')})"
+      f"({item.get('style', 'Unknown')}, material: {item.get('material', 'Unknown')}, occasion: {item.get('occasion', 'Unknown')})"
     )
   if len(items) > 30:
-    lines.append(f"... 还有 {len(items) - 30} 件未展示")
+    lines.append(f"... {len(items) - 30} more not shown")
 
   return "\n".join(lines)
 
@@ -122,7 +125,7 @@ async def generate_outfit_suggestions(
   weather_raw = await fetch_weather_by_ip(client_ip)
   # Extract location from weather response for use in prompt
   location_info = weather_raw.get("location", {})
-  final_location = location_info.get("name", "未知地点")
+  final_location = location_info.get("name", "Unknown location")
 
   weather_summary = summarize_weather(weather_raw)
 
@@ -135,9 +138,9 @@ async def generate_outfit_suggestions(
   for item in base_items:
     base_items_summary_lines.append(
       f"- id={item.get('id')}, {item.get('color', 'Unknown')} {item.get('type', 'Unknown')} "
-      f"({item.get('style', 'Unknown')}, 场合: {item.get('occasion', 'Unknown')})"
+      f"({item.get('style', 'Unknown')}, occasion: {item.get('occasion', 'Unknown')})"
     )
-  base_items_summary = "\n".join(base_items_summary_lines) if base_items_summary_lines else "（用户未预先选择单品）"
+  base_items_summary = "\n".join(base_items_summary_lines) if base_items_summary_lines else "(No pre-selected items)"
 
   # Determine which roles are already selected (from selected_items_roles)
   selected_roles: set = set()
@@ -148,71 +151,77 @@ async def generate_outfit_suggestions(
   role_exclusion_note = ""
   if selected_roles:
     role_names_map = {
-      "top": "上装",
-      "bottom": "下装",
-      "shoes": "鞋子",
-      "outer": "外套",
-      "accessory": "配饰"
+      "top": "top",
+      "bottom": "bottom",
+      "shoes": "shoes",
+      "outer": "outer",
+      "accessory": "accessory"
     }
     selected_role_names = [role_names_map.get(r, r) for r in selected_roles]
-    role_exclusion_note = f"\n\n重要：用户已经选择了以下角色的单品：{', '.join(selected_role_names)}。\n- 你生成的outfit方案中的items数组应该只包含剩余角色的单品（即除了已选择角色之外的其他角色）。\n- 不要包含已选择角色的单品，因为用户已经确定了这些单品。\n- 例如，如果用户已经选择了top和bottom，你只需要生成shoes、outer、accessory等剩余角色的单品。"
+    role_exclusion_note = (
+      "\n\nImportant: The user already selected items for these roles: "
+      f"{', '.join(selected_role_names)}.\n"
+      "- In your outfit JSON, only include items for the remaining roles.\n"
+      "- Do NOT include items for roles already selected by the user.\n"
+      "- Example: if the user chose top and bottom, only propose shoes/outer/accessory, etc."
+    )
 
   system_prompt = f"""
-你是一名专业穿搭顾问，请结合"当天实际天气"和"用户衣橱里的单品"，为用户生成穿搭建议。
+You are a professional outfit stylist. Combine today's real weather with the user's wardrobe to generate outfit suggestions. All outputs must be in English.
 
-要求：
-- 你必须优先使用用户衣橱里的单品（通过颜色、类型、风格来匹配）。
-- 如果用户预先选择了部分单品（在"用户预选单品"中列出），请优先把这些单品纳入穿搭方案中，视为已经确定要穿的基底，其余部位由你补全。
-- 根据温度、天气状况（晴/雨/雪/风大）、湿度等决定是否需要外套、鞋子类型等。
-- 你需要同时提供：
-  1）结构化 JSON，用于前端渲染卡片；
-  2）长文本 natural language 描述，方便用户阅读和手动修改。
+Requirements:
+- Prioritize using items from the user's wardrobe (match by color, type, and style).
+- If the user pre-selected items (listed in "User pre-selected items"), treat them as fixed bases and fill the remaining roles.
+- Factor weather (sun/rain/snow/wind), temperature, humidity to decide layers, shoes, and outerwear.
+- Return:
+  1) Structured JSON for frontend cards.
+  2) A long-form natural language description for readability and manual tweaks.
 {role_exclusion_note}
 
-JSON 输出格式严格如下（只包含 JSON，不要解释）：
+JSON output format (output JSON only, no extra text or Markdown fences):
 [
   {{
-    "title": "方案标题",
+    "title": "Outfit title in English",
     "items": [
       {{
-        "wardrobe_id": "使用衣橱列表中 id=xxx 里的 xxx 作为该字段；如果不确定则为 null",
-        "role": "top/bottom/shoes/outer/accessory 之一",
-        "description": "对该单品的简短文字描述，例如：White crew neck t-shirt（白色圆领T恤）"
+        "wardrobe_id": "id from wardrobe list; null if not sure",
+        "role": "one of top/bottom/shoes/outer/accessory",
+        "description": "Short English description, e.g., White crew neck t-shirt"
       }}
     ],
-    "reason": "简短说明这套穿搭为什么适合今天的天气和场景",
-    "long_text": "完整的自然语言描述，可以分段，适合直接展示给用户阅读"
+    "reason": "Brief English rationale for why this fits today's weather/scene",
+    "long_text": "Full English description; can include multiple paragraphs"
   }}
 ]
 
-只输出 JSON 数组，不要添加 ```json 这样的 Markdown 包裹，也不要在 JSON 外输出任何其他文字。
+Only output the JSON array above. Do not add ```json fences or any text outside the JSON.
 """
 
   user_prompt_text = f"""
-今天的天气信息：
+Today's weather:
 {weather_summary}
 
-用户衣橱清单（每一行是一件可用单品，注意 id 字段，可用于填入 wardrobe_id）：
+User wardrobe list (each line is an item; use id for wardrobe_id):
 {wardrobe_summary}
 
-用户预选单品（如果有，表示用户希望一定或优先穿这些单品，其余部位由你补全）：
+User pre-selected items (treated as fixed bases):
 {base_items_summary}
 
-用户额外偏好 / 规则提示（来自前端输入，可以为空）：
-{user_prompt or "（用户未提供额外偏好）"}
+User extra preferences / rules (can be empty):
+{user_prompt or "(User did not provide extra preferences)"}
 
-任务：
-- 根据用户的提示词和场景图片（如果有）判断穿搭场合，设计 1-3 套完整穿搭。
-- 尽量使用"用户预选单品"（如果存在），并补全其他必要单品（裤子、外套、鞋子、配饰等）。
-- 每一套说明使用了哪些衣橱里的单品，以及为什么适合当前天气和场景。
-- 严格按照上面给出的 JSON 结构输出结果。
+Task:
+- Infer the occasion from user hints and scene image (if any), design 1-3 complete outfits.
+- Reuse "User pre-selected items" when present, and complete remaining roles (pants, outerwear, shoes, accessories, etc.).
+- For each outfit, explain which wardrobe items you used and why they fit the weather/scene.
+- Strictly follow the JSON structure above.
 """
 
   # Build message content: if scene_image_url exists, include it as image input
   if scene_image_url:
     user_prompt_text_with_scene = f"""{user_prompt_text}
 
-用户上传了场景图片（例如办公室、咖啡馆、户外等），请仔细观察图片中的环境，根据实际场景来设计合适的穿搭方案。
+The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe the environment and tailor outfits to that scene.
 """
     # For qwen-vl, content can be a list with text and image URL
     # Format: [{"type": "text", "text": "..."}, {"type": "image_url", "image_url": {"url": "..."}}]

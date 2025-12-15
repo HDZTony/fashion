@@ -48,4 +48,5 @@ EXPOSE 8000
 
 # Run uvicorn when the container launches
 # 增加超时设置以支持大图片上传和处理（下载、上传到R2、AI分析等）
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "300", "--timeout-graceful-shutdown", "30"]
+# 使用单进程模式（适合 Fly.io），确保日志输出，监听所有网络接口
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-level", "info", "--timeout-keep-alive", "300", "--timeout-graceful-shutdown", "30"]

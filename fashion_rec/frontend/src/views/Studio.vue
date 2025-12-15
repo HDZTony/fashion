@@ -1173,7 +1173,7 @@ const searchOnGoogle = (description: string) => {
                     title="Upload a reference scene image"
                   >
                     <Upload class="w-4 h-4" />
-                    <span class="text-xs">Upload new image</span>
+                    <span class="text-xs">Upload scene image (optional)</span>
                   </label>
                   <input
                     id="sceneImageInput"
@@ -1191,9 +1191,7 @@ const searchOnGoogle = (description: string) => {
                     <span class="text-xs">History</span>
                   </button>
                 </div>
-                <p class="text-xs text-gray-400">
-                  Scene image (optional)
-                </p>
+                
               </div>
             </div>
             

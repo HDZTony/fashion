@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
+import { useAuthState } from '@/composables/useAuthState'
 import { useHead } from '@vueuse/head'
 import { useSEO } from '@/composables/useSEO'
 import { siteBaseUrl } from '@/config/seo'
@@ -11,11 +12,7 @@ defineOptions({ name: 'Home' })
 
 const router = useRouter()
 
-const isAuthenticated = computed(() => {
-  if (typeof window === 'undefined') return false
-  const token = localStorage.getItem('auth_token')
-  return !!token
-})
+const { isAuthenticated } = useAuthState()
 
 const handleGetStarted = () => {
   if (isAuthenticated.value) {

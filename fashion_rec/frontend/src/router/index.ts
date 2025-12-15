@@ -15,6 +15,7 @@ import Pricing from '../views/Pricing.vue'
 import Profile from '../views/Profile.vue'
 import AppLayout from '../layouts/AppLayout.vue'
 import HomeLayout from '../layouts/HomeLayout.vue'
+import { supabase } from '../lib/supabase'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -109,13 +110,31 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 export const setupRouterGuards = (router: Router) => {
-  router.beforeEach((to, _from, next) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+  router.beforeEach(async (to, _from, next) => {
+    // Always read Supabase session first
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      console.warn('Failed to get Supabase session', error)
+    }
+
+    const session = data.session
+    const token = session?.access_token
+
+    // Keep legacy token in sync to avoid stale state in older code
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('auth_token', token)
+      } else {
+        localStorage.removeItem('auth_token')
+      }
+    }
+
     if (to.meta.requiresAuth && !token) {
       next('/login')
-    } else {
-      next()
+      return
     }
+
+    next()
   })
 }
 

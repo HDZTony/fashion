@@ -2,14 +2,11 @@
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
+import { useAuthState } from '@/composables/useAuthState'
 
 const router = useRouter()
 
-const isAuthenticated = computed(() => {
-  if (typeof window === 'undefined') return false
-  const token = localStorage.getItem('auth_token')
-  return !!token
-})
+const { isAuthenticated } = useAuthState()
 
 const handleGetStarted = () => {
   if (isAuthenticated.value) {

@@ -107,34 +107,45 @@ def root():
 async def health_check():
     """
     Health check endpoint to verify the service is ready.
-    Returns 200 if the service is ready, 503 if still initializing.
+    Always returns 200 to indicate the service is running and accepting connections.
+    Provides detailed status information about model and database initialization.
     """
-    from services.vector_db import embedding_model, collection
-    
-    # Check if CLIP model is loaded
-    model_ready = embedding_model is not None
-    
-    # Check if Supabase client is initialized
-    db_ready = collection is not None
-    
-    if model_ready and db_ready:
+    try:
+        from services.vector_db import embedding_model, collection
+        
+        # Check if CLIP model is loaded
+        model_ready = embedding_model is not None
+        
+        # Check if Supabase client is initialized
+        db_ready = collection is not None
+        
+        # Always return 200 - the service is running and accepting connections
+        # Fly.io health check just needs to know the app is listening
+        status_code = 200
+        if model_ready and db_ready:
+            status = "ready"
+        else:
+            status = "initializing"
+        
         return {
-            "status": "ready",
-            "model_loaded": True,
-            "database_ready": True
+            "status": status,
+            "service": "running",
+            "model_loaded": model_ready,
+            "database_ready": db_ready,
+            "message": "Service is running and accepting connections"
         }
-    else:
-        from fastapi import status
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={
-                "status": "initializing",
-                "model_loaded": model_ready,
-                "database_ready": db_ready,
-                "message": "Service is still initializing. Please wait a moment and try again."
-            }
-        )
+    except Exception as e:
+        # Even if there's an error checking components, return 200
+        # to indicate the HTTP server is running
+        logger.warning(f"Health check encountered an error: {e}")
+        return {
+            "status": "running",
+            "service": "running",
+            "model_loaded": False,
+            "database_ready": False,
+            "message": "Service is running (component check failed)",
+            "error": str(e)
+        }
 
 
 def _convert_unsupported_format(image_path: Path) -> Path:
@@ -1298,10 +1309,10 @@ async def try_on(
                 "整体画面自然、光影一致、所有物品都贴合人体。"
             )
         else:
-            # Prompt: 图1中的人物穿着图2中的所有衣服
+            # Prompt: 图1中的人物穿着图2中的所有衣服，保留模特与原始背景
             prompt = (
                 "图1中的人物穿着图2中的所有衣服和配饰，保持人物身份与原始背景自然合理，"
-                "仅替换服装风格和衣物。"
+                "只替换服装，不要移除或替换图1的背景。"
                 "所有单品必须正确地穿在模特身上："
                 "上装和下装必须穿在身体的对应位置，鞋子必须穿在脚上，"
                 "外套必须穿在外层，配饰如眼镜必须戴在脸上、帽子戴在头上、"
@@ -1625,6 +1636,13 @@ async def startup_event():
     """
     import asyncio
     from services.storage import delete_expired_files_from_r2
+    
+    # Log that the application is starting up
+    logger.info("=" * 60)
+    logger.info("Fashion Recommendation API - Starting up...")
+    logger.info("=" * 60)
+    logger.info("Application is listening on 0.0.0.0:8000")
+    logger.info("Health check endpoint available at: /health")
 
     async def periodic_cleanup():
         try:
@@ -1656,6 +1674,10 @@ async def startup_event():
     
     # Store task reference for cleanup on shutdown
     app.state.cleanup_task = task
+    
+    # Log startup completion
+    logger.info("Application startup complete - ready to accept connections")
+    logger.info("=" * 60)
 
 
 @app.on_event("shutdown")
