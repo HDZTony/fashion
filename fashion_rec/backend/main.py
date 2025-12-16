@@ -13,6 +13,7 @@ import sys
 import logging
 import asyncio
 from pathlib import Path
+from datetime import datetime, timedelta
 
 # Configure logging to ensure output is visible
 logging.basicConfig(
@@ -1310,6 +1311,7 @@ async def try_on(
                 "禁止任何物品悬浮在空中或散落在地上。"
                 "整体画面自然、光影一致、所有物品都贴合人体。"
             )
+            negative_prompt = "禁止出现图1中的人物，禁止出现图3中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。"  # 禁止出现衣服拼图和场景图中的人物，禁止物品散落或悬浮
         else:
             # Prompt: 图2中的人物穿着图1中的所有衣服，保留模特与原始背景
             prompt = (
@@ -1322,6 +1324,7 @@ async def try_on(
                 "禁止任何物品悬浮在空中或散落在地上。"
                 "所有物品都必须贴合人体，位置准确自然。"
             )
+            negative_prompt = "禁止出现图1中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。"  # 禁止出现衣服拼图中的人物，禁止物品散落或悬浮
     except Exception as e:
         print(f"Failed to build garment collage: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
@@ -1332,7 +1335,7 @@ async def try_on(
             image_inputs=image_inputs,
             prompt=prompt,
             n=1,
-            negative_prompt="禁止出现图1中的人物，禁止出现图3中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。",  # 禁止出现衣服拼图和场景图中的人物，禁止物品散落或悬浮
+            negative_prompt=negative_prompt,
             output_path=output_path,
             garment_collage_index=0,  # 图1 (garment collage) will expire in 7 days
         )
@@ -1488,14 +1491,61 @@ async def delete_user_image(
 
 
 @app.get("/looks")
-async def get_looks(user_id: str = Depends(get_current_user)):
+async def get_looks(auth: tuple[str, str] = Depends(get_current_user_and_token)):
     """
     Get all saved looks for the current user.
     """
     from services.looks import list_looks
+    import httpx
+
+    user_id, user_token = auth
 
     try:
-        looks = list_looks(user_id)
+        looks = list_looks(user_id, user_token)
+
+        # Determine retention based on subscription plan
+        retention_days: Optional[int] = None
+        plan_retention = {
+            "Premium": 90,
+            "premium": 90,
+            "Premium Plus": 365,
+            "premium_plus": 365,
+        }
+
+        SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+                    params={"user_id": user_id},
+                    timeout=5.0,
+                )
+                if resp.status_code == 200:
+                    plan_name = resp.json().get("planName")
+                    retention_days = plan_retention.get(plan_name)
+                else:
+                    logger.warning(f"Subscription status check failed with {resp.status_code}, skipping retention filter.")
+        except Exception as sub_err:
+            logger.warning(f"Failed to fetch subscription status: {sub_err}. Skipping retention filter.")
+
+        if retention_days:
+            cutoff = datetime.utcnow() - timedelta(days=retention_days)
+
+            def _parse_created_at(val: Any) -> Optional[datetime]:
+                if not isinstance(val, str):
+                    return None
+                try:
+                    ts = val.replace("Z", "+00:00")
+                    return datetime.fromisoformat(ts)
+                except Exception:
+                    return None
+
+            looks = [
+                look
+                for look in looks
+                if (dt := _parse_created_at(look.get("created_at"))) is None or dt >= cutoff
+            ]
+
         # Sort by created_at descending (newest first)
         looks.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return {"looks": looks}
@@ -1503,22 +1553,69 @@ async def get_looks(user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to get looks: {e}")
 
 
+@app.get("/looks/{look_id}")
+async def get_look(look_id: str, auth: tuple[str, str] = Depends(get_current_user_and_token)):
+    """
+    Get a single look by ID for the current user.
+    """
+    from services.looks import get_look_by_id
+
+    user_id, user_token = auth
+
+    try:
+        look = get_look_by_id(look_id, user_id, user_token)
+        if look is None:
+            raise HTTPException(status_code=404, detail="Look not found")
+        return look
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get look: {e}")
+
+
 @app.post("/looks")
 async def save_look(
     look: SaveLookRequest,
-    user_id: str = Depends(get_current_user),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
     Save an outfit look for the current user.
     """
     from services.looks import save_look
 
+    user_id, user_token = auth
+
     try:
         look_dict = look.model_dump()
-        saved_look = save_look(user_id, look_dict)
+        saved_look = save_look(user_id, look_dict, user_token)
         return saved_look
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save look: {e}")
+
+
+def _resolve_retention_days_for_user(user_id: str, client) -> Optional[int]:
+    """
+    Helper to resolve retention days for a user via subscription-service.
+    """
+    plan_retention = {
+        "Premium": 90,
+        "premium": 90,
+        "Premium Plus": 365,
+        "premium_plus": 365,
+    }
+    SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
+    try:
+        resp = client.get(
+            f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+            params={"user_id": user_id},
+            timeout=5.0,
+        )
+        if resp.status_code == 200:
+            plan_name = resp.json().get("planName")
+            return plan_retention.get(plan_name)
+    except Exception as e:
+        logger.warning(f"Failed to resolve retention for user {user_id}: {e}")
+    return None
 
 
 @app.post("/cleanup-expired-files")
@@ -1536,14 +1633,16 @@ async def cleanup_expired_files(background_tasks: BackgroundTasks):
 
 
 @app.get("/favorites")
-async def get_favorites(user_id: str = Depends(get_current_user)):
+async def get_favorites(auth: tuple[str, str] = Depends(get_current_user_and_token)):
     """
     Get all saved favorites for the current user.
     """
     from services.favorites import list_favorites
 
+    user_id, user_token = auth
+
     try:
-        favorites = list_favorites(user_id)
+        favorites = list_favorites(user_id, user_token)
         # Sort by created_at descending (newest first)
         favorites.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return {"favorites": favorites}
@@ -1554,7 +1653,7 @@ async def get_favorites(user_id: str = Depends(get_current_user)):
 @app.post("/favorites")
 async def save_favorite(
     favorite: SaveFavoriteRequest,
-    user_id: str = Depends(get_current_user),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
     Save a favorite try-on result for the current user.
@@ -1562,9 +1661,11 @@ async def save_favorite(
     """
     from services.favorites import save_favorite as save_favorite_service
 
+    user_id, user_token = auth
+
     try:
         favorite_dict = favorite.model_dump()
-        saved_favorite = save_favorite_service(user_id, favorite_dict)
+        saved_favorite = save_favorite_service(user_id, favorite_dict, user_token)
         return saved_favorite
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save favorite: {e}")
@@ -1573,15 +1674,17 @@ async def save_favorite(
 @app.delete("/favorites/{favorite_id}")
 async def delete_favorite(
     favorite_id: str,
-    user_id: str = Depends(get_current_user),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
     Delete a favorite by ID.
     """
     from services.favorites import delete_favorite as delete_favorite_service
 
+    user_id, user_token = auth
+
     try:
-        deleted = delete_favorite_service(user_id, favorite_id)
+        deleted = delete_favorite_service(user_id, favorite_id, user_token)
         if not deleted:
             raise HTTPException(status_code=404, detail="Favorite not found")
         return {"message": "Favorite deleted successfully"}
@@ -1637,7 +1740,9 @@ async def startup_event():
     Runs cleanup every 6 hours.
     """
     import asyncio
-    from services.storage import delete_expired_files_from_r2
+    import requests
+    from services.storage import delete_expired_files_from_r2, delete_file_from_r2_by_url
+    from services.looks import cleanup_expired_looks
     
     # Log that the application is starting up
     logger.info("=" * 60)
@@ -1650,12 +1755,21 @@ async def startup_event():
         try:
             while True:
                 try:
-                    await asyncio.sleep(6 * 60 * 60)  # 6 hours
+                    await asyncio.sleep(24 * 60 * 60)  # 24 hours
                     # Clean up expired R2 files
                     await delete_expired_files_from_r2()
                     # Clean up expired user images from database
                     from services.user_images import cleanup_expired_images
                     cleanup_expired_images()
+                    # Clean up expired looks based on retention policy
+                    session = requests.Session()
+
+                    def resolve_retention(user_id: str):
+                        return _resolve_retention_days_for_user(user_id, session)
+
+                    deleted_looks = cleanup_expired_looks(resolve_retention, delete_file_from_r2_by_url)
+                    if deleted_looks:
+                        logger.info(f"Deleted {deleted_looks} expired look(s) based on retention policy.")
                 except asyncio.CancelledError:
                     # This is expected when the application is shutting down or reloading
                     logger.debug("Periodic cleanup task cancelled (shutting down/reloading)")

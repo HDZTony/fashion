@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
 import axios from 'axios'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
@@ -8,6 +9,9 @@ import { supabase } from '../lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
+
+const route = useRoute()
+const router = useRouter()
 
 // Axios client with auth headers
 const apiClient = axios.create({
@@ -226,6 +230,14 @@ onMounted(async () => {
       loadSubscriptionInfo()
     ])
   }
+  
+  // Check if we need to restore a look from history
+  const lookId = route.query.lookId as string | undefined
+  if (lookId) {
+    console.log('[onMounted] Found lookId in query, restoring look:', lookId)
+    await restoreLookFromHistory(lookId)
+  }
+  
   window.addEventListener('keydown', handleKeyDown)
 })
 
@@ -256,6 +268,90 @@ onActivated(() => {
   // sync selected items from localStorage to activeWardrobeIds
   syncSelectedItemsToActiveWardrobe()
 })
+
+// Restore look from history
+const restoreLookFromHistory = async (lookId: string) => {
+  try {
+    console.log('[restoreLookFromHistory] Restoring look:', lookId)
+    
+    // Ensure uploadedItems is loaded first
+    if (uploadedItems.value.length === 0) {
+      console.log('[restoreLookFromHistory] Loading user items first...')
+      await loadUserItems()
+    }
+    
+    // Fetch the look data
+    const response = await apiClient.get(`/looks/${lookId}`)
+    const look = response.data
+    
+    console.log('[restoreLookFromHistory] Look data:', look)
+    
+    // Restore prompt
+    if (look.prompt) {
+      customPrompt.value = look.prompt
+    }
+    
+    // Restore scene image
+    if (look.scene_image_url) {
+      sceneImageUrl.value = look.scene_image_url
+      sceneImagePreviewUrl.value = look.scene_image_url
+      sceneImageFile.value = null // Clear file since we're using URL
+    }
+    
+    // Restore active wardrobe items
+    if (look.items && Array.isArray(look.items)) {
+      const validWardrobeIds = look.items
+        .map((item: any) => item.wardrobe_id)
+        .filter((id: any): id is string => !!id && typeof id === 'string')
+      
+      // Only restore items that exist in uploadedItems
+      const existingIds = validWardrobeIds.filter((id: string) => 
+        uploadedItems.value.some(item => String(item.id) === id)
+      )
+      
+      activeWardrobeIds.value = existingIds
+      
+      // Restore role mapping
+      activeWardrobeRoleMap.value.clear()
+      look.items.forEach((item: any) => {
+        if (item.wardrobe_id && existingIds.includes(String(item.wardrobe_id))) {
+          activeWardrobeRoleMap.value.set(String(item.wardrobe_id), item.role)
+        }
+      })
+      
+      // Restore original applied outfit for tracking missing roles
+      originalAppliedOutfit.value = {
+        title: look.title || '',
+        items: look.items.map((item: any) => ({
+          wardrobe_id: item.wardrobe_id || undefined,
+          role: item.role,
+          description: item.description || '',
+        })),
+        reason: look.reason || '',
+        long_text: look.long_text || '',
+      }
+      
+      console.log('[restoreLookFromHistory] Restored:', {
+        wardrobeIds: activeWardrobeIds.value,
+        roleMap: Array.from(activeWardrobeRoleMap.value.entries()),
+        prompt: customPrompt.value,
+        sceneImageUrl: sceneImageUrl.value,
+      })
+    }
+    
+    // Clear the lookId from URL to avoid restoring again on refresh
+    const query = { ...route.query }
+    delete query.lookId
+    router.replace({ query })
+  } catch (error: any) {
+    console.error('[restoreLookFromHistory] Failed to restore look:', error)
+    alert(`Failed to restore look: ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
+    // Clear the lookId from URL even on error
+    const query = { ...route.query }
+    delete query.lookId
+    router.replace({ query })
+  }
+}
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)

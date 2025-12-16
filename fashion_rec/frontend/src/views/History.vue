@@ -1,11 +1,13 @@
 <script setup lang="ts">
 defineOptions({ name: 'History' })
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+const router = useRouter()
 const looks = ref<any[]>([])
 const isLoading = ref(false)
 const error = ref('')
@@ -43,6 +45,10 @@ const loadLooks = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+const handleRetryLook = (lookId: string) => {
+  router.push(`/studio?lookId=${lookId}`)
 }
 
 onMounted(() => {
@@ -90,9 +96,15 @@ onMounted(() => {
           <p class="text-sm text-gray-800 whitespace-pre-line mb-2">
             {{ look.long_text }}
           </p>
-          <p class="text-[11px] text-gray-400">
+          <p class="text-[11px] text-gray-400 mb-3">
             Saved at: {{ look.created_at }}
           </p>
+          <button
+            @click="handleRetryLook(look.id)"
+            class="w-full px-4 py-2 text-sm font-medium text-white bg-black hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            再次试穿
+          </button>
         </div>
       </div>
     </main>

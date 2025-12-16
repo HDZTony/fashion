@@ -1,2 +1,0 @@
-uv run python run.py
-npm run dev
