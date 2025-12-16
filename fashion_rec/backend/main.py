@@ -1150,10 +1150,12 @@ async def try_on(
 ):
     """
     Virtual try-on:
-    - person_image: the model photo (图1) as uploaded file (optional)
-    - person_image_url: the model photo (图1) as URL (optional)
-    - garment_urls: JSON-encoded list of garment image URLs (图2, 图3, ...)
+    - garment_urls: JSON-encoded list of garment image URLs (图1, 单品合成图)
+    - person_image: the model photo (图2) as uploaded file (optional)
+    - person_image_url: the model photo (图2) as URL (optional)
+    - scene_image_url: the scene image (图3) as URL (optional)
 
+    Image order: 图1 (garment collage) → 图2 (model photo) → 图3 (scene, optional)
     At least one of person_image or person_image_url must be provided.
     """
     from services.qwen_image_edit import QwenImageEditClient, _load_env_config
@@ -1292,15 +1294,15 @@ async def try_on(
         garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{user_id}_collage.png"
         garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
 
-        image_inputs: List[Any] = [person_input, garments_collage_path]
+        image_inputs: List[Any] = [garments_collage_path, person_input]
         # If scene image URL is provided, use it as 图3 (background)
         if scene_image_url:
             image_inputs.append(scene_image_url)
             prompt = (
-                "使用图1（模特图）中的人物，让这个人物穿着图2中的所有衣服和配饰，"
+                "使用图2（模特图）中的人物，让这个人物穿着图1中的所有衣服和配饰，"
                 "然后将这个穿着新衣服的人物放置在图3所示的场景中。"
                 "保持图3的环境与背景作为最终背景，只使用图3的场景元素，"
-                "人物必须来自图1，不要使用图3中的任何人物。"
+                "人物必须来自图2，不要使用图3中的任何人物。"
                 "所有单品必须正确地穿在模特身上："
                 "上装和下装必须穿在身体的对应位置，鞋子必须穿在脚上并站在地面上，"
                 "外套必须穿在外层，配饰如眼镜必须戴在脸上、帽子戴在头上、"
@@ -1309,10 +1311,10 @@ async def try_on(
                 "整体画面自然、光影一致、所有物品都贴合人体。"
             )
         else:
-            # Prompt: 图1中的人物穿着图2中的所有衣服，保留模特与原始背景
+            # Prompt: 图2中的人物穿着图1中的所有衣服，保留模特与原始背景
             prompt = (
-                "图1中的人物穿着图2中的所有衣服和配饰，保持人物身份与原始背景自然合理，"
-                "只替换服装，不要移除或替换图1的背景。"
+                "图2中的人物穿着图1中的所有衣服和配饰，保持人物身份与原始背景自然合理，"
+                "只替换服装，不要移除或替换图2的背景。"
                 "所有单品必须正确地穿在模特身上："
                 "上装和下装必须穿在身体的对应位置，鞋子必须穿在脚上，"
                 "外套必须穿在外层，配饰如眼镜必须戴在脸上、帽子戴在头上、"
@@ -1325,14 +1327,14 @@ async def try_on(
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
 
     try:
-        # Index 1 is the garment collage (图2), set it to expire in 7 days
+        # Index 0 is the garment collage (图1), set it to expire in 7 days
         edited_path = await client.edit_image(
             image_inputs=image_inputs,
             prompt=prompt,
             n=1,
-            negative_prompt="禁止出现图2中的人物，禁止出现图3中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。",  # 禁止出现衣服拼图和场景图中的人物，禁止物品散落或悬浮
+            negative_prompt="禁止出现图1中的人物，禁止出现图3中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。",  # 禁止出现衣服拼图和场景图中的人物，禁止物品散落或悬浮
             output_path=output_path,
-            garment_collage_index=1,  # 图2 (garment collage) will expire in 7 days
+            garment_collage_index=0,  # 图1 (garment collage) will expire in 7 days
         )
     except Exception as e:
         import traceback

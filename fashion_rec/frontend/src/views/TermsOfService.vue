@@ -19,7 +19,7 @@ const router = useRouter()
           <span>Back</span>
         </button>
         <h1 class="text-3xl font-bold mb-2">Terms of Service</h1>
-        <p class="text-gray-500 text-sm">Last updated: Jan 1, 2024</p>
+        <p class="text-gray-500 text-sm">Last updated: Dec 16, 2025</p>
       </div>
 
       <!-- Content -->
@@ -118,8 +118,7 @@ const router = useRouter()
           <h2 class="text-xl font-semibold mb-3 text-black">14. Contact</h2>
           <p class="mb-3">Questions? Contact us:</p>
           <ul class="list-none space-y-2 mb-3">
-            <li><strong>Email:</strong> legal@fashion-rec.com</li>
-            <li><strong>Address:</strong> [Your company address]</li>
+            <li><strong>Email:</strong>support@hdz73.com</li>
           </ul>
         </section>
       </div>

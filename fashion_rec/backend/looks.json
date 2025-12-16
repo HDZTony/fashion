@@ -1200,5 +1200,46 @@
     "location": null,
     "prompt": "如果你希望在保持帅气的同时更轻松自在，这套混搭风会是绝佳选择。你已选定的深绿色毛衣温暖有质感，外搭灰色西装外套瞬间提升格调，下装选用经典蓝色牛仔裤，打破严肃感，营造随性但不随意的氛围。脚踩白色棕边运动鞋，舒适又时髦，完美适配商场步行需求。最后别忘了戴上黑金框太阳镜——它不仅是遮阳利器，更是提升整体造型“酷感”和“帅气值”的关键配饰。这套穿搭在图片所示的现代商场环境中非常吸睛，适合下午茶、逛街或非正式会议场合。",
     "scene_image_url": "https://pub-da29e362d6934e738ef0234d04c252d5.r2.dev/9191a8ef-48ba-437f-87a1-b3d74f02964c.jpg"
+  },
+  {
+    "id": "f981e95f-de3a-4ed4-920e-4b18357adf51",
+    "user_id": "cfdbf997-329c-470d-b961-500fe7090655",
+    "created_at": "2025-12-16T06:44:57.835380Z",
+    "title": "Sharp Business Casual Look",
+    "items": [
+      {
+        "wardrobe_id": "c808e970-75d0-4219-b84c-eb965af831b9",
+        "role": "outer",
+        "description": "Charcoal gray Blazer"
+      },
+      {
+        "wardrobe_id": "feb367fb-60cf-4208-a261-ed023d088db6",
+        "role": "top",
+        "description": "White Dress shirt"
+      },
+      {
+        "wardrobe_id": "0a5fe0d4-1f39-4003-850c-12e41d016436",
+        "role": "bottom",
+        "description": "Dark blue, Charcoal Trousers"
+      },
+      {
+        "wardrobe_id": "bd4d249d-179a-493e-aaaa-035616a16751",
+        "role": "shoes",
+        "description": "Black Leather dress shoes"
+      },
+      {
+        "wardrobe_id": "1d8bb600-5b94-43eb-8f4f-1b12176d6452",
+        "role": "accessory",
+        "description": "Black, Gold Sunglasses"
+      },
+      {
+        "wardrobe_id": "57a473cd-3e68-4469-8b77-e2cd75ea84a5",
+        "role": "accessory",
+        "description": "Brown, Tan Duffel bag"
+      }
+    ],
+    "location": null,
+    "prompt": "This outfit combines the user’s pre-selected charcoal gray blazer and black leather dress shoes to create a sharp, professional silhouette suitable for business or formal daytime events. The white dress shirt underneath offers clean contrast and breathability under mild 18.4°C conditions, while the dark blue charcoal trousers provide structure without being overly heavy. The black and gold sunglasses add a touch of luxury and sun protection for the sunny Hangzhou day, and the brown tan duffel bag completes the ensemble with practical elegance. With low humidity and light wind, this layered but not bulky combination keeps you looking stylish and feeling comfortable.",
+    "scene_image_url": null
   }
 ]
