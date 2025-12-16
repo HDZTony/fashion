@@ -1121,7 +1121,7 @@ const searchOnGoogle = (description: string) => {
                 v-model="customPrompt"
                 rows="3"
                 class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0"
-                placeholder="e.g., Today in Hangzhou, minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
+                placeholder="e.g., Minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
               ></textarea>
               
               <!-- Scene image preview area -->

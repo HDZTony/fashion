@@ -12,7 +12,7 @@ dependencies = [
     "langchain-core",
     "sentence-transformers",
     "pillow",
-    "boto3",
+    "boto3>=1.42.0",
     "PyJWT",
     "cryptography",
     "supabase",

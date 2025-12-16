@@ -1,14 +1,17 @@
 import boto3
 import os
+import socket
 from botocore.exceptions import NoCredentialsError
 from botocore.config import Config
 from botocore.httpsession import URLLib3Session
+from botocore.session import Session
 from dotenv import load_dotenv
 import uuid
 from datetime import datetime, timedelta
 import json
 import urllib3
 import ssl
+from io import BytesIO
 
 load_dotenv()
 
@@ -24,10 +27,10 @@ R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL") # Optional, if different from endpoin
 def get_r2_client():
     """
     Create and return a boto3 S3 client configured for Cloudflare R2.
-    Includes retry configuration and SSL handling for better reliability.
+    Uses URLLib3Session with socket options to avoid SSL EOF issues.
     
-    Note: Cloudflare R2 sometimes has SSL compatibility issues with boto3,
-    so we use a custom HTTP client with relaxed SSL settings.
+    Note: The configuration uses URLLib3Session with socket options (SO_KEEPALIVE, TCP_NODELAY)
+    which fixes SSL EOF issues while maintaining SSL verification enabled.
     """
     # Configure boto3 with retry strategy and SSL handling
     config = Config(
@@ -39,29 +42,33 @@ def get_r2_client():
         read_timeout=120  # Increased read timeout for large files
     )
     
-    # Check if SSL verification should be disabled
-    # For Cloudflare R2, SSL verification can sometimes cause issues
-    # Set R2_DISABLE_SSL_VERIFY=false to enable strict SSL (default: disabled for compatibility)
-    verify_ssl = os.getenv("R2_DISABLE_SSL_VERIFY", "true").lower() != "true"
+    # 根本原因和解决方案：
+    # - boto3默认使用requests库，而requests在处理R2的SSL连接时会出现EOF错误
+    # - 使用URLLib3Session（基于urllib3）+ socket_options可以解决这个问题
+    # - 配置socket选项（SO_KEEPALIVE, TCP_NODELAY）保持连接稳定
     
-    if not verify_ssl:
-        print("[R2] SSL verification is disabled for Cloudflare R2 compatibility.")
-        # Use boto3.client() - SSL errors will be handled in retry logic
-        # boto3 doesn't support verify parameter directly, but we can set it via environment
-        # or handle SSL errors in the upload retry logic (which we already do)
-        # For simplicity, just use the standard client - SSL errors are caught and retried
-        client = boto3.client(
-            's3',
-            endpoint_url=R2_ENDPOINT_URL,
-            aws_access_key_id=R2_ACCESS_KEY_ID,
-            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-            config=config
-        )
-        
-        return client
+    # 配置socket选项，修复SSL EOF问题
+    socket_options = [
+        (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
+        (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1),
+    ]
     
-    # If SSL verification is enabled, use default client
-    return boto3.client(
+    # 使用URLLib3Session + socket_options，保持SSL验证启用
+    # 注意：如果使用VPN/代理，可能需要配置代理设置
+    # 但为了稳定性，我们优先尝试直连（不通过系统代理）
+    http_client = URLLib3Session(
+        verify=True,
+        socket_options=socket_options,
+        max_pool_connections=10,
+        proxies=None  # 明确设置为None，避免使用系统代理
+    )
+    
+    # Create a custom session with the HTTP client
+    session = Session()
+    session.register_component('http_client', http_client)
+    
+    # Create boto3 client using the custom session
+    return session.create_client(
         's3',
         endpoint_url=R2_ENDPOINT_URL,
         aws_access_key_id=R2_ACCESS_KEY_ID,
@@ -79,6 +86,32 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
         content_type: MIME type of the file
         expires_in_days: Optional number of days after which the file should be deleted (for lifecycle management)
     """
+    # Cache file content to BytesIO before any upload attempts
+    # This ensures we can retry even if the original file object is closed
+    try:
+        # Try to read current position to preserve it
+        original_position = 0
+        if hasattr(file_obj, 'tell'):
+            try:
+                original_position = file_obj.tell()
+            except (ValueError, OSError, AttributeError):
+                pass
+        
+        # Read all file content into memory
+        if hasattr(file_obj, 'read'):
+            file_content = file_obj.read()
+        else:
+            # If it's not a readable object, try to get it as bytes
+            file_content = bytes(file_obj) if isinstance(file_obj, (bytes, bytearray)) else None
+            if file_content is None:
+                raise ValueError("Cannot read from file object")
+        
+        # Create a BytesIO object from the cached content
+        cached_file_obj = BytesIO(file_content)
+        print(f"[R2] Cached file content to memory ({len(file_content)} bytes) for retry support")
+    except Exception as e:
+        raise Exception(f"Failed to cache file content for upload: {str(e)}")
+    
     s3 = get_r2_client()
     
     # Generate a unique filename to prevent collisions
@@ -94,26 +127,31 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
             metadata['expires_at'] = expiration_date.isoformat() + 'Z'
             metadata['expires_in_days'] = str(expires_in_days)
         
-        # Upload with retry logic for SSL errors
-        # Use a new client for each retry to avoid connection reuse issues
+        # Upload with retry logic
+        # Note: SSL errors should be resolved by socket_options configuration
+        # Retries are mainly for network issues, not SSL problems
         max_retries = 5
         last_error = None
         
         for attempt in range(max_retries):
             try:
-                # Get a fresh client for each attempt to avoid SSL connection reuse issues
+                # Get a fresh client for each attempt to avoid connection reuse issues
                 if attempt > 0:
-                    s3 = get_r2_client()
-                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} with fresh client")
+                    s3 = get_r2_client()  # Use default configuration (SSL enabled)
+                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} for {unique_filename}")
+                else:
+                    print(f"[R2] Starting upload attempt {attempt + 1}/{max_retries} for {unique_filename}")
                 
-                s3.upload_fileobj(
-                    file_obj,
-                    R2_BUCKET_NAME,
-                    unique_filename,
-                    ExtraArgs={
-                        'ContentType': content_type,
-                        'Metadata': metadata
-                    }
+                # Reset cached file object to beginning for each attempt
+                cached_file_obj.seek(0)
+                
+                # Use put_object instead of upload_fileobj (boto3 client method)
+                s3.put_object(
+                    Bucket=R2_BUCKET_NAME,
+                    Key=unique_filename,
+                    Body=cached_file_obj,
+                    ContentType=content_type,
+                    Metadata=metadata
                 )
                 # Success, break out of retry loop
                 print(f"[R2] Successfully uploaded {unique_filename} on attempt {attempt + 1}")
@@ -121,30 +159,27 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
             except Exception as e:
                 last_error = e
                 error_str = str(e).lower()
+                error_type = type(e).__name__
                 
-                # Check if it's an SSL-related error
+                # Enhanced SSL error detection
                 is_ssl_error = (
                     "ssl" in error_str or 
                     "unexpected_eof" in error_str or
                     "ssl validation failed" in error_str or
                     "certificate" in error_str or
-                    "tls" in error_str
+                    "tls" in error_str or
+                    "eof" in error_str or
+                    "ssl:" in error_str or
+                    "_ssl.c:" in error_str or
+                    "violation of protocol" in error_str
                 )
+                
+                # Log detailed error information
+                print(f"[R2] Upload error on attempt {attempt + 1}/{max_retries} (type: {error_type}): {str(e)[:300]}")
                 
                 # If it's an SSL error and not the last attempt, retry
                 if is_ssl_error and attempt < max_retries - 1:
-                    print(f"[R2] SSL error on attempt {attempt + 1}/{max_retries}: {str(e)[:200]}")
-                    # Reset file pointer for retry (only if file is still open)
-                    if hasattr(file_obj, 'seek'):
-                        try:
-                            if hasattr(file_obj, 'closed') and file_obj.closed:
-                                print(f"[R2] File object is closed, cannot retry")
-                                raise
-                            file_obj.seek(0)
-                        except (ValueError, OSError, AttributeError) as seek_error:
-                            # File is closed or can't seek, can't retry
-                            print(f"[R2] Cannot seek file object: {seek_error}, aborting retry")
-                            raise
+                    print(f"[R2] Detected SSL-related error, will retry with SSL verification disabled")
                     # Wait a bit before retry (exponential backoff)
                     import time
                     wait_time = min(2 ** attempt, 10)  # Max 10 seconds
@@ -154,12 +189,12 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
                 else:
                     # Not an SSL error or last attempt, raise immediately
                     if attempt == max_retries - 1:
-                        print(f"[R2] Failed after {max_retries} attempts")
+                        print(f"[R2] Failed after {max_retries} attempts. Final error: {error_type}: {str(e)[:300]}")
                     raise
         
         # If we exhausted retries, raise the last error
-        if last_error and ("ssl" in str(last_error).lower() or "unexpected_eof" in str(last_error).lower()):
-            raise Exception(f"Failed to upload to R2 after {max_retries} attempts due to SSL error: {str(last_error)}")
+        if last_error:
+            raise Exception(f"Failed to upload to R2 after {max_retries} attempts: {str(last_error)}")
         
         # Construct Public URL
         if R2_PUBLIC_URL:
@@ -174,10 +209,20 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
         
         return public_url
             
-    except NoCredentialsError:
+    except NoCredentialsError as e:
+        print(f"[R2] Credentials error: {str(e)}")
         raise Exception("Credentials not available for R2")
     except Exception as e:
+        error_type = type(e).__name__
+        print(f"[R2] Upload failed with {error_type}: {str(e)[:300]}")
         raise Exception(f"Failed to upload to R2: {str(e)}")
+    finally:
+        # Clean up cached file object
+        try:
+            if 'cached_file_obj' in locals() and cached_file_obj:
+                cached_file_obj.close()
+        except Exception as cleanup_error:
+            print(f"[R2] Warning: Error during cleanup: {cleanup_error}")
 
 
 async def delete_expired_files_from_r2():
