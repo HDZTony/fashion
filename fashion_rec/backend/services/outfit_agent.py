@@ -167,7 +167,9 @@ async def generate_outfit_suggestions(
     )
 
   system_prompt = f"""
-You are a professional outfit stylist. Combine today's real weather with the user's wardrobe to generate outfit suggestions. All outputs must be in English.
+You are a professional outfit stylist. Combine today's real weather with the user's wardrobe to generate outfit suggestions.
+
+CRITICAL LANGUAGE REQUIREMENT: ALL OUTPUTS MUST BE IN ENGLISH ONLY. Do not use Chinese, Japanese, or any other language. Every field in the JSON response must contain English text only.
 
 Requirements:
 - Prioritize using items from the user's wardrobe (match by color, type, and style).
@@ -181,20 +183,24 @@ Requirements:
 JSON output format (output JSON only, no extra text or Markdown fences):
 [
   {{
-    "title": "Outfit title in English",
+    "title": "Outfit title in English only (e.g., 'Warm Street Style' or 'Casual Office Look')",
     "items": [
       {{
         "wardrobe_id": "id from wardrobe list; null if not sure",
         "role": "one of top/bottom/shoes/outer/accessory",
-        "description": "Short English description, e.g., White crew neck t-shirt"
+        "description": "Short English description only, e.g., 'Navy blue Teal Hoodie' or 'White Brown Sneakers'. Do NOT include Chinese translations or parentheses with Chinese text."
       }}
     ],
-    "reason": "Brief English rationale for why this fits today's weather/scene",
-    "long_text": "Full English description; can include multiple paragraphs"
+    "reason": "Brief English rationale only (e.g., 'Cold temperatures require layered warmth; pre-selected hoodie and jacket combo balances street style with wind protection')",
+    "long_text": "Full English description only; can include multiple paragraphs. Write naturally in English, describing the outfit, weather considerations, and style rationale. Do NOT use Chinese characters."
   }}
 ]
 
-Only output the JSON array above. Do not add ```json fences or any text outside the JSON.
+IMPORTANT: 
+- Every string value in the JSON must be in English.
+- Do not include Chinese text in parentheses or anywhere else.
+- The title, description, reason, and long_text fields must all be 100% English.
+- Only output the JSON array above. Do not add ```json fences or any text outside the JSON.
 """
 
   user_prompt_text = f"""
@@ -215,13 +221,14 @@ Task:
 - Reuse "User pre-selected items" when present, and complete remaining roles (pants, outerwear, shoes, accessories, etc.).
 - For each outfit, explain which wardrobe items you used and why they fit the weather/scene.
 - Strictly follow the JSON structure above.
+- REMEMBER: All text in your response must be in English only. Do not use Chinese or any other language in title, description, reason, or long_text fields.
 """
 
   # Build message content: if scene_image_url exists, include it as image input
   if scene_image_url:
     user_prompt_text_with_scene = f"""{user_prompt_text}
 
-The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe the environment and tailor outfits to that scene.
+The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe the environment and tailor outfits to that scene. Remember: all output text must be in English only.
 """
     # For qwen-vl, content can be a list with text and image URL
     # Format: [{"type": "text", "text": "..."}, {"type": "image_url", "image_url": {"url": "..."}}]
