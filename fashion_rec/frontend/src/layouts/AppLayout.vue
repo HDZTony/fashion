@@ -7,8 +7,8 @@
         </router-link>
         <div class="flex items-center gap-4">
           <router-link to="/studio" class="text-sm text-gray-600 hover:text-black">Studio</router-link>
-          <router-link to="/wardrobe" class="text-sm text-gray-600 hover:text-black">My Wardrobe</router-link>
-          <router-link to="/history" class="text-sm text-gray-600 hover:text-black">My Outfit History</router-link>
+          <router-link to="/wardrobe" class="text-sm text-gray-600 hover:text-black">Wardrobe</router-link>
+          <router-link to="/history" class="text-sm text-gray-600 hover:text-black">Outfit History</router-link>
           <router-link to="/favorites" class="text-sm text-gray-600 hover:text-black flex items-center gap-1">
             <Heart class="w-4 h-4" /> Favorites
           </router-link>

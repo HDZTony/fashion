@@ -4,7 +4,7 @@ Looks service - using Supabase for storage
 import os
 from typing import Any, Dict, List, Optional
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -52,7 +52,7 @@ def save_look(user_id: str, look: Dict[str, Any], user_token: Optional[str] = No
     record = {
         "id": look_id,
         "user_id": user_id,
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         **look,
     }
     
@@ -167,7 +167,7 @@ def cleanup_expired_looks(
                 if not isinstance(created_at, str):
                     continue
                 created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
                 if created_dt >= cutoff:
                     continue
             except Exception:

@@ -13,7 +13,7 @@ import sys
 import logging
 import asyncio
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Configure logging to ensure output is visible
 logging.basicConfig(
@@ -1529,7 +1529,7 @@ async def get_looks(auth: tuple[str, str] = Depends(get_current_user_and_token))
             logger.warning(f"Failed to fetch subscription status: {sub_err}. Skipping retention filter.")
 
         if retention_days:
-            cutoff = datetime.utcnow() - timedelta(days=retention_days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
             def _parse_created_at(val: Any) -> Optional[datetime]:
                 if not isinstance(val, str):
@@ -1786,7 +1786,7 @@ async def startup_event():
 
     # Start cleanup task in background
     task = asyncio.create_task(periodic_cleanup())
-    logger.info("Periodic R2 cleanup task started (runs every 6 hours)")
+    logger.info("Periodic R2 cleanup task started (runs every 24 hours)")
     
     # Store task reference for cleanup on shutdown
     app.state.cleanup_task = task

@@ -4,7 +4,7 @@ Favorites service - using Supabase for storage
 import os
 from typing import Any, Dict, List, Optional
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -52,7 +52,7 @@ def save_favorite(user_id: str, favorite: Dict[str, Any], user_token: Optional[s
     record = {
         "id": favorite_id,
         "user_id": user_id,
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         **favorite,
     }
     
