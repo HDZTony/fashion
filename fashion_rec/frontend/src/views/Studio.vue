@@ -378,39 +378,68 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
     if (restoreData.image_url) {
       tryOnImageUrl.value = restoreData.image_url
       console.log('[restoreTryOnHistory] Restored try-on result image:', restoreData.image_url)
+      // Check if this result is already in favorites
+      await checkFavoriteStatus()
     }
     
-    // Try to find and restore model image from historical images
-    // The model image should be uploaded around the same time as the try-on
-    const tryOnDate = new Date(restoreData.created_at)
-    console.log('[restoreTryOnHistory] Try-on date:', tryOnDate.toISOString())
-    console.log('[restoreTryOnHistory] Available model images:', historicalModelImages.value.length)
-    
-    // Find the most recent model image before or around the try-on time
-    // Use a more lenient time window (24 hours) to find the model image
-    const modelImage = historicalModelImages.value
-      .filter(img => {
-        const imgDate = new Date(img.created_at)
-        // Model image should be uploaded before or around the try-on time (within 24 hours)
-        const timeDiff = tryOnDate.getTime() - imgDate.getTime()
-        // Model image should be uploaded before try-on (not after)
-        return timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000 // 24 hours before
-      })
-      .sort((a, b) => {
-        // Sort by closest to try-on time (most recent before try-on)
-        const aDiff = tryOnDate.getTime() - new Date(a.created_at).getTime()
-        const bDiff = tryOnDate.getTime() - new Date(b.created_at).getTime()
-        return aDiff - bDiff // Smaller diff = closer to try-on time
-      })[0]
-    
-    if (modelImage) {
-      modelImagePreviewUrl.value = modelImage.image_url
+    // Restore model image - prefer saved model_image_url/model_image_id, fallback to time-based matching
+    if (restoreData.model_image_url) {
+      // Use saved model image URL directly
+      modelImagePreviewUrl.value = restoreData.model_image_url
       modelImageFile.value = null
-      console.log('[restoreTryOnHistory] Restored model image:', modelImage.image_url)
-      console.log('[restoreTryOnHistory] Model image date:', new Date(modelImage.created_at).toISOString())
+      console.log('[restoreTryOnHistory] Restored model image from saved URL:', restoreData.model_image_url)
+    } else if (restoreData.model_image_id) {
+      // Find model image by ID
+      const modelImage = historicalModelImages.value.find(img => img.id === restoreData.model_image_id)
+      if (modelImage) {
+        modelImagePreviewUrl.value = modelImage.image_url
+        modelImageFile.value = null
+        console.log('[restoreTryOnHistory] Restored model image by ID:', modelImage.image_url)
+      } else {
+        console.log('[restoreTryOnHistory] Model image ID not found in history, trying time-based match...')
+        // Fallback to time-based matching
+        const tryOnDate = new Date(restoreData.created_at)
+        const modelImage = historicalModelImages.value
+          .filter(img => {
+            const imgDate = new Date(img.created_at)
+            const timeDiff = tryOnDate.getTime() - imgDate.getTime()
+            return timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000
+          })
+          .sort((a, b) => {
+            const aDiff = tryOnDate.getTime() - new Date(a.created_at).getTime()
+            const bDiff = tryOnDate.getTime() - new Date(b.created_at).getTime()
+            return aDiff - bDiff
+          })[0]
+        
+        if (modelImage) {
+          modelImagePreviewUrl.value = modelImage.image_url
+          modelImageFile.value = null
+          console.log('[restoreTryOnHistory] Restored model image by time match:', modelImage.image_url)
+        }
+      }
     } else {
-      // If no model image found within 24 hours, try to use the most recent one
-      if (historicalModelImages.value.length > 0) {
+      // Fallback to time-based matching if no saved model image info
+      const tryOnDate = new Date(restoreData.created_at)
+      console.log('[restoreTryOnHistory] Try-on date:', tryOnDate.toISOString())
+      console.log('[restoreTryOnHistory] Available model images:', historicalModelImages.value.length)
+      
+      const modelImage = historicalModelImages.value
+        .filter(img => {
+          const imgDate = new Date(img.created_at)
+          const timeDiff = tryOnDate.getTime() - imgDate.getTime()
+          return timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000
+        })
+        .sort((a, b) => {
+          const aDiff = tryOnDate.getTime() - new Date(a.created_at).getTime()
+          const bDiff = tryOnDate.getTime() - new Date(b.created_at).getTime()
+          return aDiff - bDiff
+        })[0]
+      
+      if (modelImage) {
+        modelImagePreviewUrl.value = modelImage.image_url
+        modelImageFile.value = null
+        console.log('[restoreTryOnHistory] Restored model image by time match:', modelImage.image_url)
+      } else if (historicalModelImages.value.length > 0) {
         const mostRecent = historicalModelImages.value
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
         modelImagePreviewUrl.value = mostRecent.image_url
@@ -965,6 +994,7 @@ const performTryOn = async () => {
   isTryingOn.value = true
   // Reset favorite state when starting a new try-on
   favoriteSaved.value = false
+  currentFavoriteId.value = null
 
   const tryOnRequestData = {
     person_image: modelImageFile.value?.name || 'file',
@@ -1003,6 +1033,8 @@ const performTryOn = async () => {
     })
 
     tryOnImageUrl.value = response.data.url
+    // Check if this result is already in favorites (in case user regenerates same result)
+    await checkFavoriteStatus()
   } catch (error) {
     console.error('Try-on failed:', error)
     alert('Failed to generate try-on result. Please try again later.')
@@ -1359,6 +1391,34 @@ const openTryOnImageViewer = () => {
 // Favorite functionality
 const isSavingFavorite = ref(false)
 const favoriteSaved = ref(false)
+const currentFavoriteId = ref<string | null>(null)
+
+// Check if current try-on result is already in favorites
+const checkFavoriteStatus = async () => {
+  if (!tryOnImageUrl.value) {
+    favoriteSaved.value = false
+    currentFavoriteId.value = null
+    return
+  }
+  
+  try {
+    const response = await apiClient.get<{ favorites: Array<{ id: string; image_url: string }> }>('/favorites')
+    const favorite = response.data.favorites.find(f => f.image_url === tryOnImageUrl.value)
+    if (favorite) {
+      favoriteSaved.value = true
+      currentFavoriteId.value = favorite.id
+      console.log('[checkFavoriteStatus] Found existing favorite:', favorite.id)
+    } else {
+      favoriteSaved.value = false
+      currentFavoriteId.value = null
+    }
+  } catch (error: any) {
+    console.error('[checkFavoriteStatus] Failed to check favorite status:', error)
+    // On error, assume not saved
+    favoriteSaved.value = false
+    currentFavoriteId.value = null
+  }
+}
 
 const saveFavorite = async () => {
   if (!tryOnImageUrl.value) {
@@ -1366,23 +1426,59 @@ const saveFavorite = async () => {
     return
   }
 
+  // If already saved, delete the favorite (unfavorite)
+  if (favoriteSaved.value && currentFavoriteId.value) {
+    isSavingFavorite.value = true
+    try {
+      await apiClient.delete(`/favorites/${currentFavoriteId.value}`)
+      favoriteSaved.value = false
+      currentFavoriteId.value = null
+      console.log('[saveFavorite] Favorite removed')
+    } catch (error: any) {
+      console.error('Failed to remove favorite:', error)
+      alert(error?.response?.data?.detail || 'Failed to remove favorite, please try again later.')
+    } finally {
+      isSavingFavorite.value = false
+    }
+    return
+  }
+
+  // Otherwise, save as favorite
   isSavingFavorite.value = true
   favoriteSaved.value = false
 
   try {
+    // Get garment URLs from active wardrobe items
+    const garmentUrls = activeWardrobeItems.value
+      .map((item) => item.url || item.features.path)
+      .filter((u): u is string => !!u)
+    
+    // Find model image ID if using historical image
+    let modelImageId: string | undefined = undefined
+    if (modelImagePreviewUrl.value && !modelImageFile.value) {
+      // If using historical image, find its ID
+      const modelImage = historicalModelImages.value.find(
+        img => img.image_url === modelImagePreviewUrl.value
+      )
+      if (modelImage) {
+        modelImageId = modelImage.id
+      }
+    }
+    
     // The image is already uploaded to R2, so we can use the URL directly
     const response = await apiClient.post<{ id: string; image_url: string }>('/favorites', {
       image_url: tryOnImageUrl.value,
       title: originalAppliedOutfit.value?.title || 'Try-on result',
+      garment_urls: garmentUrls.length > 0 ? garmentUrls : undefined,
+      scene_image_url: sceneImageUrl.value || undefined,
+      prompt: customPrompt.value || undefined,
+      model_image_url: modelImagePreviewUrl.value || undefined,
+      model_image_id: modelImageId,
     })
     
     favoriteSaved.value = true
+    currentFavoriteId.value = response.data.id
     console.log('Favorite saved:', response.data)
-    
-    // Reset the saved state after 3 seconds
-    setTimeout(() => {
-      favoriteSaved.value = false
-    }, 3000)
   } catch (error: any) {
     console.error('Failed to save favorite:', error)
     alert(error?.response?.data?.detail || 'Failed to save favorite, please try again later.')

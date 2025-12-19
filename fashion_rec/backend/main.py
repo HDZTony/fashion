@@ -97,6 +97,11 @@ class SaveLookRequest(BaseModel):
 class SaveFavoriteRequest(BaseModel):
     image_url: str  # The try-on result image URL (uploaded to R2)
     title: Optional[str] = None  # Optional title for the favorite
+    garment_urls: Optional[List[str]] = None  # URLs of garment items used in try-on
+    scene_image_url: Optional[str] = None  # Scene image URL if used
+    prompt: Optional[str] = None  # User's custom prompt
+    model_image_url: Optional[str] = None  # Model image URL
+    model_image_id: Optional[str] = None  # Model image ID
 
 
 @app.get("/")

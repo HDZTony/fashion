@@ -37,6 +37,10 @@ const faqs = [
     answer: 'Upload your photo and the garments you want to try. Our AI will generate the try-on results automatically. You can start in the Studio page.'
   },
   {
+    question: "If I don't plan to pay, is this website useless to me?",
+    answer: "Absolutely not. We believe people will always pay for quality service. Even if you subscribe to the free plan, you can still enjoy all core features."
+  },
+  {
     question: 'What is the difference between Free and Premium?',
     answer: 'The Free plan offers 2 try-on per day with core features and history saving. Premium includes more try-ons and advanced features.'
   },
@@ -50,7 +54,7 @@ const faqs = [
   },
   {
     question: 'How do I manage my wardrobe?',
-    answer: 'After signing in, go to “My Wardrobe” to add, edit, or delete items. Your outfit history is saved automatically.'
+    answer: 'After signing in, go to “My Wardrobe” to add, edit, or delete items.'
   }
 ]
 

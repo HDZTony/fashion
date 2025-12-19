@@ -1,16 +1,23 @@
 <script setup lang="ts">
 defineOptions({ name: 'Favorites' })
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
-import { Heart, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
+const router = useRouter()
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 interface Favorite {
   id: string
   image_url: string
   title?: string
+  garment_urls?: string[]
+  scene_image_url?: string
+  prompt?: string
+  model_image_url?: string
+  model_image_id?: string
   created_at: string
 }
 
@@ -127,17 +134,66 @@ onMounted(() => {
 const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString)
-    return date.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 0) {
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+      if (diffHours === 0) {
+        const diffMinutes = Math.floor(diffMs / (1000 * 60))
+        return diffMinutes <= 1 ? 'just now' : `${diffMinutes} minutes ago`
+      }
+      return `${diffHours} hours ago`
+    } else if (diffDays === 1) {
+      return 'yesterday'
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`
+    } else {
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
   } catch {
     return dateString
   }
 }
+
+// Restore favorite to Studio page
+const restoreFavorite = async (favorite: Favorite) => {
+  try {
+    // Save favorite data to sessionStorage for Studio page to restore
+    const restoreData = {
+      tryonHistoryId: favorite.id,
+      image_url: favorite.image_url,
+      garment_urls: favorite.garment_urls || [],
+      scene_image_url: favorite.scene_image_url,
+      prompt: favorite.prompt,
+      model_image_url: favorite.model_image_url,
+      model_image_id: favorite.model_image_id,
+      created_at: favorite.created_at,
+    }
+    
+    sessionStorage.setItem('tryon_history_restore', JSON.stringify(restoreData))
+    
+    // Navigate to Studio page with query parameter
+    router.push({
+      path: '/studio',
+      query: { tryonHistoryId: favorite.id }
+    })
+  } catch (error: any) {
+    console.error('Failed to restore favorite:', error)
+    alert('Failed to restore favorite. Please try again.')
+  }
+}
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
 </script>
 
 <template>
@@ -190,20 +246,34 @@ const formatDate = (dateString: string) => {
           <!-- Content -->
           <div class="p-4">
             <div class="flex items-start justify-between gap-2 mb-2">
-              <h3 class="font-semibold text-sm text-gray-900 flex-1 truncate">
-                {{ favorite.title || 'Try-on result' }}
-              </h3>
-              <button
-                @click.stop="deleteFavorite(favorite.id)"
-                class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
-                title="Delete favorite"
-              >
-                <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
-              </button>
+              <div class="flex-1">
+                <p class="text-xs text-gray-400 mb-1">
+                  {{ formatDate(favorite.created_at) }}
+                </p>
+                <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-gray-500">
+                  {{ favorite.garment_urls.length }} item(s)
+                </p>
+                <p v-if="favorite.scene_image_url" class="text-xs text-blue-500 mt-1">
+                  包含场景
+                </p>
+              </div>
+              <div class="flex items-center gap-1">
+                <button
+                  @click.stop="restoreFavorite(favorite)"
+                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-blue-50 flex items-center justify-center transition-colors group"
+                  title="恢复到此试穿"
+                >
+                  <RotateCcw class="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                </button>
+                <button
+                  @click.stop="deleteFavorite(favorite.id)"
+                  class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
+                  title="删除收藏"
+                >
+                  <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
+                </button>
+              </div>
             </div>
-            <p class="text-xs text-gray-400">
-              {{ formatDate(favorite.created_at) }}
-            </p>
           </div>
         </div>
       </div>
