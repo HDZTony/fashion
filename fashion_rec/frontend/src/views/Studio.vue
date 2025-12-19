@@ -128,6 +128,33 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
+// Save items to sessionStorage
+const saveItemsToCache = () => {
+  try {
+    sessionStorage.setItem('wardrobe_items_cache', JSON.stringify(uploadedItems.value))
+  } catch (e) {
+    console.warn('Failed to save items to sessionStorage:', e)
+  }
+}
+
+// Restore items from sessionStorage if available
+const restoreItemsFromCache = () => {
+  try {
+    const cached = sessionStorage.getItem('wardrobe_items_cache')
+    if (cached) {
+      const items = JSON.parse(cached)
+      if (Array.isArray(items) && items.length > 0) {
+        uploadedItems.value = items
+        console.log('[Studio] Restored items from sessionStorage:', items.length)
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to restore items from sessionStorage:', e)
+  }
+  return false
+}
+
 // Load user's items from backend
 const loadUserItems = async () => {
   try {
@@ -146,6 +173,8 @@ const loadUserItems = async () => {
         material: item.material,
       }
     }))
+    // Save to sessionStorage for faster loading next time
+    saveItemsToCache()
     console.log('Loaded user items:', uploadedItems.value.length)
   } catch (error: any) {
     console.error('Failed to load user items:', error)
@@ -201,31 +230,32 @@ onMounted(async () => {
   // Load local selection state first and sync to activeWardrobeIds
   syncSelectedItemsToActiveWardrobe()
 
-  // Wait for authentication to be ready before loading data
+  // Try to restore items from cache first for instant display of Applied outfit items
+  // These items are already loaded in Wardrobe page and saved to sessionStorage
+  // Studio page doesn't need to load all items from backend - only items selected in Wardrobe are needed
+  restoreItemsFromCache()
+  
+  // Wait for authentication to be ready before loading other data
+  // Note: We don't load items from backend here because Applied outfit items only show
+  // items selected from Wardrobe page, which are already in sessionStorage cache
   try {
     const { data } = await supabase.auth.getSession()
     if (data.session) {
-      // Authentication is ready, load data
+      // Authentication is ready, load other data (not items)
       await Promise.all([
-        loadUserItems(),
         loadHistoricalImages(),
         loadSubscriptionInfo()
       ])
     } else {
       console.warn('No session found on mount, but still attempting to load data')
-      // Still try to load data even if session check failed
-      // API will handle authentication and return appropriate errors if needed
       await Promise.all([
-        loadUserItems(),
         loadHistoricalImages(),
         loadSubscriptionInfo()
       ])
     }
   } catch (error) {
     console.error('Failed to check session on mount:', error)
-    // Still try to load data in case session is cached
     await Promise.all([
-      loadUserItems(),
       loadHistoricalImages(),
       loadSubscriptionInfo()
     ])
@@ -235,7 +265,15 @@ onMounted(async () => {
   const lookId = route.query.lookId as string | undefined
   if (lookId) {
     console.log('[onMounted] Found lookId in query, restoring look:', lookId)
+    // Items should be in cache from Wardrobe page, but if not, restoreLookFromHistory will handle it
     await restoreLookFromHistory(lookId)
+  }
+  
+  // Check if we need to restore try-on history
+  const tryonHistoryId = route.query.tryonHistoryId as string | undefined
+  if (tryonHistoryId) {
+    console.log('[onMounted] Found tryonHistoryId in query, restoring try-on history:', tryonHistoryId)
+    await restoreTryOnHistory(tryonHistoryId)
   }
   
   window.addEventListener('keydown', handleKeyDown)
@@ -267,17 +305,187 @@ onActivated(() => {
   // When component is activated (e.g., user returns from Wardrobe page),
   // sync selected items from localStorage to activeWardrobeIds
   syncSelectedItemsToActiveWardrobe()
+  
+  // Restore items from cache if memory is empty (keep-alive may have failed)
+  // Applied outfit items only need items that are already in Wardrobe, so use cache only
+  // If cache is empty, it means user hasn't selected items in Wardrobe yet - show empty state
+  if (uploadedItems.value.length === 0) {
+    const restored = restoreItemsFromCache()
+    if (restored) {
+      console.log('[Studio onActivated] Restored items from sessionStorage (from Wardrobe page)')
+    } else {
+      console.log('[Studio onActivated] No cached data - user hasn\'t selected items in Wardrobe yet')
+      // Don't load from backend - Applied outfit items only show items selected from Wardrobe
+    }
+  } else {
+    console.log('[Studio onActivated] Using cached data, items count:', uploadedItems.value.length)
+  }
 })
+
+// Restore try-on history to Studio
+const restoreTryOnHistory = async (tryonHistoryId: string) => {
+  try {
+    console.log('[restoreTryOnHistory] Restoring try-on history:', tryonHistoryId)
+    
+    // Get restore data from sessionStorage
+    const restoreDataStr = sessionStorage.getItem('tryon_history_restore')
+    if (!restoreDataStr) {
+      console.warn('[restoreTryOnHistory] No restore data found in sessionStorage')
+      return
+    }
+    
+    const restoreData = JSON.parse(restoreDataStr)
+    
+    // Verify the ID matches
+    if (restoreData.tryonHistoryId !== tryonHistoryId) {
+      console.warn('[restoreTryOnHistory] History ID mismatch')
+      return
+    }
+    
+    // Load historical images FIRST before restoring anything
+    // This ensures we have model images available for matching
+    console.log('[restoreTryOnHistory] Loading historical images...')
+    await loadHistoricalImages()
+    console.log('[restoreTryOnHistory] Historical images loaded:', {
+      model: historicalModelImages.value.length,
+      scene: historicalSceneImages.value.length
+    })
+    
+    // Load user items to match garment URLs with wardrobe items
+    if (uploadedItems.value.length === 0) {
+      const restored = restoreItemsFromCache()
+      if (!restored) {
+        console.log('[restoreTryOnHistory] Loading items from backend to match garment URLs...')
+        await loadUserItems()
+      }
+    }
+    
+    // Restore prompt (backend already saves only user's original input)
+    if (restoreData.prompt) {
+      customPrompt.value = restoreData.prompt
+      console.log('[restoreTryOnHistory] Restored prompt:', restoreData.prompt)
+    }
+    
+    // Restore scene image
+    if (restoreData.scene_image_url) {
+      sceneImageUrl.value = restoreData.scene_image_url
+      sceneImagePreviewUrl.value = restoreData.scene_image_url
+      sceneImageFile.value = null
+      console.log('[restoreTryOnHistory] Restored scene image:', restoreData.scene_image_url)
+    }
+    
+    // Restore try-on result image
+    if (restoreData.image_url) {
+      tryOnImageUrl.value = restoreData.image_url
+      console.log('[restoreTryOnHistory] Restored try-on result image:', restoreData.image_url)
+    }
+    
+    // Try to find and restore model image from historical images
+    // The model image should be uploaded around the same time as the try-on
+    const tryOnDate = new Date(restoreData.created_at)
+    console.log('[restoreTryOnHistory] Try-on date:', tryOnDate.toISOString())
+    console.log('[restoreTryOnHistory] Available model images:', historicalModelImages.value.length)
+    
+    // Find the most recent model image before or around the try-on time
+    // Use a more lenient time window (24 hours) to find the model image
+    const modelImage = historicalModelImages.value
+      .filter(img => {
+        const imgDate = new Date(img.created_at)
+        // Model image should be uploaded before or around the try-on time (within 24 hours)
+        const timeDiff = tryOnDate.getTime() - imgDate.getTime()
+        // Model image should be uploaded before try-on (not after)
+        return timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000 // 24 hours before
+      })
+      .sort((a, b) => {
+        // Sort by closest to try-on time (most recent before try-on)
+        const aDiff = tryOnDate.getTime() - new Date(a.created_at).getTime()
+        const bDiff = tryOnDate.getTime() - new Date(b.created_at).getTime()
+        return aDiff - bDiff // Smaller diff = closer to try-on time
+      })[0]
+    
+    if (modelImage) {
+      modelImagePreviewUrl.value = modelImage.image_url
+      modelImageFile.value = null
+      console.log('[restoreTryOnHistory] Restored model image:', modelImage.image_url)
+      console.log('[restoreTryOnHistory] Model image date:', new Date(modelImage.created_at).toISOString())
+    } else {
+      // If no model image found within 24 hours, try to use the most recent one
+      if (historicalModelImages.value.length > 0) {
+        const mostRecent = historicalModelImages.value
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+        modelImagePreviewUrl.value = mostRecent.image_url
+        modelImageFile.value = null
+        console.log('[restoreTryOnHistory] Using most recent model image as fallback:', mostRecent.image_url)
+      } else {
+        console.log('[restoreTryOnHistory] No model images available in history')
+      }
+    }
+    
+    // Restore active wardrobe items by matching garment URLs
+    if (restoreData.garment_urls && Array.isArray(restoreData.garment_urls) && restoreData.garment_urls.length > 0) {
+      const matchedIds: string[] = []
+      
+      // Match garment URLs with wardrobe items
+      restoreData.garment_urls.forEach((garmentUrl: string) => {
+        const matchedItem = uploadedItems.value.find(item => {
+          const itemUrl = item.url || item.features.path
+          return itemUrl && (itemUrl === garmentUrl || itemUrl.includes(garmentUrl) || garmentUrl.includes(itemUrl))
+        })
+        
+        if (matchedItem && matchedItem.id) {
+          const id = String(matchedItem.id)
+          if (!matchedIds.includes(id)) {
+            matchedIds.push(id)
+          }
+        }
+      })
+      
+      if (matchedIds.length > 0) {
+        activeWardrobeIds.value = matchedIds
+        console.log('[restoreTryOnHistory] Restored wardrobe items:', matchedIds)
+      } else {
+        console.warn('[restoreTryOnHistory] Could not match garment URLs with wardrobe items')
+      }
+    }
+    
+    // Clear restore data and query parameter
+    sessionStorage.removeItem('tryon_history_restore')
+    const query = { ...route.query }
+    delete query.tryonHistoryId
+    router.replace({ query })
+    
+    console.log('[restoreTryOnHistory] Successfully restored try-on history:', {
+      prompt: customPrompt.value,
+      sceneImageUrl: sceneImageUrl.value,
+      tryOnImageUrl: tryOnImageUrl.value,
+      activeWardrobeIds: activeWardrobeIds.value,
+    })
+  } catch (error: any) {
+    console.error('[restoreTryOnHistory] Failed to restore try-on history:', error)
+    // Clear restore data on error
+    sessionStorage.removeItem('tryon_history_restore')
+    const query = { ...route.query }
+    delete query.tryonHistoryId
+    router.replace({ query })
+  }
+}
 
 // Restore look from history
 const restoreLookFromHistory = async (lookId: string) => {
   try {
     console.log('[restoreLookFromHistory] Restoring look:', lookId)
     
-    // Ensure uploadedItems is loaded first
+    // Try to restore items from cache first (items are already loaded in Wardrobe page)
     if (uploadedItems.value.length === 0) {
-      console.log('[restoreLookFromHistory] Loading user items first...')
-      await loadUserItems()
+      const restored = restoreItemsFromCache()
+      if (!restored) {
+        // If cache is empty, we need to load items to verify they exist
+        // This is a special case for restoring historical looks
+        console.log('[restoreLookFromHistory] No cached data, loading items from backend to restore look...')
+        await loadUserItems()
+      } else {
+        console.log('[restoreLookFromHistory] Restored items from cache')
+      }
     }
     
     // Fetch the look data
@@ -729,7 +937,7 @@ const performTryOn = async () => {
 
   if (!modelImageFile.value && !modelImagePreviewUrl.value) {
     showModelImageError.value = true
-    alert('Please upload your model photo (Image 1) first.')
+    alert('Please upload your model photo first.')
     // Scroll to model image uploader
     setTimeout(() => {
       const modelUploader = document.querySelector('[data-model-uploader]')
@@ -783,6 +991,10 @@ const performTryOn = async () => {
     if (sceneImageUrl.value) {
       formData.append('scene_image_url', sceneImageUrl.value)
     }
+    // Add custom prompt if provided
+    if (customPrompt.value) {
+      formData.append('prompt', customPrompt.value)
+    }
 
     const response = await apiClient.post<{ url: string }>('/try-on', formData, {
       headers: {
@@ -803,9 +1015,19 @@ const performTryOn = async () => {
 const applyOutfit = async (outfit: AgentOutfit) => {
   try {
     // Ensure uploadedItems is loaded before applying outfit
+    // Try to restore from cache first (items are already loaded in Wardrobe page)
     if (uploadedItems.value.length === 0) {
-      console.log('[Apply Outfit] Loading user items...')
-      await loadUserItems()
+      const restored = restoreItemsFromCache()
+      if (!restored) {
+        // If cache is empty, items haven't been selected in Wardrobe yet
+        // This shouldn't happen if user is applying an outfit, but handle it gracefully
+        console.warn('[Apply Outfit] No cached data - items should be selected from Wardrobe first')
+        // Don't load from backend - user should select items in Wardrobe first
+        alert('Please select items in Wardrobe first before applying an outfit.')
+        return
+      } else {
+        console.log('[Apply Outfit] Restored items from cache')
+      }
     }
     
     console.log('[Apply Outfit] Starting...')
@@ -1561,7 +1783,7 @@ const searchOnGoogle = (description: string) => {
           <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
             <div class="flex items-center justify-between mb-3">
               <div>
-                <p class="text-sm font-medium text-gray-700 mb-1">Model photo (Image 1)</p>
+                <p class="text-sm font-medium text-gray-700 mb-1">Model photo</p>
                 <p class="text-xs text-gray-500">
                   Upload a half-body or full-body photo of you. All try-ons will use this model photo.
                 </p>
@@ -1609,8 +1831,6 @@ const searchOnGoogle = (description: string) => {
               <!-- Show empty state message only when no results generated -->
               <template v-if="!recommendations.length && !agentOutfits.length && !isGenerating">
                 <Wand2 class="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p class="text-gray-500 font-medium mb-1">Ready to style!</p>
-                <p class="text-sm text-gray-400 mb-4">Upload your wardrobe, describe today’s needs, then generate outfits.</p>
               </template>
               <div class="flex flex-col items-center gap-3">
                 <div class="flex items-center gap-3">

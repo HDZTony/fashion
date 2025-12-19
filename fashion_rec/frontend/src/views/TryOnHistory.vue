@@ -1,17 +1,22 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
-import { History, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
+
+const router = useRouter()
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
 
 interface TryOnHistoryItem {
   id: string
   image_url: string
   garment_urls?: string[]
   scene_image_url?: string
+  prompt?: string
   created_at: string
 }
 
@@ -21,6 +26,7 @@ const error = ref('')
 const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
+const subscriptionInfo = ref<any>(null)
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -42,6 +48,37 @@ apiClient.interceptors.request.use(async (config) => {
   }
   return config
 })
+
+// Subscription service client
+const subscriptionClient = axios.create({
+  baseURL: SUBSCRIPTION_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Load subscription info to determine retention period
+const loadSubscriptionInfo = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const session = await supabase.auth.getSession()
+    const response = await subscriptionClient.get('/subscription/status', {
+      params: { user_id: user.id },
+      headers: {
+        Authorization: `Bearer ${session.data.session?.access_token || user.id}`,
+      },
+    })
+    subscriptionInfo.value = response.data
+  } catch (e: any) {
+    console.warn('Failed to load subscription info:', e)
+    // Default to Free plan if subscription info is unavailable
+    subscriptionInfo.value = {
+      planName: 'Free',
+    }
+  }
+}
 
 const loadHistory = async () => {
   isLoading.value = true
@@ -120,7 +157,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadSubscriptionInfo()
   loadHistory()
   window.addEventListener('keydown', handleKeyDown)
 })
@@ -157,15 +195,56 @@ const formatDate = (dateString: string) => {
   }
 }
 
+// Get retention days based on subscription plan
+const retentionDays = computed(() => {
+  const planName = subscriptionInfo.value?.planName || 'Free'
+  const planRetention: Record<string, number> = {
+    'Free': 7,
+    'Premium': 90,
+    'Premium Plus': 365,
+    // Support lowercase variants
+    'free': 7,
+    'premium': 90,
+    'premium_plus': 365,
+  }
+  return planRetention[planName] || 7
+})
+
 const getDaysRemaining = (dateString: string) => {
   try {
     const date = new Date(dateString)
     const now = new Date()
-    const diffMs = date.getTime() + (7 * 24 * 60 * 60 * 1000) - now.getTime()
+    const diffMs = date.getTime() + (retentionDays.value * 24 * 60 * 60 * 1000) - now.getTime()
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
     return diffDays > 0 ? diffDays : 0
   } catch {
     return 0
+  }
+}
+
+// Restore try-on history to Studio page
+const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
+  try {
+    // Save history data to sessionStorage for Studio page to restore
+    const restoreData = {
+      tryonHistoryId: item.id,
+      image_url: item.image_url,
+      garment_urls: item.garment_urls || [],
+      scene_image_url: item.scene_image_url,
+      prompt: item.prompt,
+      created_at: item.created_at,
+    }
+    
+    sessionStorage.setItem('tryon_history_restore', JSON.stringify(restoreData))
+    
+    // Navigate to Studio page with query parameter
+    router.push({
+      path: '/studio',
+      query: { tryonHistoryId: item.id }
+    })
+  } catch (error: any) {
+    console.error('Failed to restore try-on history:', error)
+    alert('Failed to restore try-on history. Please try again.')
   }
 }
 </script>
@@ -180,7 +259,7 @@ const getDaysRemaining = (dateString: string) => {
         </h1>
       </div>
       <div class="text-xs text-gray-500">
-        保留 7 天历史
+        保留 {{ retentionDays }} 天历史
       </div>
     </header>
 
@@ -240,13 +319,22 @@ const getDaysRemaining = (dateString: string) => {
                   包含场景
                 </p>
               </div>
-              <button
-                @click.stop="deleteHistoryItem(item.id)"
-                class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
-                title="删除历史记录"
-              >
-                <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
-              </button>
+              <div class="flex items-center gap-1">
+                <button
+                  @click.stop="restoreTryOnHistory(item)"
+                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-blue-50 flex items-center justify-center transition-colors group"
+                  title="恢复到此试穿"
+                >
+                  <RotateCcw class="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                </button>
+                <button
+                  @click.stop="deleteHistoryItem(item.id)"
+                  class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
+                  title="删除历史记录"
+                >
+                  <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

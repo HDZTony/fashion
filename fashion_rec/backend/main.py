@@ -1147,6 +1147,7 @@ async def try_on(
     person_image_url: Optional[str] = Form(None),
     garment_urls: str = Form(...),
     scene_image_url: Optional[str] = Form(None),
+    prompt: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1246,18 +1247,122 @@ async def try_on(
     # Build composite garment image (图2) by merging all garment images into a grid
     def build_garment_collage(urls: List[str], output_path: Path) -> Path:
         images: List[Image.Image] = []
-        for url in urls:
+        failed_urls: List[Dict[str, str]] = []
+        
+        if not urls:
+            raise RuntimeError("No garment URLs provided for collage")
+        
+        # 检测是否为 R2 URL
+        R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "")
+        is_r2_url = R2_PUBLIC_URL and urls[0].startswith(R2_PUBLIC_URL) if urls else False
+        if not is_r2_url:
+            # 通过域名判断（r2.dev）
+            is_r2_url = any("r2.dev" in url for url in urls)
+        
+        # 创建 Session 并配置代理
+        # 注意：生产环境在海外不需要代理，开发环境可能需要代理
+        # 通过 R2_USE_PROXY 环境变量控制（默认 False，生产环境不需要设置）
+        session = requests.Session()
+        use_proxy = os.getenv("R2_USE_PROXY", "false").lower() in ("true", "1", "yes")
+        
+        if is_r2_url and use_proxy:
+            # 仅在明确配置需要代理时才使用代理（开发环境）
+            # 支持两种代理配置方式：
+            # 1. HTTP_PROXY/HTTPS_PROXY（标准格式，如 http://proxy:port）
+            # 2. PROXY_HOST/PROXY_PORT（自定义格式，构建为 socks5://host:port）
+            proxies = {}
+            
+            # 方式1: 使用 HTTP_PROXY/HTTPS_PROXY（标准格式）
+            http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+            https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+            
+            if http_proxy or https_proxy:
+                proxies["http"] = http_proxy
+                proxies["https"] = https_proxy
+            else:
+                # 方式2: 使用 PROXY_HOST/PROXY_PORT（构建代理 URL）
+                proxy_host = os.getenv("PROXY_HOST")
+                proxy_port = os.getenv("PROXY_PORT")
+                
+                if proxy_host and proxy_port:
+                    # 默认使用 SOCKS5 代理（端口 10808 通常是 SOCKS5）
+                    # 如果需要 HTTP 代理，可以通过 PROXY_TYPE 环境变量指定（如 http, https, socks5）
+                    proxy_type = os.getenv("PROXY_TYPE", "socks5").lower()
+                    proxy_url = f"{proxy_type}://{proxy_host}:{proxy_port}"
+                    proxies["http"] = proxy_url
+                    proxies["https"] = proxy_url
+                    
+                    # 如果使用 SOCKS 代理，需要安装 PySocks
+                    if proxy_type.startswith("socks"):
+                        try:
+                            import socks
+                        except ImportError:
+                            print(f"[Try-On] WARNING: SOCKS proxy requires PySocks. Install with: uv add PySocks")
+                            # 尝试使用 HTTP 代理格式（某些代理服务器支持）
+                            proxy_url = f"http://{proxy_host}:{proxy_port}"
+                            proxies["http"] = proxy_url
+                            proxies["https"] = proxy_url
+            
+            # 如果配置了代理，使用它；否则使用系统代理（requests 会自动检测）
+            if proxies.get("http") or proxies.get("https"):
+                session.proxies = proxies
+                print(f"[Try-On] Using proxy for R2 URLs: {proxies}")
+            else:
+                # 使用系统代理（requests 会自动检测）
+                print(f"[Try-On] Using system proxy for R2 URLs (auto-detected)")
+        else:
+            # 生产环境或非 R2 URL：不使用代理（直连）
+            session.proxies = None
+            if is_r2_url:
+                print(f"[Try-On] R2_USE_PROXY not enabled, using direct connection for R2 URLs")
+        
+        print(f"[Try-On] Attempting to download {len(urls)} garment images...")
+        
+        for idx, url in enumerate(urls):
             try:
-                resp = requests.get(url, timeout=15)
+                print(f"[Try-On] Downloading garment image {idx + 1}/{len(urls)}: {url[:80]}...")
+                resp = session.get(url, timeout=15, verify=False)
                 resp.raise_for_status()
+                
+                # Check if response has content
+                if not resp.content:
+                    raise ValueError("Empty response content")
+                
+                # Try to open as image
                 img = Image.open(BytesIO(resp.content)).convert("RGBA")
+                
+                # Verify image is valid
+                if img.size[0] == 0 or img.size[1] == 0:
+                    raise ValueError("Invalid image dimensions")
+                
                 images.append(img)
+                print(f"[Try-On] Successfully downloaded garment image {idx + 1}/{len(urls)}")
+            except requests.exceptions.RequestException as e:
+                error_msg = f"HTTP error: {type(e).__name__} - {str(e)}"
+                print(f"[Try-On] Failed to download garment image {idx + 1}/{len(urls)} ({url[:80]}...): {error_msg}")
+                failed_urls.append({"url": url, "error": error_msg})
             except Exception as e:
-                print(f"Failed to download garment image {url}: {e}")
-                continue
+                error_msg = f"{type(e).__name__}: {str(e)}"
+                print(f"[Try-On] Failed to process garment image {idx + 1}/{len(urls)} ({url[:80]}...): {error_msg}")
+                failed_urls.append({"url": url, "error": error_msg})
 
         if not images:
-            raise RuntimeError("No valid garment images for collage")
+            error_details = {
+                "total_urls": len(urls),
+                "failed_count": len(failed_urls),
+                "failed_urls": failed_urls[:5]  # Limit to first 5 for readability
+            }
+            error_msg = (
+                f"No valid garment images for collage. "
+                f"Attempted {len(urls)} URLs, all failed. "
+                f"First few failures: {failed_urls[:3]}"
+            )
+            print(f"[Try-On] ERROR: {error_msg}")
+            raise RuntimeError(error_msg)
+        
+        print(f"[Try-On] Successfully downloaded {len(images)}/{len(urls)} garment images")
+        if failed_urls:
+            print(f"[Try-On] Warning: {len(failed_urls)} images failed to download")
 
         # Normalize size: resize all to same thumbnail size
         thumb_w, thumb_h = 256, 256
@@ -1290,6 +1395,9 @@ async def try_on(
 
         print(f"[Try-On] Saved garment collage: {collage_path} ({collage_path.stat().st_size} bytes)")
         return collage_path
+
+    # Save user's custom prompt before it gets overwritten by system prompt
+    user_custom_prompt = prompt  # This is the user's original input from Form parameter
 
     try:
         garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{user_id}_collage.png"
@@ -1359,13 +1467,17 @@ async def try_on(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload try-on image: {e}")
 
-    # Save try-on history
+    # Save try-on history (automatically uses user's subscription plan to determine retention period)
+    # Retention period: Free (7 days), Premium (90 days), Premium Plus (365 days)
     try:
         from services.tryon_history import save_tryon_history
+        # Use user's custom prompt (saved before system prompt overwrote it), otherwise None
+        # Note: The Qwen API uses its own internal prompt, but we save the user's custom prompt for history
         save_tryon_history(user_id, {
             "image_url": public_url,
-            "garment_urls": garment_list,  # Use parsed list, not JSON string
+            "garment_urls": garment_list,  # Use parsed list, not JSON string (selected items from Applied Outfit Items)
             "scene_image_url": scene_image_url,
+            "prompt": user_custom_prompt,  # User's original custom prompt (from Form parameter), not the system-generated prompt
         })
     except Exception as e:
         # Log error but don't fail the request

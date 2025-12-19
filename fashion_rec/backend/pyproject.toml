@@ -20,6 +20,7 @@ dependencies = [
     "requests",
     "beautifulsoup4",
     "psycopg2-binary>=2.9.11",
+    "python-certifi-win32>=1.6.1",
 ]
 
 [dependency-groups]

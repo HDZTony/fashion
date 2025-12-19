@@ -33,6 +33,7 @@ apiClient.interceptors.request.use(async (config) => {
 })
 
 const uploadedItems = ref<Item[]>([])
+const hasLoadedItems = ref(false)
 const typeFilters = ['All', 'Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories', 'Sportswear', 'Traditional']
 const selectedFilter = ref('All')
 const isUploading = ref(false)
@@ -166,6 +167,11 @@ const loadUserItems = async () => {
         material: item.material,
       },
     }))
+    hasLoadedItems.value = true
+    // Save to sessionStorage for persistence across component recreations
+    saveItemsToCache()
+    // Mark that we've successfully loaded (clear the attempt flag)
+    sessionStorage.removeItem('wardrobe_load_attempted')
     console.log('Loaded user items:', uploadedItems.value.length)
   } catch (error: any) {
     console.error('Failed to load user items:', error)
@@ -290,13 +296,15 @@ const handleFileUpload = async (event: Event) => {
     }
   }
 
-  // Add all successful uploads at once
-  uploadedItems.value.push(...successfulUploads)
-
   // Show confirmation dialog only after all files are processed
   if (allPendingItems.length > 0) {
     pendingItems.value.push(...allPendingItems)
     showConfirmDialog.value = true
+  }
+
+  // Refresh data if there were successful uploads
+  if (successfulUploads.length > 0) {
+    await loadUserItems()
   }
 
   // Show success/failure messages
@@ -360,7 +368,7 @@ const handleUrlUpload = async () => {
     })
     
     if (response.data.auto_added) {
-      uploadedItems.value.push(...response.data.items)
+      await loadUserItems()
       alert(`Added ${response.data.items.length} item(s) successfully.`)
     } else {
       const pending: PendingItem[] = response.data.items.map((item) => ({
@@ -413,9 +421,11 @@ const confirmAddItems = async () => {
 
   try {
     isConfirming.value = true
-    const response = await apiClient.post<{ items: Item[] }>('/items/batch', selectedItems)
-    uploadedItems.value.push(...response.data.items)
-    console.log(`Added ${response.data.items.length} item(s) to wardrobe`)
+    await apiClient.post<{ items: Item[] }>('/items/batch', selectedItems)
+    
+    // Refresh data to ensure consistency
+    await loadUserItems()
+    console.log(`Added ${selectedItems.length} item(s) to wardrobe`)
 
     pendingItems.value = []
     showConfirmDialog.value = false
@@ -615,15 +625,67 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
-  loadUserItems()
+  // Try to restore items from sessionStorage on mount
+  if (uploadedItems.value.length === 0) {
+    restoreItemsFromCache()
+  }
   loadOutfitSelection()
   window.addEventListener('keydown', handleKeyDown)
 })
+
+// Save items to sessionStorage
+const saveItemsToCache = () => {
+  try {
+    sessionStorage.setItem('wardrobe_items_cache', JSON.stringify(uploadedItems.value))
+  } catch (e) {
+    console.warn('Failed to save items to sessionStorage:', e)
+  }
+}
+
+// Restore items from sessionStorage if available
+const restoreItemsFromCache = () => {
+  try {
+    const cached = sessionStorage.getItem('wardrobe_items_cache')
+    if (cached) {
+      const items = JSON.parse(cached)
+      if (Array.isArray(items) && items.length > 0) {
+        uploadedItems.value = items
+        hasLoadedItems.value = true
+        console.log('[Wardrobe] Restored items from sessionStorage:', items.length)
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to restore items from sessionStorage:', e)
+  }
+  return false
+}
 
 onActivated(() => {
   // Reload selection from localStorage when component is activated
   // This ensures the selection state is synced when user returns from Studio page
   loadOutfitSelection()
+  
+  // Restore items from cache if memory is empty (keep-alive may have failed)
+  if (uploadedItems.value.length === 0) {
+    const restored = restoreItemsFromCache()
+    if (restored) {
+      console.log('[Wardrobe onActivated] Restored items from sessionStorage, count:', uploadedItems.value.length)
+    } else {
+      // Only load if we haven't tried loading before (check sessionStorage flag)
+      const hasTriedLoading = sessionStorage.getItem('wardrobe_load_attempted') === 'true'
+      if (!hasTriedLoading && !hasLoadedItems.value) {
+        console.log('[Wardrobe onActivated] No cached data, loading items...')
+        sessionStorage.setItem('wardrobe_load_attempted', 'true')
+        loadUserItems()
+      } else {
+        console.log('[Wardrobe onActivated] Already attempted loading, skipping to avoid repeated failures')
+      }
+    }
+  } else {
+    console.log('[Wardrobe onActivated] Using cached data, items count:', uploadedItems.value.length)
+  }
+  
   console.log('[Wardrobe onActivated] Reloaded outfit selection from localStorage')
 })
 
