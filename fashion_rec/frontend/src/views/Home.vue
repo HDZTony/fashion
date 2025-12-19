@@ -38,7 +38,7 @@ const faqs = [
   },
   {
     question: 'What is the difference between Free and Premium?',
-    answer: 'The Free plan offers 1 try-on per day with core features and history saving. Premium includes more try-ons and advanced features.'
+    answer: 'The Free plan offers 2 try-on per day with core features and history saving. Premium includes more try-ons and advanced features.'
   },
   {
     question: 'Is my data safe?',
