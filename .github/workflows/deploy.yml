@@ -66,8 +66,7 @@ jobs:
       github.ref == 'refs/heads/v2' &&
       (github.event_name == 'workflow_dispatch' || 
        needs.changes.outputs.backend == 'true' ||
-       needs.changes.outputs.is_v2_branch == 'true' ||
-       true)
+       needs.changes.outputs.is_v2_branch == 'true')
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -174,8 +173,7 @@ jobs:
       github.ref == 'refs/heads/v2' &&
       (github.event_name == 'workflow_dispatch' || 
        needs.changes.outputs.frontend == 'true' ||
-       needs.changes.outputs.is_v2_branch == 'true' ||
-       true)
+       needs.changes.outputs.is_v2_branch == 'true')
     permissions:
       contents: read
       deployments: write
