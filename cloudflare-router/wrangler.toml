@@ -1,0 +1,27 @@
+name = "fashion-rec-router"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Environment variables (set via wrangler secret put or Cloudflare Dashboard)
+# These should be set as secrets, not in this file
+# 
+# Required secrets:
+# - SUPABASE_URL: Your Supabase project URL
+# - SUPABASE_SERVICE_ROLE_KEY: Supabase Service Role Key (for bypassing RLS)
+# - STABLE_FRONTEND_HOST: Stable version frontend hostname (e.g., fashion-rec-frontend.pages.dev)
+# - V2_FRONTEND_HOST: V2 version frontend hostname (e.g., v2--fashion-rec-frontend.pages.dev)
+# - STABLE_BACKEND_URL: Stable version backend URL (e.g., https://fashion-rec-backend.fly.dev)
+# - V2_BACKEND_URL: V2 version backend URL (e.g., https://fashion-rec-backend-v2.fly.dev)
+
+# Routes configuration
+# Configure routes in Cloudflare Dashboard:
+# Workers & Pages → fashion-rec-router → Settings → Triggers → Routes
+# Add route: yourdomain.com/*
+
+[env.production]
+# Production environment configuration
+# Routes should be configured in Cloudflare Dashboard
+
+[env.staging]
+# Staging environment configuration (optional)
+
