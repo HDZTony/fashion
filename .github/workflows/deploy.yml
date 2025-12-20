@@ -16,7 +16,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       subscription-service: ${{ steps.filter.outputs.subscription-service }}
       cloudflare-router: ${{ steps.filter.outputs.cloudflare-router }}
-      is_v2_branch: ${{ steps.filter.outputs.is_v2_branch }}
+      is_v2_branch: ${{ steps.check_v2.outputs.is_v2_branch }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v2
@@ -66,7 +66,8 @@ jobs:
       github.ref == 'refs/heads/v2' &&
       (github.event_name == 'workflow_dispatch' || 
        needs.changes.outputs.backend == 'true' ||
-       needs.changes.outputs.is_v2_branch == 'true')
+       needs.changes.outputs.is_v2_branch == 'true' ||
+       true)
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -173,7 +174,8 @@ jobs:
       github.ref == 'refs/heads/v2' &&
       (github.event_name == 'workflow_dispatch' || 
        needs.changes.outputs.frontend == 'true' ||
-       needs.changes.outputs.is_v2_branch == 'true')
+       needs.changes.outputs.is_v2_branch == 'true' ||
+       true)
     permissions:
       contents: read
       deployments: write
