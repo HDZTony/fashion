@@ -120,3 +120,65 @@ fly ssh console -C "printenv | grep DASHSCOPE"
 fly secrets set DASHSCOPE_API_KEY_SG=your_key SUPABASE_URL=your_url ...
 ```
 
+### V2 应用环境变量设置
+
+**重要**：`fashion-rec-backend-v2` 是一个独立的 Fly.io 应用，需要单独设置所有环境变量。
+
+#### 方法 1：使用自动化脚本（推荐）
+
+**Linux/macOS:**
+```bash
+cd fashion_rec/backend
+chmod +x setup_v2_secrets.sh
+./setup_v2_secrets.sh
+```
+
+**Windows PowerShell:**
+```powershell
+cd fashion_rec/backend
+.\setup_v2_secrets.ps1
+```
+
+脚本会自动从 `.env` 文件读取所有配置并设置到 V2 应用。
+
+#### 方法 2：手动设置
+
+如果 `.env` 文件中有所有必要的值，可以手动执行：
+
+```bash
+# 在 fashion_rec/backend 目录下执行
+fly secrets set \
+  DASHSCOPE_API_KEY_SG=sk-bdf76674a9d5495492ee556a4ff32ac1 \
+  DASHSCOPE_API_KEY=sk-2927da63a9e045cb9adf945a1708e4bc \
+  R2_ENDPOINT_URL=https://a69a5620c481efdb002669a375d72efd.r2.cloudflarestorage.com \
+  R2_ACCESS_KEY_ID=932a0f21f9086becf73c1ca08bf2ba59 \
+  R2_SECRET_ACCESS_KEY=2e88209f9c40235e627adad7c5abfd70ee9af36b85b97f623f38c952cde451a0 \
+  R2_BUCKET_NAME=fashion \
+  R2_PUBLIC_URL=https://pub-da29e362d6934e738ef0234d04c252d5.r2.dev \
+  SUPABASE_URL=https://eufhccrelpucppognlym.supabase.co \
+  SUPABASE_KEY=your_supabase_key \
+  SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
+  DATABASE_URL=postgresql://postgres:password@db.eufhccrelpucppognlym.supabase.co:5432/postgres \
+  WEATHER_API_KEY=your_weather_api_key \
+  CREEM_API_KEY=your_creem_api_key \
+  --app fashion-rec-backend-v2
+```
+
+**注意**：请将上述命令中的值替换为实际的值（可以从 `.env` 文件中获取）。
+
+#### 验证 V2 应用环境变量
+
+设置完成后，验证环境变量：
+
+```bash
+fly ssh console --app fashion-rec-backend-v2 -C "printenv | grep -E 'DASHSCOPE|SUPABASE|R2|DATABASE|WEATHER|CREEM' | sort"
+```
+
+#### 从稳定版应用复制 Secrets
+
+如果需要从稳定版应用（`fashion-rec-backend`）复制 secrets 到 V2 应用，可以：
+
+1. 查看稳定版应用的 secrets（注意：Fly.io 不允许直接读取 secrets 值）
+2. 手动在 V2 应用中设置相同的值
+3. 或使用 `.env` 文件中的值（如果与生产环境一致）
+
