@@ -1,13 +1,16 @@
 /**
  * Cloudflare Worker for Frontend and Backend Version Routing
  * 
- * This worker routes users to different frontend and backend versions based on their
- * user_id stored in Supabase user_frontend_versions table.
+ * Optimized version with KV caching and lazy routing:
+ * - Version is determined when user first accesses /studio
+ * - Caches user version in KV to avoid database queries
+ * - All authenticated pages use the determined version (not just /studio)
+ * - Unauthenticated pages always use stable
  * 
  * Flow:
  * 1. Extract user_id from Supabase session cookie
- * 2. Query Supabase database for user's version
- * 3. Determine request type (frontend page or API request)
+ * 2. If authenticated: Check KV cache for version, if not found query Supabase and cache
+ * 3. If not authenticated: Route to stable
  * 4. Route to appropriate frontend or backend deployment
  */
 
@@ -20,6 +23,7 @@ interface Env {
   V2_FRONTEND_HOST: string
   STABLE_BACKEND_URL: string
   V2_BACKEND_URL: string
+  USER_VERSIONS: KVNamespace
 }
 
 /**
@@ -61,9 +65,37 @@ function extractUserIdFromCookie(request: Request): string | null {
 }
 
 /**
+ * Get user version from KV cache
+ */
+async function getUserVersionFromCache(userId: string, env: Env): Promise<string | null> {
+  try {
+    const cached = await env.USER_VERSIONS.get(userId)
+    return cached || null
+  } catch (error) {
+    console.error('[Router] Error reading from KV cache:', error)
+    return null
+  }
+}
+
+/**
+ * Cache user version in KV
+ */
+async function cacheUserVersion(userId: string, version: string, env: Env): Promise<void> {
+  try {
+    // Cache for 30 days (2592000 seconds)
+    await env.USER_VERSIONS.put(userId, version, {
+      expirationTtl: 2592000
+    })
+    console.log(`[Router] Cached version ${version} for user ${userId}`)
+  } catch (error) {
+    console.error('[Router] Error caching user version:', error)
+  }
+}
+
+/**
  * Query Supabase to get user's frontend version
  */
-async function getUserFrontendVersion(userId: string, env: Env): Promise<string> {
+async function getUserFrontendVersionFromDB(userId: string, env: Env): Promise<string> {
   try {
     const supabase = createClient(
       env.SUPABASE_URL,
@@ -92,6 +124,75 @@ async function getUserFrontendVersion(userId: string, env: Env): Promise<string>
   } catch (error) {
     console.error('[Router] Error querying user version:', error)
     return 'stable' // Default to stable on error
+  }
+}
+
+/**
+ * Get user version with KV cache
+ */
+async function getUserVersion(userId: string, env: Env): Promise<string> {
+  // 1. Try KV cache first
+  const cached = await getUserVersionFromCache(userId, env)
+  if (cached) {
+    console.log(`[Router] Cache hit for user ${userId}: ${cached}`)
+    return cached
+  }
+
+  // 2. Cache miss, query database
+  console.log(`[Router] Cache miss for user ${userId}, querying database`)
+  const version = await getUserFrontendVersionFromDB(userId, env)
+  
+  // 3. Cache the result
+  await cacheUserVersion(userId, version, env)
+  
+  return version
+}
+
+/**
+ * Set user version (for API endpoint)
+ */
+async function setUserVersion(userId: string, version: string, env: Env): Promise<boolean> {
+  try {
+    // Validate version
+    if (version !== 'stable' && version !== 'v2') {
+      return false
+    }
+
+    // 1. Update database
+    const supabase = createClient(
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    )
+
+    const { error } = await supabase
+      .from('user_frontend_versions')
+      .upsert({
+        user_id: userId,
+        version: version,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      })
+
+    if (error) {
+      console.error('[Router] Error updating user version in DB:', error)
+      return false
+    }
+
+    // 2. Update KV cache
+    await cacheUserVersion(userId, version, env)
+
+    console.log(`[Router] Set version ${version} for user ${userId}`)
+    return true
+  } catch (error) {
+    console.error('[Router] Error setting user version:', error)
+    return false
   }
 }
 
@@ -175,22 +276,83 @@ function isApiRequest(url: URL): boolean {
 }
 
 /**
+ * Check if path requires version routing
+ * All authenticated pages use the user's determined version
+ * Only unauthenticated pages use stable
+ */
+function requiresVersionRouting(path: string, userId: string | null): boolean {
+  // If user is authenticated, use their determined version for all pages
+  // If not authenticated, use stable for all pages
+  return userId !== null
+}
+
+/**
  * Main worker handler
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url)
-      
+      const path = url.pathname
+
+      // Handle API endpoint for setting user version
+      if (path === '/api/router/set-version' && request.method === 'POST') {
+        const userId = extractUserIdFromCookie(request)
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        }
+
+        try {
+          const body = await request.json() as { version: string }
+          const { version } = body
+
+          if (!version || (version !== 'stable' && version !== 'v2')) {
+            return new Response(JSON.stringify({ error: 'Invalid version' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            })
+          }
+
+          const success = await setUserVersion(userId, version, env)
+          if (success) {
+            return new Response(JSON.stringify({ success: true, version }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            })
+          } else {
+            return new Response(JSON.stringify({ error: 'Failed to set version' }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            })
+          }
+        } catch (error) {
+          return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        }
+      }
+
       // Extract user ID from cookie
       const userId = extractUserIdFromCookie(request)
       
       // Determine user's version
-      let version = 'stable'
-      if (userId) {
-        version = await getUserFrontendVersion(userId, env)
-        console.log(`[Router] User ${userId} assigned version: ${version}`)
+      let version = 'stable' // Default to stable
+      
+      // If user is authenticated, check their version (from KV cache or database)
+      // This ensures all pages use the version determined when they first accessed /studio
+      if (userId && requiresVersionRouting(path, userId)) {
+        version = await getUserVersion(userId, env)
+        console.log(`[Router] User ${userId} assigned version: ${version} for path: ${path}`)
+      } else if (userId && isApiRequest(url)) {
+        // API requests also use user's version
+        version = await getUserVersion(userId, env)
+        console.log(`[Router] User ${userId} API request, assigned version: ${version}`)
       } else {
+        // Unauthenticated users always use stable
         console.log('[Router] No user ID found, routing to stable')
       }
 
@@ -246,4 +408,3 @@ export default {
     }
   },
 }
-

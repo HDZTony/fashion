@@ -2,20 +2,63 @@
 import { Button } from '@/components/ui/button'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useAuthState } from '@/composables/useAuthState'
 import { useHead } from '@vueuse/head'
 import { useSEO } from '@/composables/useSEO'
 import { siteBaseUrl } from '@/config/seo'
+import axios from 'axios'
+import { supabase } from '@/lib/supabase'
 
 defineOptions({ name: 'Home' })
 
 const router = useRouter()
 
 const { isAuthenticated } = useAuthState()
+const isSettingVersion = ref(false)
 
-const handleGetStarted = () => {
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+// Set user version when entering studio
+const setUserVersion = async (version: 'stable' | 'v2' = 'v2') => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      return false
+    }
+
+    const response = await axios.post(
+      `${API_URL}/api/router/set-version`,
+      { version },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        withCredentials: true, // Include cookies
+      }
+    )
+
+    return response.data.success === true
+  } catch (error) {
+    console.error('Failed to set user version:', error)
+    return false
+  }
+}
+
+const handleGetStarted = async () => {
   if (isAuthenticated.value) {
+    // Set user version to v2 when entering studio (lazy routing)
+    // This ensures the user is assigned a version and cached in KV
+    isSettingVersion.value = true
+    try {
+      // Set version to v2 (or 'stable' if you prefer)
+      // The version will be cached in KV, so subsequent requests won't query database
+      await setUserVersion('v2')
+    } catch (error) {
+      console.warn('Failed to set user version, continuing anyway:', error)
+    } finally {
+      isSettingVersion.value = false
+    }
     router.push('/studio')
   } else {
     router.push('/login')
@@ -106,10 +149,11 @@ useHead({
           <Button
             @click="handleGetStarted"
             variant="default"
-            class="text-xl font-extrabold px-8 py-4 h-auto shadow-2xl hover:shadow-3xl transition-all transform hover:scale-105"
+            :disabled="isSettingVersion"
+            class="text-xl font-extrabold px-8 py-4 h-auto shadow-2xl hover:shadow-3xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Get started with Fashion Rec"
           >
-            {{ buttonText }}
+            {{ isSettingVersion ? 'Setting up...' : buttonText }}
           </Button>
         </div>
       </header>
