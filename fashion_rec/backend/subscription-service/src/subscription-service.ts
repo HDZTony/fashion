@@ -57,6 +57,14 @@ export class SubscriptionService {
       if (data) {
         const sub = data as SubscriptionRecord;
         const plan = sub.plan || 'free';
+        
+        // 记录当前订阅状态，用于调试
+        console.log(`📊 Getting subscription status for user ${userId}:`, {
+          plan,
+          status: sub.status,
+          period_end: sub.period_end,
+          remaining_tries: sub.remaining_tries,
+        });
 
         // 检查是否需要重置
         const now = new Date();
@@ -101,20 +109,27 @@ export class SubscriptionService {
               const periodEnd = new Date(sub.period_end);
               const now = new Date();
               
-              // 如果还在计费周期内，继续提供高级功能
+              // 如果还在计费周期内，继续提供高级功能（直到 period_end）
               if (periodEnd > now) {
                 const nextReset = this.addDays(lastReset, 30);
+                // 确保 nextResetDate 不超过 period_end
+                const actualNextReset = periodEnd < nextReset ? periodEnd : nextReset;
+                console.log(`✅ Premium subscription canceled but still active until ${periodEnd.toISOString()}`);
                 return {
                   planName: 'Premium',
                   remainingTries: sub.remaining_tries || 50,
                   totalTries: 50,
                   period: 'monthly',
-                  nextResetDate: nextReset.toISOString(),
+                  nextResetDate: actualNextReset.toISOString(),
                   subscriptionId: sub.creem_subscription_id || null,
                   customerId: sub.creem_customer_id || null,
-                  status: sub.status || 'canceled', // 状态显示为已取消，但功能仍可用
+                  status: sub.status || 'canceled', // 状态显示为已取消，但功能仍可用直到 period_end
                 };
+              } else {
+                console.log(`⚠️ Premium subscription period ended at ${periodEnd.toISOString()}, downgrading to Free`);
               }
+            } else {
+              console.log(`⚠️ Premium subscription canceled but no period_end found, downgrading to Free`);
             }
             
             // 计费周期已结束，降级为免费版
@@ -131,6 +146,7 @@ export class SubscriptionService {
             };
           }
           
+          // 订阅是 active 状态，正常处理
           if (daysSinceReset >= 30) {
             await this.resetTries(userId, 'premium');
             return {
@@ -141,7 +157,7 @@ export class SubscriptionService {
               nextResetDate: this.addDays(lastReset, 30).toISOString(),
               subscriptionId: sub.creem_subscription_id || null,
               customerId: sub.creem_customer_id || null,
-              status: sub.status || 'active',
+              status: sub.status || 'active', // 使用数据库中的实际状态
             };
           } else {
             const nextReset = this.addDays(lastReset, 30);
@@ -153,7 +169,7 @@ export class SubscriptionService {
               nextResetDate: nextReset.toISOString(),
               subscriptionId: sub.creem_subscription_id || null,
               customerId: sub.creem_customer_id || null,
-              status: sub.status || 'active',
+              status: sub.status || 'active', // 使用数据库中的实际状态
             };
           }
         } else {
@@ -165,20 +181,27 @@ export class SubscriptionService {
               const periodEnd = new Date(sub.period_end);
               const now = new Date();
               
-              // 如果还在计费周期内，继续提供高级功能
+              // 如果还在计费周期内，继续提供高级功能（直到 period_end）
               if (periodEnd > now) {
                 const nextReset = this.addDays(lastReset, 30);
+                // 确保 nextResetDate 不超过 period_end
+                const actualNextReset = periodEnd < nextReset ? periodEnd : nextReset;
+                console.log(`✅ Premium Plus subscription canceled but still active until ${periodEnd.toISOString()}`);
                 return {
                   planName: 'Premium Plus',
                   remainingTries: sub.remaining_tries || 200,
                   totalTries: 200,
                   period: 'monthly',
-                  nextResetDate: nextReset.toISOString(),
+                  nextResetDate: actualNextReset.toISOString(),
                   subscriptionId: sub.creem_subscription_id || null,
                   customerId: sub.creem_customer_id || null,
-                  status: sub.status || 'canceled', // 状态显示为已取消，但功能仍可用
+                  status: sub.status || 'canceled', // 状态显示为已取消，但功能仍可用直到 period_end
                 };
+              } else {
+                console.log(`⚠️ Premium Plus subscription period ended at ${periodEnd.toISOString()}, downgrading to Free`);
               }
+            } else {
+              console.log(`⚠️ Premium Plus subscription canceled but no period_end found, downgrading to Free`);
             }
             
             // 计费周期已结束，降级为免费版
@@ -195,6 +218,7 @@ export class SubscriptionService {
             };
           }
           
+          // 订阅是 active 状态，正常处理
           if (daysSinceReset >= 30) {
             await this.resetTries(userId, 'premium_plus');
             return {
@@ -205,7 +229,7 @@ export class SubscriptionService {
               nextResetDate: this.addDays(lastReset, 30).toISOString(),
               subscriptionId: sub.creem_subscription_id || null,
               customerId: sub.creem_customer_id || null,
-              status: sub.status || 'active',
+              status: sub.status || 'active', // 使用数据库中的实际状态
             };
           } else {
             const nextReset = this.addDays(lastReset, 30);
@@ -217,7 +241,7 @@ export class SubscriptionService {
               nextResetDate: nextReset.toISOString(),
               subscriptionId: sub.creem_subscription_id || null,
               customerId: sub.creem_customer_id || null,
-              status: sub.status || 'active',
+              status: sub.status || 'active', // 使用数据库中的实际状态
             };
           }
         }
@@ -327,7 +351,25 @@ export class SubscriptionService {
       console.log('📋 Existing subscription data:', data ? 'Found' : 'Not found (will create new)');
 
       const now = new Date().toISOString();
-      const remaining = plan === 'premium' ? 150 : 1;
+      
+      // 根据套餐类型确定应该有的剩余次数：Premium Plus 200次，Premium 50次，Free 1次
+      const expectedRemaining = plan === 'premium_plus' ? 200 : (plan === 'premium' ? 50 : 1);
+      
+      // 如果是新订阅或套餐类型变化（升级/降级），使用新的次数
+      // 否则保留现有的 remaining_tries（避免状态更新时错误重置次数）
+      let remaining: number;
+      if (!data) {
+        // 新订阅，设置初始次数
+        remaining = expectedRemaining;
+      } else if (data.plan !== plan) {
+        // 套餐类型变化（升级/降级），重置为新套餐的次数
+        console.log(`📊 Plan changed from ${data.plan} to ${plan}, resetting tries to ${expectedRemaining}`);
+        remaining = expectedRemaining;
+      } else {
+        // 套餐类型未变化，保留现有的 remaining_tries
+        remaining = data.remaining_tries !== undefined ? data.remaining_tries : expectedRemaining;
+        console.log(`📊 Plan unchanged (${plan}), keeping existing remaining_tries: ${remaining}`);
+      }
 
       const subscriptionData = {
             plan,

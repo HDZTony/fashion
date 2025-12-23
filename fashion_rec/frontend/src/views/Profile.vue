@@ -73,6 +73,21 @@ const loadSubscriptionInfo = async () => {
       },
     })
     subscriptionInfo.value = response.data
+    
+    // 如果有订阅 ID 且状态是 active，但可能已经在 Creem 端被取消
+    // 自动同步一次以确保状态准确（仅在首次加载时，避免频繁调用）
+    const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+    if (subscriptionId && subscriptionInfo.value?.status === 'active') {
+      // 延迟同步，避免阻塞页面加载
+      setTimeout(async () => {
+        try {
+          await syncFromSubscription()
+        } catch (e) {
+          // 静默失败，不影响用户体验
+          console.log('Background sync failed (this is ok):', e)
+        }
+      }, 2000)
+    }
   } catch (e: any) {
     console.error('Failed to load subscription info:', e)
     error.value = e?.response?.data?.error || e?.message || 'Failed to load subscription info'
@@ -98,7 +113,12 @@ const signOut = async () => {
   }
 }
 
+// 记录打开门户的时间，用于检测用户是否从门户返回
+let portalOpenedTime = 0
+
 // Manage subscription portal
+// 注意：Creem 的客户门户不支持 returnUrl 参数
+// 因此我们使用页面可见性和焦点监听来检测用户返回
 const openPortal = async () => {
   const customerId = subscriptionInfo.value?.customerId || subscriptionInfo.value?.customer_id
   if (!customerId) {
@@ -106,7 +126,16 @@ const openPortal = async () => {
     return
   }
   try {
-    const resp = await subscriptionClient.post(`/customers/${customerId}/portal`)
+    // 记录打开门户的时间戳
+    portalOpenedTime = Date.now()
+    console.log('🚪 Opening customer portal, timestamp:', portalOpenedTime)
+    
+    // 注意：Creem SDK 的 createPortal 不支持 returnUrl 参数
+    // 虽然我们传递了 returnUrl，但 Creem API 可能不会使用它
+    const returnUrl = `${window.location.origin}/profile?from=portal`
+    const resp = await subscriptionClient.post(`/customers/${customerId}/portal`, {
+      returnUrl, // 即使 Creem 不支持，我们也传递它，以防将来支持
+    })
     const url = resp.data?.portalUrl
     if (url) {
       window.location.href = url
@@ -115,7 +144,28 @@ const openPortal = async () => {
     }
   } catch (e) {
     console.error('Failed to open portal', e)
+    portalOpenedTime = 0 // 打开失败，重置时间戳
     goPricing()
+  }
+}
+
+// 从订阅同步状态（用于客户门户返回后同步）
+const syncFromSubscription = async () => {
+  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+  if (!subscriptionId) {
+    return
+  }
+  try {
+    console.log('🔄 Syncing subscription from subscription ID:', subscriptionId)
+    await subscriptionClient.post('/subscription/sync-from-subscription', {
+      subscriptionId,
+    })
+    // 同步成功后重新加载订阅信息
+    await loadSubscriptionInfo()
+  } catch (e: any) {
+    console.error('Failed to sync subscription:', e)
+    // 即使同步失败，也尝试重新加载订阅信息
+    await loadSubscriptionInfo()
   }
 }
 
@@ -261,6 +311,48 @@ const isActionDisabled = (slug: string) => slug === planSlug.value || isLoading.
 
 onMounted(() => {
   loadSubscriptionInfo()
+  
+  // 检查是否从客户门户返回（通过 URL 参数）
+  const urlParams = new URLSearchParams(window.location.search)
+  if (urlParams.get('from') === 'portal') {
+    // 从门户返回，同步订阅状态
+    console.log('🔄 Detected return from portal via URL parameter')
+    setTimeout(() => {
+      syncFromSubscription()
+    }, 1000) // 延迟1秒，确保页面已完全加载
+    
+    // 清理 URL 参数
+    window.history.replaceState({}, '', '/profile')
+  }
+  
+  // 监听页面可见性变化，当用户从门户返回时自动刷新状态
+  // 如果在打开门户后10分钟内页面变为可见，很可能是从门户返回
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const now = Date.now()
+      // 如果门户是在10分钟内打开的，可能是从门户返回，同步状态
+      if (portalOpenedTime > 0 && (now - portalOpenedTime) < 10 * 60 * 1000) {
+        const minutesSincePortal = Math.floor((now - portalOpenedTime) / 60000)
+        console.log(`🔄 Page became visible ${minutesSincePortal} minutes after portal visit, syncing subscription status`)
+        syncFromSubscription()
+        portalOpenedTime = 0 // 重置时间戳，避免重复同步
+      } else {
+        // 普通可见性变化，只刷新不同步（避免频繁 API 调用）
+        loadSubscriptionInfo()
+      }
+    }
+  })
+  
+  // 监听页面焦点变化（用户切换回标签页）
+  window.addEventListener('focus', () => {
+    const now = Date.now()
+    if (portalOpenedTime > 0 && (now - portalOpenedTime) < 10 * 60 * 1000) {
+      const minutesSincePortal = Math.floor((now - portalOpenedTime) / 60000)
+      console.log(`🔄 Window focused ${minutesSincePortal} minutes after portal visit, syncing subscription status`)
+      syncFromSubscription()
+      portalOpenedTime = 0 // 重置时间戳
+    }
+  })
 })
 </script>
 
@@ -297,6 +389,17 @@ onMounted(() => {
                 <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
               </div>
             </div>
+            <!-- 退订按钮：只在付费计划且状态为 active/trialing 时显示 -->
+            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-gray-200">
+              <Button 
+                variant="outline" 
+                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                :disabled="isLoading"
+                @click="cancelSubscription"
+              >
+              Cancel Subscription
+              </Button>
+            </div>
             <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
           </div>
 
@@ -310,7 +413,7 @@ onMounted(() => {
               <p>Tip: upgrade to get more try-ons and priority processing.</p>
             </div>
             <div class="mt-6 space-y-3">
-              <Button variant="outline" class="w-full" @click="openPortal">Manage subscription</Button>
+              <Button variant="outline" class="w-full" @click="openPortal">Customer Portal</Button>
               <Button variant="secondary" class="w-full" @click="signOut">Sign out</Button>
             </div>
           </div>
