@@ -41,7 +41,20 @@ const planSlug = computed(() => {
 const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2 }
 const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
 const totalTries = computed(() => subscriptionInfo.value?.totalTries ?? 0)
-const nextResetDate = computed(() => subscriptionInfo.value?.nextResetDate || '')
+const nextResetDate = computed(() => {
+  const dateStr = subscriptionInfo.value?.nextResetDate
+  if (!dateStr) return ''
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  } catch {
+    return dateStr
+  }
+})
 const status = computed(() => getStatusText(subscriptionInfo.value?.status))
 
 const getStatusText = (status: string | null | undefined): string => {
