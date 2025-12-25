@@ -28,3 +28,5 @@ storage/
 # OS
 .DS_Store
 Thumbs.db
+fashion_rec/backend/subscription-service/.wrangler/tmp/
+fashion_rec/backend/subscription-service/.wrangler/tmp/
