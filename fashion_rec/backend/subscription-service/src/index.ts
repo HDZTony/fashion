@@ -448,12 +448,22 @@ const createWebhookHandler = (
           // 根据产品ID确定套餐类型
           const plan = getPlanFromProductId(productId, isTestMode, env);
           
+          // 获取 period_end（可能是 current_period_end 或 period_end）
+          const periodEnd = subscriptionAny.current_period_end 
+            || subscriptionAny.period_end 
+            || subscriptionAny.currentPeriodEndDate
+            || subscriptionAny.current_period_end_date
+            || data.subscription?.current_period_end
+            || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
+            || null;
+          
           console.log(`🔄 Updating subscription for user: ${userId}`, {
             plan,
             productId,
             subscriptionId: data.subscription.id,
             customerId: data.customer?.id,
             status: 'active',
+            periodEnd,
           });
           
             await subscriptionService.updateSubscription(
@@ -461,7 +471,8 @@ const createWebhookHandler = (
             plan,
               data.subscription.id,
               data.customer?.id,
-              'active'
+              'active',
+              periodEnd
             );
           
           console.log(`✅ Subscription updated successfully for user: ${userId}`);
@@ -544,12 +555,82 @@ const createWebhookHandler = (
         });
       },
 
-      // 订阅更新事件
+      // 订阅更新事件（可能包括续费）
       onSubscriptionUpdated: async (data: any) => {
         console.log('🔄 Subscription updated:', {
           subscriptionId: data.subscription?.id,
           customerId: data.customer?.id,
         });
+
+        // 尝试获取 userId 并更新订阅（续费时可能需要累加次数）
+        const subscriptionId = data.subscription?.id || data.object?.id || data.id;
+        if (!subscriptionId) {
+          console.warn('⚠️ No subscription ID found in update event');
+          return;
+        }
+
+        try {
+          // 从数据库查找 userId
+          const { data: subscriptionData, error: queryError } = await subscriptionService['table']
+            .select('user_id')
+            .eq('creem_subscription_id', subscriptionId)
+            .single();
+
+          if (queryError || !subscriptionData) {
+            console.warn(`⚠️ Could not find user_id for subscription ${subscriptionId} in update event`);
+            return;
+          }
+
+          const userId = subscriptionData.user_id;
+
+          // 获取订阅详情
+          const subscription = await creem.subscriptions.get({
+            subscriptionId,
+          });
+
+          const subscriptionAny = subscription as any;
+          
+          // 获取产品ID以确定套餐类型
+          const productId = subscriptionAny.items?.[0]?.productId 
+            || subscriptionAny.productId 
+            || subscriptionAny.product?.id
+            || data.subscription?.items?.[0]?.productId
+            || data.subscription?.productId;
+          
+          const plan = getPlanFromProductId(productId, isTestMode, env);
+          
+          // 获取 period_end
+          const periodEnd = subscriptionAny.current_period_end 
+            || subscriptionAny.period_end 
+            || subscriptionAny.currentPeriodEndDate
+            || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
+            || null;
+          
+          // 获取订阅状态
+          const subscriptionStatus = subscriptionAny.status || 'active';
+          
+          console.log(`🔄 Processing subscription update for user: ${userId}`, {
+            plan,
+            productId,
+            subscriptionId,
+            status: subscriptionStatus,
+            periodEnd,
+          });
+
+          // 更新订阅（如果是续费，会自动累加次数）
+          await subscriptionService.updateSubscription(
+            userId,
+            plan,
+            subscriptionId,
+            subscriptionAny.customer?.id || data.customer?.id,
+            subscriptionStatus === 'active' ? 'active' : 'canceled',
+            periodEnd
+          );
+
+          console.log(`✅ Subscription updated successfully for user: ${userId}`);
+        } catch (error: any) {
+          console.error('❌ Error processing subscription update:', error);
+        }
       },
 
       // 订阅取消事件

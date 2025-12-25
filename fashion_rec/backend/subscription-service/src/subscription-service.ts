@@ -172,13 +172,19 @@ export class SubscriptionService {
         
         // 订阅是 active 状态，正常处理
         if (daysSinceReset >= planConfig.resetPeriodDays) {
+          // 保存当前剩余次数，用于累加
+          const currentRemaining = sub.remaining_tries || 0;
           await this.resetTries(userId, plan);
+          
+          // 累加后的次数
+          const newRemaining = currentRemaining + planConfig.monthlyTries;
+          
           const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
           
           return {
             planName: planConfig.name,
-            remainingTries: planConfig.monthlyTries,
-            totalTries: planConfig.monthlyTries,
+            remainingTries: newRemaining, // 返回累加后的次数
+            totalTries: planConfig.monthlyTries, // 每月新增的次数
             period: planConfig.resetPeriodDays === 1 ? 'daily' : 'monthly',
             nextResetDate: this.addDays(lastReset, planConfig.resetPeriodDays).toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
@@ -343,18 +349,29 @@ export class SubscriptionService {
       const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
       
-      // 如果是新订阅或套餐类型变化（升级/降级），使用新的次数
+      // 判断是否是新的计费周期（续费）
+      const isNewBillingPeriod = this.isNewBillingPeriod(data, periodEnd, planConfig);
+      
+      // 如果是新订阅，设置初始次数
+      // 如果是套餐类型变化（升级/降级）或续费（新计费周期），累加新的次数
       // 否则保留现有的 remaining_tries（避免状态更新时错误重置次数）
       let remaining: number;
       if (!data) {
         // 新订阅，设置初始次数
         remaining = planConfig.monthlyTries;
+        console.log(`📊 New subscription, setting initial tries: ${remaining}`);
       } else if (data.plan !== plan) {
-        // 套餐类型变化（升级/降级），重置为新套餐的次数
-        console.log(`📊 Plan changed from ${data.plan} to ${plan}, resetting tries to ${planConfig.monthlyTries}`);
-        remaining = planConfig.monthlyTries;
+        // 套餐类型变化（升级/降级），累加新套餐的次数
+        const currentRemaining = data.remaining_tries !== undefined ? data.remaining_tries : 0;
+        remaining = currentRemaining + planConfig.monthlyTries;
+        console.log(`📊 Plan changed from ${data.plan} to ${plan}, adding tries: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new ${plan}) = ${remaining} (total)`);
+      } else if (isNewBillingPeriod) {
+        // 续费（新计费周期），累加新的次数
+        const currentRemaining = data.remaining_tries !== undefined ? data.remaining_tries : 0;
+        remaining = currentRemaining + planConfig.monthlyTries;
+        console.log(`📊 New billing period detected, adding tries: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new) = ${remaining} (total)`);
       } else {
-        // 套餐类型未变化，保留现有的 remaining_tries
+        // 套餐类型未变化且不是新计费周期，保留现有的 remaining_tries
         remaining = data.remaining_tries !== undefined ? data.remaining_tries : planConfig.monthlyTries;
         console.log(`📊 Plan unchanged (${plan}), keeping existing remaining_tries: ${remaining}`);
       }
@@ -453,7 +470,7 @@ export class SubscriptionService {
   }
 
   /**
-   * 重置试穿次数
+   * 重置试穿次数（累加模式：保留未用完的次数，并累加新的次数）
    */
   private async resetTries(userId: string, plan: PlanType): Promise<void> {
     try {
@@ -461,9 +478,18 @@ export class SubscriptionService {
       const today = this.getTodayDateString();
       const planConfig = getPlanConfig(plan);
 
+      // 获取当前剩余次数
+      const { data } = await this.table.select('remaining_tries').eq('user_id', userId).single();
+      const currentRemaining = data?.remaining_tries || 0;
+
+      // 累加新的次数（保留未用完的次数）
+      const newRemaining = currentRemaining + planConfig.monthlyTries;
+
+      console.log(`🔄 Resetting tries for plan ${plan}: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new) = ${newRemaining} (total)`);
+
       await this.table
         .update({
-          remaining_tries: planConfig.monthlyTries,
+          remaining_tries: newRemaining,
           last_reset_at: now,
           daily_free_tries_used: 0, // 重置免费次数
           daily_free_tries_date: today,
@@ -473,6 +499,49 @@ export class SubscriptionService {
     } catch (error: any) {
       console.error('Error resetting tries:', error);
     }
+  }
+
+  /**
+   * 判断是否是新的计费周期（续费）
+   * 通过比较 period_end 或 last_reset_at 来判断
+   */
+  private isNewBillingPeriod(
+    existingData: SubscriptionRecord | null,
+    newPeriodEnd: string | null | undefined,
+    planConfig: ReturnType<typeof getPlanConfig>
+  ): boolean {
+    if (!existingData) {
+      return false; // 新订阅，不是续费
+    }
+
+    // 如果提供了新的 period_end，检查是否更新了
+    if (newPeriodEnd) {
+      const newPeriodEndDate = new Date(newPeriodEnd);
+      const existingPeriodEnd = existingData.period_end ? new Date(existingData.period_end) : null;
+      
+      // 如果新的 period_end 比现有的晚，说明进入了新的计费周期
+      if (existingPeriodEnd && newPeriodEndDate > existingPeriodEnd) {
+        console.log(`📅 New billing period detected: period_end updated from ${existingPeriodEnd.toISOString()} to ${newPeriodEndDate.toISOString()}`);
+        return true;
+      }
+    }
+
+    // 如果 period_end 没有更新，检查 last_reset_at 是否已经超过一个周期
+    if (existingData.last_reset_at) {
+      const lastReset = new Date(existingData.last_reset_at);
+      const now = new Date();
+      const daysSinceReset = Math.floor(
+        (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // 如果距离上次重置已经超过一个周期，说明应该进入新周期
+      if (daysSinceReset >= planConfig.resetPeriodDays) {
+        console.log(`📅 New billing period detected: ${daysSinceReset} days since last reset (>= ${planConfig.resetPeriodDays} days)`);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

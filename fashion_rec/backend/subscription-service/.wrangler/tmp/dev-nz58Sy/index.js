@@ -17758,12 +17758,16 @@ var SubscriptionService = class {
           };
         }
         if (daysSinceReset >= planConfig.resetPeriodDays) {
+          const currentRemaining = sub.remaining_tries || 0;
           await this.resetTries(userId, plan);
+          const newRemaining = currentRemaining + planConfig.monthlyTries;
           const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
           return {
             planName: planConfig.name,
-            remainingTries: planConfig.monthlyTries,
+            remainingTries: newRemaining,
+            // 返回累加后的次数
             totalTries: planConfig.monthlyTries,
+            // 每月新增的次数
             period: planConfig.resetPeriodDays === 1 ? "daily" : "monthly",
             nextResetDate: this.addDays(lastReset, planConfig.resetPeriodDays).toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
@@ -17888,12 +17892,19 @@ var SubscriptionService = class {
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
+      const isNewBillingPeriod = this.isNewBillingPeriod(data, periodEnd, planConfig);
       let remaining;
       if (!data) {
         remaining = planConfig.monthlyTries;
+        console.log(`\u{1F4CA} New subscription, setting initial tries: ${remaining}`);
       } else if (data.plan !== plan) {
-        console.log(`\u{1F4CA} Plan changed from ${data.plan} to ${plan}, resetting tries to ${planConfig.monthlyTries}`);
-        remaining = planConfig.monthlyTries;
+        const currentRemaining = data.remaining_tries !== void 0 ? data.remaining_tries : 0;
+        remaining = currentRemaining + planConfig.monthlyTries;
+        console.log(`\u{1F4CA} Plan changed from ${data.plan} to ${plan}, adding tries: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new ${plan}) = ${remaining} (total)`);
+      } else if (isNewBillingPeriod) {
+        const currentRemaining = data.remaining_tries !== void 0 ? data.remaining_tries : 0;
+        remaining = currentRemaining + planConfig.monthlyTries;
+        console.log(`\u{1F4CA} New billing period detected, adding tries: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new) = ${remaining} (total)`);
       } else {
         remaining = data.remaining_tries !== void 0 ? data.remaining_tries : planConfig.monthlyTries;
         console.log(`\u{1F4CA} Plan unchanged (${plan}), keeping existing remaining_tries: ${remaining}`);
@@ -17976,15 +17987,19 @@ var SubscriptionService = class {
     }
   }
   /**
-   * 重置试穿次数
+   * 重置试穿次数（累加模式：保留未用完的次数，并累加新的次数）
    */
   async resetTries(userId, plan) {
     try {
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const today = this.getTodayDateString();
       const planConfig = getPlanConfig(plan);
+      const { data } = await this.table.select("remaining_tries").eq("user_id", userId).single();
+      const currentRemaining = data?.remaining_tries || 0;
+      const newRemaining = currentRemaining + planConfig.monthlyTries;
+      console.log(`\u{1F504} Resetting tries for plan ${plan}: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new) = ${newRemaining} (total)`);
       await this.table.update({
-        remaining_tries: planConfig.monthlyTries,
+        remaining_tries: newRemaining,
         last_reset_at: now,
         daily_free_tries_used: 0,
         // 重置免费次数
@@ -17994,6 +18009,35 @@ var SubscriptionService = class {
     } catch (error) {
       console.error("Error resetting tries:", error);
     }
+  }
+  /**
+   * 判断是否是新的计费周期（续费）
+   * 通过比较 period_end 或 last_reset_at 来判断
+   */
+  isNewBillingPeriod(existingData, newPeriodEnd, planConfig) {
+    if (!existingData) {
+      return false;
+    }
+    if (newPeriodEnd) {
+      const newPeriodEndDate = new Date(newPeriodEnd);
+      const existingPeriodEnd = existingData.period_end ? new Date(existingData.period_end) : null;
+      if (existingPeriodEnd && newPeriodEndDate > existingPeriodEnd) {
+        console.log(`\u{1F4C5} New billing period detected: period_end updated from ${existingPeriodEnd.toISOString()} to ${newPeriodEndDate.toISOString()}`);
+        return true;
+      }
+    }
+    if (existingData.last_reset_at) {
+      const lastReset = new Date(existingData.last_reset_at);
+      const now = /* @__PURE__ */ new Date();
+      const daysSinceReset = Math.floor(
+        (now.getTime() - lastReset.getTime()) / (1e3 * 60 * 60 * 24)
+      );
+      if (daysSinceReset >= planConfig.resetPeriodDays) {
+        console.log(`\u{1F4C5} New billing period detected: ${daysSinceReset} days since last reset (>= ${planConfig.resetPeriodDays} days)`);
+        return true;
+      }
+    }
+    return false;
   }
   /**
    * 添加天数
@@ -18314,19 +18358,22 @@ var createWebhookHandler = /* @__PURE__ */ __name((subscriptionService, creem, i
         const subscriptionAny = subscription;
         const productId = subscriptionAny.items?.[0]?.productId || subscriptionAny.productId || subscriptionAny.product?.id || data.subscription?.items?.[0]?.productId || data.subscription?.productId;
         const plan = getPlanFromProductId(productId, isTestMode, env2);
+        const periodEnd = subscriptionAny.current_period_end || subscriptionAny.period_end || subscriptionAny.currentPeriodEndDate || subscriptionAny.current_period_end_date || data.subscription?.current_period_end || subscriptionAny.periods && subscriptionAny.periods[0]?.end_date || null;
         console.log(`\u{1F504} Updating subscription for user: ${userId}`, {
           plan,
           productId,
           subscriptionId: data.subscription.id,
           customerId: data.customer?.id,
-          status: "active"
+          status: "active",
+          periodEnd
         });
         await subscriptionService.updateSubscription(
           userId,
           plan,
           data.subscription.id,
           data.customer?.id,
-          "active"
+          "active",
+          periodEnd
         );
         console.log(`\u2705 Subscription updated successfully for user: ${userId}`);
       } catch (error) {
@@ -18394,12 +18441,51 @@ var createWebhookHandler = /* @__PURE__ */ __name((subscriptionService, creem, i
         productId: data.subscription?.items?.[0]?.productId
       });
     }, "onSubscriptionCreated"),
-    // 订阅更新事件
+    // 订阅更新事件（可能包括续费）
     onSubscriptionUpdated: /* @__PURE__ */ __name(async (data) => {
       console.log("\u{1F504} Subscription updated:", {
         subscriptionId: data.subscription?.id,
         customerId: data.customer?.id
       });
+      const subscriptionId = data.subscription?.id || data.object?.id || data.id;
+      if (!subscriptionId) {
+        console.warn("\u26A0\uFE0F No subscription ID found in update event");
+        return;
+      }
+      try {
+        const { data: subscriptionData, error: queryError } = await subscriptionService["table"].select("user_id").eq("creem_subscription_id", subscriptionId).single();
+        if (queryError || !subscriptionData) {
+          console.warn(`\u26A0\uFE0F Could not find user_id for subscription ${subscriptionId} in update event`);
+          return;
+        }
+        const userId = subscriptionData.user_id;
+        const subscription = await creem.subscriptions.get({
+          subscriptionId
+        });
+        const subscriptionAny = subscription;
+        const productId = subscriptionAny.items?.[0]?.productId || subscriptionAny.productId || subscriptionAny.product?.id || data.subscription?.items?.[0]?.productId || data.subscription?.productId;
+        const plan = getPlanFromProductId(productId, isTestMode, env2);
+        const periodEnd = subscriptionAny.current_period_end || subscriptionAny.period_end || subscriptionAny.currentPeriodEndDate || subscriptionAny.periods && subscriptionAny.periods[0]?.end_date || null;
+        const subscriptionStatus = subscriptionAny.status || "active";
+        console.log(`\u{1F504} Processing subscription update for user: ${userId}`, {
+          plan,
+          productId,
+          subscriptionId,
+          status: subscriptionStatus,
+          periodEnd
+        });
+        await subscriptionService.updateSubscription(
+          userId,
+          plan,
+          subscriptionId,
+          subscriptionAny.customer?.id || data.customer?.id,
+          subscriptionStatus === "active" ? "active" : "canceled",
+          periodEnd
+        );
+        console.log(`\u2705 Subscription updated successfully for user: ${userId}`);
+      } catch (error) {
+        console.error("\u274C Error processing subscription update:", error);
+      }
     }, "onSubscriptionUpdated"),
     // 订阅取消事件
     onSubscriptionCanceled: /* @__PURE__ */ __name(async (data) => {
