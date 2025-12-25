@@ -15,7 +15,41 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 const subscriptionInfo = ref<any>(null)
 const userEmail = ref<string>('—')
-const isTestMode = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
+// 从后端获取环境配置
+const isTestMode = ref(false)
+const productIds = ref<{
+  premium: { test: string; prod: string }
+  premiumPlus: { test: string; prod: string }
+  premiumPro: { test: string; prod: string }
+} | null>(null)
+
+// 从后端加载环境配置
+const loadConfig = async () => {
+  try {
+    const response = await subscriptionClient.get('/config')
+    isTestMode.value = response.data.isTestMode
+    productIds.value = response.data.productIds
+    console.log('Environment config loaded:', { isTestMode: isTestMode.value, productIds: productIds.value })
+  } catch (error: any) {
+    console.error('Failed to load config from backend, using fallback:', error)
+    // 如果后端配置加载失败，使用环境变量作为后备
+    isTestMode.value = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
+    productIds.value = {
+      premium: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || '',
+      },
+      premiumPlus: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || '',
+      },
+      premiumPro: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD || '',
+      },
+    }
+  }
+}
 
 const subscriptionClient = axios.create({
   baseURL: SUBSCRIPTION_API_URL,
@@ -27,6 +61,7 @@ const subscriptionClient = axios.create({
 const planNameRaw = computed(() => subscriptionInfo.value?.planName || 'Free')
 const planDisplay = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
+  if (name === 'premium_pro' || name === 'premium pro') return 'Premium Pro ($29.9)'
   if (name === 'premium_plus' || name === 'premium plus') return 'Premium Plus ($15)'
   if (name === 'premium' || name === '高级版') return 'Premium ($5)'
   if (name === '免费版') return 'Free'
@@ -34,11 +69,12 @@ const planDisplay = computed(() => {
 })
 const planSlug = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
+  if (name === 'premium_pro' || name === 'premium pro') return 'premium_pro'
   if (name === 'premium_plus' || name === 'premium plus') return 'premium_plus'
   if (name === 'premium' || name === '高级版') return 'premium'
   return 'free'
 })
-const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2 }
+const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2, premium_pro: 3 }
 const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
 const totalTries = computed(() => subscriptionInfo.value?.totalTries ?? 0)
 const nextResetDate = computed(() => {
@@ -182,19 +218,29 @@ const syncFromSubscription = async () => {
   }
 }
 
-const getProductIdForPlan = (target: 'premium' | 'premium_plus') => {
-  if (target === 'premium_plus') {
-    return isTestMode
-      ? (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
-      : (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
+const getProductIdForPlan = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
+  // 确保配置已加载
+  if (!productIds.value) {
+    await loadConfig()
   }
-  return isTestMode
-    ? (import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID)
-    : (import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID)
+
+  if (target === 'premium_pro') {
+    return isTestMode.value
+      ? (productIds.value?.premiumPro.test || '')
+      : (productIds.value?.premiumPro.prod || '')
+  }
+  if (target === 'premium_plus') {
+    return isTestMode.value
+      ? (productIds.value?.premiumPlus.test || '')
+      : (productIds.value?.premiumPlus.prod || '')
+  }
+  return isTestMode.value
+    ? (productIds.value?.premium.test || '')
+    : (productIds.value?.premium.prod || '')
 }
 
 // Upgrade/downgrade existing subscription
-const upgradeSubscription = async (target: 'premium' | 'premium_plus') => {
+const upgradeSubscription = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
   const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
   if (!subscriptionId) {
     // No existing subscription, use checkout instead
@@ -216,7 +262,7 @@ const upgradeSubscription = async (target: 'premium' | 'premium_plus') => {
       ? 'proration-charge-immediately' 
       : 'proration-charge'
     
-    const productId = getProductIdForPlan(target)
+    const productId = await getProductIdForPlan(target)
     await subscriptionClient.post(`/subscriptions/${subscriptionId}/upgrade`, {
       productId,
       updateBehavior,
@@ -242,14 +288,14 @@ const upgradeSubscription = async (target: 'premium' | 'premium_plus') => {
 }
 
 // Start new checkout (for users without subscription)
-const startCheckout = async (target: 'premium' | 'premium_plus') => {
+const startCheckout = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
   try {
     isLoading.value = true
     error.value = null
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Please sign in first')
 
-    const productId = getProductIdForPlan(target)
+    const productId = await getProductIdForPlan(target)
     const response = await subscriptionClient.post('/checkouts', {
       productId,
       successUrl: `${window.location.origin}/pricing?success=true`,
@@ -299,7 +345,7 @@ const plans = computed(() => ([
     slug: 'premium',
     name: 'Premium',
     price: '$5 / mo',
-    tries: '50 / month',
+    tries: '30 / month',
     desc: 'More try-ons and priority',
     action: () => upgradeSubscription('premium'),
   },
@@ -307,9 +353,17 @@ const plans = computed(() => ([
     slug: 'premium_plus',
     name: 'Premium Plus',
     price: '$15 / mo',
-    tries: '200 / month',
-    desc: 'Highest limits and priority',
+    tries: '100 / month',
+    desc: 'Higher limits and priority',
     action: () => upgradeSubscription('premium_plus'),
+  },
+  {
+    slug: 'premium_pro',
+    name: 'Premium Pro',
+    price: '$29.9 / mo',
+    tries: '250 / month',
+    desc: 'Highest limits and priority',
+    action: () => upgradeSubscription('premium_pro'),
   },
 ]))
 
@@ -322,8 +376,11 @@ const actionLabel = (slug: string) => {
 
 const isActionDisabled = (slug: string) => slug === planSlug.value || isLoading.value
 
-onMounted(() => {
-  loadSubscriptionInfo()
+onMounted(async () => {
+  // 首先加载后端配置
+  await loadConfig()
+  // 然后加载订阅信息
+  await loadSubscriptionInfo()
   
   // 检查是否从客户门户返回（通过 URL 参数）
   const urlParams = new URLSearchParams(window.location.search)

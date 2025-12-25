@@ -8,7 +8,7 @@
       </div>
 
       <!-- Pricing Cards -->
-      <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
         <!-- Free Plan -->
         <div class="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-8 hover:border-blue-500 transition-all">
           <div class="text-center">
@@ -22,7 +22,7 @@
                 <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span class="text-gray-700">3 virtual try-on per day</span>
+                <span class="text-gray-700">3 virtual try-ons per day (first 3 tries are free for all plans)</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,7 +64,7 @@
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>50 virtual try-ons per month</span>
+                <span>30 virtual try-ons per month</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,7 +113,7 @@
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>200 virtual try-ons per month</span>
+                <span>100 virtual try-ons per month</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,6 +148,55 @@
             </button>
           </div>
         </div>
+
+        <!-- Premium Pro Plan -->
+        <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-xl border-2 border-indigo-500 p-8 text-white relative transform hover:scale-105 transition-all">
+          <div class="text-center">
+            <h2 class="text-2xl font-bold mb-2">Premium Pro</h2>
+            <div class="mb-6">
+              <span class="text-5xl font-bold">$29.9</span>
+              <span class="text-indigo-100 ml-2">/mo</span>
+            </div>
+            <ul class="text-left space-y-4 mb-8">
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>250 virtual try-ons per month</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>Includes all Premium Plus features</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>Priority processing</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>Unlimited history</span>
+              </li>
+            </ul>
+            <button
+              @click="selectPlan('premium_pro')"
+              :disabled="isLoading"
+              :class="[
+                'w-full py-3 px-6 rounded-lg font-semibold transition-all',
+                isLoading
+                  ? 'bg-white/80 text-indigo-600 cursor-wait'
+                  : 'bg-white text-indigo-600 hover:bg-indigo-50'
+              ]"
+            >
+              {{ isLoading ? 'Processing...' : 'Subscribe now' }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Error Message -->
@@ -175,7 +224,41 @@ const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http:
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const subscriptionInfo = ref<any>(null)
-const isTestMode = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
+// 从后端获取环境配置
+const isTestMode = ref(false)
+const productIds = ref<{
+  premium: { test: string; prod: string }
+  premiumPlus: { test: string; prod: string }
+  premiumPro: { test: string; prod: string }
+} | null>(null)
+
+// 从后端加载环境配置
+const loadConfig = async () => {
+  try {
+    const response = await subscriptionClient.get('/config')
+    isTestMode.value = response.data.isTestMode
+    productIds.value = response.data.productIds
+    console.log('Environment config loaded:', { isTestMode: isTestMode.value, productIds: productIds.value })
+  } catch (error: any) {
+    console.error('Failed to load config from backend, using fallback:', error)
+    // 如果后端配置加载失败，使用环境变量作为后备
+    isTestMode.value = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
+    productIds.value = {
+      premium: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || '',
+      },
+      premiumPlus: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || '',
+      },
+      premiumPro: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD || '',
+      },
+    }
+  }
+}
 
 // Create axios client with auth headers
 const apiClient = axios.create({
@@ -239,14 +322,14 @@ const loadSubscriptionInfo = async () => {
 }
 
 // Choose plan
-const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus') => {
+const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus' | 'premium_pro') => {
   if (plan === 'free') {
     // Free plan does not require payment
     router.push('/studio')
     return
   }
 
-  if (plan === 'premium' || plan === 'premium_plus') {
+  if (plan === 'premium' || plan === 'premium_plus' || plan === 'premium_pro') {
     isLoading.value = true
     error.value = null
 
@@ -257,17 +340,31 @@ const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus') => {
         throw new Error('Please sign in first')
       }
 
+      // 确保配置已加载
+      if (!productIds.value) {
+        await loadConfig()
+      }
+
       // Create checkout session
-      // 根据环境和套餐类型选择产品ID
-      const premiumIds = isTestMode
-        ? (import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID)
-        : (import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID)
+      // 根据后端返回的环境配置选择产品ID
+      let productId: string
+      if (plan === 'premium_pro') {
+        productId = isTestMode.value 
+          ? (productIds.value?.premiumPro.test || '')
+          : (productIds.value?.premiumPro.prod || '')
+      } else if (plan === 'premium_plus') {
+        productId = isTestMode.value
+          ? (productIds.value?.premiumPlus.test || '')
+          : (productIds.value?.premiumPlus.prod || '')
+      } else {
+        productId = isTestMode.value
+          ? (productIds.value?.premium.test || '')
+          : (productIds.value?.premium.prod || '')
+      }
 
-      const premiumPlusIds = isTestMode
-        ? (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
-        : (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
-
-      const productId = plan === 'premium_plus' ? premiumPlusIds : premiumIds
+      if (!productId) {
+        throw new Error('Product ID not configured')
+      }
 
       const response = await subscriptionClient.post('/checkouts', {
         productId: productId,
@@ -334,9 +431,10 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
       })
       
       const info = response.data
-      // 检查是否已升级为高级版或Premium Plus
+      // 检查是否已升级为高级版、Premium Plus或Premium Pro
       if (info.planName === 'Premium' || info.planName === 'premium' || 
-          info.planName === 'Premium Plus' || info.planName === 'premium_plus') {
+          info.planName === 'Premium Plus' || info.planName === 'premium_plus' ||
+          info.planName === 'Premium Pro' || info.planName === 'premium_pro') {
         subscriptionInfo.value = info
         return true
       }
@@ -358,6 +456,9 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
 // 检查 URL 参数（支付成功/取消）
 onMounted(async () => {
   if (typeof window === 'undefined') return
+
+  // 首先加载后端配置
+  await loadConfig()
 
   const urlParams = new URLSearchParams(window.location.search)
   if (urlParams.get('success') === 'true') {

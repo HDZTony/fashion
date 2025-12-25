@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { createCreem } from 'creem_io';
 import { SubscriptionService } from './subscription-service';
+import { getPlanTypeFromProductId, PlanType } from './plan-config';
 
 // Define environment variables interface for Cloudflare Workers
 interface Env {
@@ -17,6 +18,8 @@ interface Env {
   CREEM_PROD_PRODUCT_ID?: string;
   CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS?: string;
   CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS?: string;
+  CREEM_TEST_PRODUCT_ID_PREMIUM_PRO?: string;
+  CREEM_PROD_PRODUCT_ID_PREMIUM_PRO?: string;
   NODE_ENV?: string;
 }
 
@@ -83,6 +86,39 @@ app.use(
 // Health check
 app.get('/health', (c) => {
   return c.json({ status: 'ok', service: 'subscription-service' });
+});
+
+// Get environment configuration (for frontend)
+app.get('/config', async (c) => {
+  try {
+    const { isTestMode, env } = getServices(c);
+    return c.json({
+      isTestMode,
+      environment: isTestMode ? 'TEST' : 'PRODUCTION',
+      productIds: {
+        premium: {
+          test: env.CREEM_TEST_PRODUCT_ID,
+          prod: env.CREEM_PROD_PRODUCT_ID,
+        },
+        premiumPlus: {
+          test: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
+          prod: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
+        },
+        premiumPro: {
+          test: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO,
+          prod: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO,
+        },
+      },
+    });
+  } catch (error: any) {
+    return c.json(
+      {
+        error: 'Failed to get config',
+        message: error.message || 'Unknown error',
+      },
+      500
+    );
+  }
 });
 
 // Diagnostic endpoint for database connection
@@ -330,28 +366,21 @@ app.post('/subscription/update', async (c) => {
 
 /**
  * 根据产品ID和环境确定套餐类型
+ * 使用配置模块中的函数
  */
 function getPlanFromProductId(
   productId: string | undefined,
   isTestMode: boolean,
   env: Env
-): 'premium' | 'premium_plus' {
-  const premiumPlusIds = [
-    // 优先使用环境变量
-    isTestMode ? env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS : env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
-    // 兼容旧变量
-    env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
-    env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
-    // 默认测试产品ID（已知）
-    isTestMode ? 'prod_6YsIDqxb9lnMmVarSuUfBc' : undefined,
-  ].filter(Boolean);
-
-  if (productId && premiumPlusIds.includes(productId)) {
-    return 'premium_plus';
-  }
-
-  // 兜底为 premium
-  return 'premium';
+): PlanType {
+  return getPlanTypeFromProductId(productId, isTestMode, {
+    CREEM_TEST_PRODUCT_ID: env.CREEM_TEST_PRODUCT_ID,
+    CREEM_PROD_PRODUCT_ID: env.CREEM_PROD_PRODUCT_ID,
+    CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
+    CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
+    CREEM_TEST_PRODUCT_ID_PREMIUM_PRO: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO,
+    CREEM_PROD_PRODUCT_ID_PREMIUM_PRO: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO,
+  });
 }
 
 // ==================== Webhook Routes ====================

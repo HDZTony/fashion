@@ -150,7 +150,17 @@ jobs:
           # Set these in GitHub Repository Settings -> Secrets and Variables -> Variables
           VITE_API_URL: ${{ vars.VITE_API_URL }} 
           VITE_SUBSCRIPTION_API_URL: ${{ vars.VITE_SUBSCRIPTION_API_URL }}
-          VITE_CREEM_PRODUCT_ID: ${{ vars.VITE_CREEM_PRODUCT_ID }}
+          # 环境切换：false = 生产环境，true = 测试环境
+          VITE_CREEM_TEST_MODE: ${{ vars.VITE_CREEM_TEST_MODE || 'false' }}
+          # Premium ($5) - 30次/月
+          VITE_CREEM_PRODUCT_ID_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_TEST }}
+          VITE_CREEM_PRODUCT_ID_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PROD }}
+          # Premium Plus ($15) - 100次/月
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST }}
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD }}
+          # Premium Pro ($29.9) - 250次/月
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST }}
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
       - name: Deploy to Cloudflare Pages
@@ -200,7 +210,17 @@ jobs:
           # Set these in GitHub Repository Settings -> Secrets and Variables -> Variables
           VITE_API_URL: ${{ vars.VITE_API_URL }} 
           VITE_SUBSCRIPTION_API_URL: ${{ vars.VITE_SUBSCRIPTION_API_URL }}
-          VITE_CREEM_PRODUCT_ID: ${{ vars.VITE_CREEM_PRODUCT_ID }}
+          # 环境切换：false = 生产环境，true = 测试环境
+          VITE_CREEM_TEST_MODE: ${{ vars.VITE_CREEM_TEST_MODE || 'false' }}
+          # Premium ($5) - 30次/月
+          VITE_CREEM_PRODUCT_ID_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_TEST }}
+          VITE_CREEM_PRODUCT_ID_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PROD }}
+          # Premium Plus ($15) - 100次/月
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST }}
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD }}
+          # Premium Pro ($29.9) - 250次/月
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST }}
+          VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
       - name: Deploy to Cloudflare Pages (V2 Branch)
