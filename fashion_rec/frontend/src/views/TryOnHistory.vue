@@ -265,9 +265,6 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
           Try-On History
         </h1>
       </div>
-      <div class="text-xs text-gray-500">
-        保留 {{ retentionDays }} 天历史
-      </div>
     </header>
 
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl">
@@ -323,21 +320,21 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
                   {{ item.garment_urls.length }} item(s)
                 </p>
                 <p v-if="item.scene_image_url" class="text-xs text-blue-500 mt-1">
-                  包含场景
+                  include sence
                 </p>
               </div>
               <div class="flex items-center gap-1">
                 <button
                   @click.stop="restoreTryOnHistory(item)"
                   class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-blue-50 flex items-center justify-center transition-colors group"
-                  title="恢复到此试穿"
+                  title="Restore to this fitting"
                 >
                   <RotateCcw class="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
                 </button>
                 <button
                   @click.stop="deleteHistoryItem(item.id)"
                   class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
-                  title="删除历史记录"
+                  title="Clear History"
                 >
                   <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
                 </button>
