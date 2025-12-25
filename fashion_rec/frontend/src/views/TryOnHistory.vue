@@ -152,10 +152,26 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // Ensure session is loaded before making requests
+  // Ensure session is loaded before making requests (handles page refresh)
   try {
-    const { data } = await supabase.auth.getSession()
-    if (!data.session) {
+    let attempts = 0
+    let session = null
+    
+    // Retry up to 3 times to allow Supabase session to recover on page refresh
+    while (attempts < 3 && !session) {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        session = data.session
+        break
+      }
+      if (attempts < 2) {
+        // Wait a bit for session to recover (Supabase may need time on page refresh)
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      attempts++
+    }
+    
+    if (!session) {
       router.push('/login')
       return
     }

@@ -2,7 +2,6 @@
 defineOptions({ name: 'Favorites' })
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
@@ -28,26 +27,9 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
+import { createAuthenticatedApiClient } from '../lib/api-client'
 
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-  } catch (e) {
-    console.warn('Failed to get Supabase session for request:', e)
-  }
-  return config
-})
+const apiClient = createAuthenticatedApiClient(API_URL)
 
 const loadFavorites = async () => {
   isLoading.value = true
@@ -126,7 +108,36 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Ensure session is loaded before making requests (handles page refresh)
+  try {
+    let attempts = 0
+    let session = null
+    
+    // Retry up to 3 times to allow Supabase session to recover on page refresh
+    while (attempts < 3 && !session) {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        session = data.session
+        break
+      }
+      if (attempts < 2) {
+        // Wait a bit for session to recover (Supabase may need time on page refresh)
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      attempts++
+    }
+    
+    if (!session) {
+      router.push('/login')
+      return
+    }
+  } catch (e) {
+    console.error('Failed to check session:', e)
+    router.push('/login')
+    return
+  }
+  
   loadFavorites()
   window.addEventListener('keydown', handleKeyDown)
 })
