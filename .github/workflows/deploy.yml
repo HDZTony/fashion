@@ -7,6 +7,10 @@ on:
       - v2
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   changes:
     name: Detect Changes
@@ -59,8 +63,27 @@ jobs:
         working-directory: ./fashion_rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Deploy to Stable backend
-        run: flyctl deploy --remote-only
+      - name: Deploy to Stable backend with retry
+        run: |
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "Deployment attempt $attempt of $max_attempts"
+            if flyctl deploy --remote-only; then
+              echo "Deployment successful"
+              exit 0
+            else
+              exit_code=$?
+              if [ $attempt -lt $max_attempts ]; then
+                echo "Deployment failed, waiting 30 seconds before retry..."
+                sleep 30
+              else
+                echo "Deployment failed after $max_attempts attempts"
+                exit $exit_code
+              fi
+            fi
+            attempt=$((attempt + 1))
+          done
         working-directory: ./fashion_rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -80,8 +103,27 @@ jobs:
         working-directory: ./fashion_rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Deploy to V2 backend
-        run: flyctl deploy --config fly.v2.toml --remote-only
+      - name: Deploy to V2 backend with retry
+        run: |
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "Deployment attempt $attempt of $max_attempts"
+            if flyctl deploy --config fly.v2.toml --remote-only; then
+              echo "Deployment successful"
+              exit 0
+            else
+              exit_code=$?
+              if [ $attempt -lt $max_attempts ]; then
+                echo "Deployment failed, waiting 30 seconds before retry..."
+                sleep 30
+              else
+                echo "Deployment failed after $max_attempts attempts"
+                exit $exit_code
+              fi
+            fi
+            attempt=$((attempt + 1))
+          done
         working-directory: ./fashion_rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -1815,7 +1815,7 @@ async def delete_favorite(
 async def get_tryon_history(user_id: str = Depends(get_current_user)):
     """
     Get all try-on history for the current user.
-    Automatically filters out records older than 7 days.
+    Returns all records without filtering. Expired records are cleaned up by periodic cleanup task.
     """
     from services.tryon_history import list_tryon_history
 
@@ -1887,6 +1887,12 @@ async def startup_event():
                     deleted_looks = cleanup_expired_looks(resolve_retention, delete_file_from_r2_by_url)
                     if deleted_looks:
                         logger.info(f"Deleted {deleted_looks} expired look(s) based on retention policy.")
+                    
+                    # Clean up expired try-on history records (deletes from Supabase and R2)
+                    from services.tryon_history import _cleanup_expired
+                    deleted_history = _cleanup_expired()
+                    if deleted_history:
+                        logger.info(f"Deleted {deleted_history} expired try-on history record(s).")
                 except asyncio.CancelledError:
                     # This is expected when the application is shutting down or reloading
                     logger.debug("Periodic cleanup task cancelled (shutting down/reloading)")

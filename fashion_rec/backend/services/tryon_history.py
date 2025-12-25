@@ -2,9 +2,10 @@
 试穿历史记录服务
 使用Supabase存储试穿历史
 根据用户订阅类型设置不同的保存时间：
-- Free: 7天
-- Premium ($5): 90天
-- Premium Plus ($15): 365天
+- Free: 30天
+- Premium ($5): 360天
+- Premium Plus ($15): 540天
+- Premium Pro ($29.9): 540天
 """
 import os
 import json
@@ -30,17 +31,19 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 TABLE_NAME = "tryon_history"
 
 # 默认保留天数（免费用户）
-DEFAULT_RETENTION_DAYS = 7
+DEFAULT_RETENTION_DAYS = 30
 
 # 订阅类型对应的保留天数
 PLAN_RETENTION_DAYS = {
-    "Free": 7,
-    "Premium": 90,
-    "Premium Plus": 365,
+    "Free": 30,
+    "Premium": 360,
+    "Premium Plus": 540,
+    "Premium Pro": 540,
     # 兼容小写和不同格式
-    "free": 7,
-    "premium": 90,
-    "premium_plus": 365,
+    "free": 30,
+    "premium": 360,
+    "premium_plus": 540,
+    "premium_pro": 540,
 }
 
 # 全局Supabase客户端实例
@@ -51,7 +54,8 @@ _table = _client.table(TABLE_NAME)
 def _get_retention_days_for_user(user_id: str) -> int:
     """
     根据用户订阅类型获取保留天数。
-    如果无法获取订阅信息，返回默认的7天。
+    仅在保存历史记录时调用，用于计算 expires_at。
+    如果无法获取订阅信息，返回默认的30天。
     """
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
     try:
@@ -106,31 +110,90 @@ def _normalize_record(record: Dict[str, Any]) -> Dict[str, Any]:
     return record
 
 
-def _cleanup_expired(user_id: Optional[str] = None) -> None:
+def _cleanup_expired(user_id: Optional[str] = None) -> int:
     """
-    Remove expired records based on user's subscription plan.
-    If user_id is provided, only cleans up that user's expired records using their retention period.
-    Otherwise, cleans up all expired records using the minimum retention period (7 days).
+    Remove expired records based on expires_at field.
+    Also deletes corresponding R2 files (image_url and scene_image_url).
+    If user_id is provided, only cleans up that user's expired records.
+    Otherwise, cleans up all expired records.
+    
+    Returns:
+        Number of deleted records
     """
     try:
-        if user_id:
-            # Use user-specific retention period
-            retention_days = _get_retention_days_for_user(user_id)
-        else:
-            # Use minimum retention period for global cleanup
-            retention_days = DEFAULT_RETENTION_DAYS
+        from services.storage import delete_file_from_r2_by_url
         
-        cutoff_date = (datetime.utcnow() - timedelta(days=retention_days)).isoformat() + "Z"
-        # Delete expired records
-        query = _table.delete().lt("created_at", cutoff_date)
+        # Query expired records (expires_at < now)
+        now = datetime.utcnow().isoformat() + "Z"
+        cutoff_30_days = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
+        
+        expired_records = []
+        seen_ids = set()
+        
+        # Query records where expires_at < now
+        query1 = _table.select("*").lt("expires_at", now)
         if user_id:
-            query = query.eq("user_id", user_id)
-        response = query.execute()
-        deleted_count = len(response.data) if response.data else 0
+            query1 = query1.eq("user_id", user_id)
+        response1 = query1.execute()
+        if response1.data:
+            for record in response1.data:
+                record_id = record.get("id")
+                if record_id and record_id not in seen_ids:
+                    expired_records.append(record)
+                    seen_ids.add(record_id)
+        
+        # Also query records with NULL expires_at (backward compatibility)
+        # First get all records with NULL expires_at, then filter by created_at in Python
+        query2 = _table.select("*").is_("expires_at", "null")
+        if user_id:
+            query2 = query2.eq("user_id", user_id)
+        response2 = query2.execute()
+        if response2.data:
+            for record in response2.data:
+                # Only include if created_at < 30 days ago (backward compatibility)
+                created_at = record.get("created_at", "")
+                if created_at and created_at < cutoff_30_days:
+                    record_id = record.get("id")
+                    if record_id and record_id not in seen_ids:
+                        expired_records.append(record)
+                        seen_ids.add(record_id)
+        
+        deleted_count = 0
+        for record in expired_records:
+            try:
+                # Delete R2 files if they exist
+                image_url = record.get("image_url")
+                if image_url:
+                    try:
+                        delete_file_from_r2_by_url(image_url)
+                    except Exception as e:
+                        print(f"[Try-On History] Failed to delete R2 file {image_url}: {e}")
+                        # Continue with database deletion even if R2 deletion fails
+                
+                scene_image_url = record.get("scene_image_url")
+                if scene_image_url:
+                    try:
+                        delete_file_from_r2_by_url(scene_image_url)
+                    except Exception as e:
+                        print(f"[Try-On History] Failed to delete R2 file {scene_image_url}: {e}")
+                        # Continue with database deletion even if R2 deletion fails
+                
+                # Delete from database
+                record_id = record.get("id")
+                if record_id:
+                    delete_response = _table.delete().eq("id", record_id).execute()
+                    if delete_response.data:
+                        deleted_count += 1
+            except Exception as e:
+                print(f"[Try-On History] Error deleting record {record.get('id')}: {e}")
+                continue
+        
         if deleted_count > 0:
-            print(f"[Try-On History] Cleaned up {deleted_count} expired records (retention: {retention_days} days)")
+            print(f"[Try-On History] Cleaned up {deleted_count} expired records")
+        return deleted_count
     except Exception as e:
         print(f"[Try-On History] Error cleaning up expired records: {e}")
+        return 0
 
 
 def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
@@ -138,9 +201,10 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
     Persist a single try-on history record for a user.
     Automatically cleans up expired records before saving.
     Retention period is determined by user's subscription plan:
-    - Free: 7 days
-    - Premium: 90 days
-    - Premium Plus: 365 days
+    - Free: 30 days
+    - Premium: 360 days
+    - Premium Plus: 540 days
+    - Premium Pro: 540 days
     """
     try:
         # Clean up expired records for this user first
@@ -156,8 +220,12 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(garment_urls, str):
             garment_urls = json.loads(garment_urls)
         
-        # Get retention days for this user (for logging)
+        # Get retention days for this user to calculate expires_at
         retention_days = _get_retention_days_for_user(user_id)
+        
+        # Calculate expires_at based on retention period
+        created_at = datetime.utcnow()
+        expires_at = created_at + timedelta(days=retention_days)
         
         record = {
             "id": history_id,
@@ -166,14 +234,15 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
             "garment_urls": garment_urls,  # Selected items from Applied Outfit Items (JSONB array)
             "scene_image_url": history.get("scene_image_url"),
             "prompt": history.get("prompt"),  # User's custom prompt (optional)
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": created_at.isoformat() + "Z",
+            "expires_at": expires_at.isoformat() + "Z",
         }
         
         # Insert into database
         response = _table.insert(record).execute()
         if response.data and len(response.data) > 0:
             saved_record = _normalize_record(response.data[0])
-            print(f"[Try-On History] Saved history record {history_id} for user {user_id} (retention: {retention_days} days)")
+            print(f"[Try-On History] Saved history record {history_id} for user {user_id} (retention: {retention_days} days, expires_at: {expires_at.isoformat()})")
             return saved_record
         else:
             raise RuntimeError("Failed to insert tryon history: no data returned")
@@ -187,23 +256,14 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
 def list_tryon_history(user_id: str) -> List[Dict[str, Any]]:
     """
     List try-on history for a user.
-    Automatically filters out expired records based on user's subscription plan.
+    Returns all records without filtering. Expired records are cleaned up by periodic cleanup task.
     """
     try:
-        # Clean up expired records for this user first
-        _cleanup_expired(user_id)
-        
         # Ensure table exists
         _ensure_table_exists()
         
-        # Get retention days for this user
-        retention_days = _get_retention_days_for_user(user_id)
-        
-        # Calculate cutoff date based on user's subscription plan
-        cutoff_date = (datetime.utcnow() - timedelta(days=retention_days)).isoformat() + "Z"
-        
-        # Query user's history, excluding expired records
-        response = _table.select("*").eq("user_id", user_id).gte("created_at", cutoff_date).order("created_at", desc=True).execute()
+        # Query user's history, return all records without filtering
+        response = _table.select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
         
         if response.data:
             return [_normalize_record(record) for record in response.data]
