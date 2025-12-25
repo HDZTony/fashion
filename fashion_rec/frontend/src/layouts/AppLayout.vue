@@ -8,12 +8,9 @@
         <div class="flex items-center gap-4">
           <router-link to="/studio" class="text-sm text-gray-600 hover:text-black">Studio</router-link>
           <router-link to="/wardrobe" class="text-sm text-gray-600 hover:text-black">Wardrobe</router-link>
-          <router-link to="/history" class="text-sm text-gray-600 hover:text-black">Outfit History</router-link>
+          <router-link to="/tryon-history" class="text-sm text-gray-600 hover:text-black">Outfit History</router-link>
           <router-link to="/favorites" class="text-sm text-gray-600 hover:text-black flex items-center gap-1">
             <Heart class="w-4 h-4" /> Favorites
-          </router-link>
-          <router-link to="/tryon-history" class="text-sm text-gray-600 hover:text-black flex items-center gap-1">
-            <History class="w-4 h-4" /> Try-On History
           </router-link>
           <router-link to="/profile" class="text-sm text-gray-600 hover:text-black flex items-center gap-1">
             <User class="w-4 h-4" />
@@ -29,6 +26,6 @@
 </template>
 
 <script setup lang="ts">
-import { Heart, History, User } from 'lucide-vue-next'
+import { Heart, User } from 'lucide-vue-next'
 </script>
 

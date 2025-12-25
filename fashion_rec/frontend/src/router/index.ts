@@ -4,7 +4,6 @@ import Studio from '../views/Studio.vue'
 import Login from '../views/Login.vue'
 import Callback from '../views/Callback.vue'
 import ResetPassword from '../views/ResetPassword.vue'
-import History from '../views/History.vue'
 import Wardrobe from '../views/Wardrobe.vue'
 import LVProducts from '../views/LVProducts.vue'
 import Favorites from '../views/Favorites.vue'
@@ -42,12 +41,6 @@ export const routes: RouteRecordRaw[] = [
         path: 'studio',
         name: 'studio',
         component: Studio,
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'history',
-        name: 'history',
-        component: History,
         meta: { requiresAuth: true }
       },
       {
