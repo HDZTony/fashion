@@ -15,7 +15,41 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 const subscriptionInfo = ref<any>(null)
 const userEmail = ref<string>('—')
-const isTestMode = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
+// 从后端获取环境配置
+const isTestMode = ref(false)
+const productIds = ref<{
+  premium: { test: string; prod: string }
+  premiumPlus: { test: string; prod: string }
+  premiumPro: { test: string; prod: string }
+} | null>(null)
+
+// 从后端加载环境配置
+const loadConfig = async () => {
+  try {
+    const response = await subscriptionClient.get('/config')
+    isTestMode.value = response.data.isTestMode
+    productIds.value = response.data.productIds
+    console.log('Environment config loaded:', { isTestMode: isTestMode.value, productIds: productIds.value })
+  } catch (error: any) {
+    console.error('Failed to load config from backend, using fallback:', error)
+    // 如果后端配置加载失败，使用环境变量作为后备
+    isTestMode.value = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
+    productIds.value = {
+      premium: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || '',
+      },
+      premiumPlus: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || '',
+      },
+      premiumPro: {
+        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST || '',
+        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD || '',
+      },
+    }
+  }
+}
 
 const subscriptionClient = axios.create({
   baseURL: SUBSCRIPTION_API_URL,
@@ -27,6 +61,7 @@ const subscriptionClient = axios.create({
 const planNameRaw = computed(() => subscriptionInfo.value?.planName || 'Free')
 const planDisplay = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
+  if (name === 'premium_pro' || name === 'premium pro') return 'Premium Pro ($29.9)'
   if (name === 'premium_plus' || name === 'premium plus') return 'Premium Plus ($15)'
   if (name === 'premium' || name === '高级版') return 'Premium ($5)'
   if (name === '免费版') return 'Free'
@@ -34,14 +69,28 @@ const planDisplay = computed(() => {
 })
 const planSlug = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
+  if (name === 'premium_pro' || name === 'premium pro') return 'premium_pro'
   if (name === 'premium_plus' || name === 'premium plus') return 'premium_plus'
   if (name === 'premium' || name === '高级版') return 'premium'
   return 'free'
 })
-const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2 }
+const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2, premium_pro: 3 }
 const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
 const totalTries = computed(() => subscriptionInfo.value?.totalTries ?? 0)
-const nextResetDate = computed(() => subscriptionInfo.value?.nextResetDate || '')
+const nextResetDate = computed(() => {
+  const dateStr = subscriptionInfo.value?.nextResetDate
+  if (!dateStr) return ''
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  } catch {
+    return dateStr
+  }
+})
 const status = computed(() => getStatusText(subscriptionInfo.value?.status))
 
 const getStatusText = (status: string | null | undefined): string => {
@@ -73,6 +122,21 @@ const loadSubscriptionInfo = async () => {
       },
     })
     subscriptionInfo.value = response.data
+    
+    // 如果有订阅 ID 且状态是 active，但可能已经在 Creem 端被取消
+    // 自动同步一次以确保状态准确（仅在首次加载时，避免频繁调用）
+    const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+    if (subscriptionId && subscriptionInfo.value?.status === 'active') {
+      // 延迟同步，避免阻塞页面加载
+      setTimeout(async () => {
+        try {
+          await syncFromSubscription()
+        } catch (e) {
+          // 静默失败，不影响用户体验
+          console.log('Background sync failed (this is ok):', e)
+        }
+      }, 2000)
+    }
   } catch (e: any) {
     console.error('Failed to load subscription info:', e)
     error.value = e?.response?.data?.error || e?.message || 'Failed to load subscription info'
@@ -98,7 +162,12 @@ const signOut = async () => {
   }
 }
 
+// 记录打开门户的时间，用于检测用户是否从门户返回
+let portalOpenedTime = 0
+
 // Manage subscription portal
+// 注意：Creem 的客户门户不支持 returnUrl 参数
+// 因此我们使用页面可见性和焦点监听来检测用户返回
 const openPortal = async () => {
   const customerId = subscriptionInfo.value?.customerId || subscriptionInfo.value?.customer_id
   if (!customerId) {
@@ -106,7 +175,16 @@ const openPortal = async () => {
     return
   }
   try {
-    const resp = await subscriptionClient.post(`/customers/${customerId}/portal`)
+    // 记录打开门户的时间戳
+    portalOpenedTime = Date.now()
+    console.log('🚪 Opening customer portal, timestamp:', portalOpenedTime)
+    
+    // 注意：Creem SDK 的 createPortal 不支持 returnUrl 参数
+    // 虽然我们传递了 returnUrl，但 Creem API 可能不会使用它
+    const returnUrl = `${window.location.origin}/profile?from=portal`
+    const resp = await subscriptionClient.post(`/customers/${customerId}/portal`, {
+      returnUrl, // 即使 Creem 不支持，我们也传递它，以防将来支持
+    })
     const url = resp.data?.portalUrl
     if (url) {
       window.location.href = url
@@ -115,23 +193,54 @@ const openPortal = async () => {
     }
   } catch (e) {
     console.error('Failed to open portal', e)
+    portalOpenedTime = 0 // 打开失败，重置时间戳
     goPricing()
   }
 }
 
-const getProductIdForPlan = (target: 'premium' | 'premium_plus') => {
-  if (target === 'premium_plus') {
-    return isTestMode
-      ? (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
-      : (import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS || 'prod_6YsIDqxb9lnMmVarSuUfBc')
+// 从订阅同步状态（用于客户门户返回后同步）
+const syncFromSubscription = async () => {
+  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+  if (!subscriptionId) {
+    return
   }
-  return isTestMode
-    ? (import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || import.meta.env.VITE_CREEM_PRODUCT_ID)
-    : (import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || import.meta.env.VITE_CREEM_PRODUCT_ID)
+  try {
+    console.log('🔄 Syncing subscription from subscription ID:', subscriptionId)
+    await subscriptionClient.post('/subscription/sync-from-subscription', {
+      subscriptionId,
+    })
+    // 同步成功后重新加载订阅信息
+    await loadSubscriptionInfo()
+  } catch (e: any) {
+    console.error('Failed to sync subscription:', e)
+    // 即使同步失败，也尝试重新加载订阅信息
+    await loadSubscriptionInfo()
+  }
+}
+
+const getProductIdForPlan = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
+  // 确保配置已加载
+  if (!productIds.value) {
+    await loadConfig()
+  }
+
+  if (target === 'premium_pro') {
+    return isTestMode.value
+      ? (productIds.value?.premiumPro.test || '')
+      : (productIds.value?.premiumPro.prod || '')
+  }
+  if (target === 'premium_plus') {
+    return isTestMode.value
+      ? (productIds.value?.premiumPlus.test || '')
+      : (productIds.value?.premiumPlus.prod || '')
+  }
+  return isTestMode.value
+    ? (productIds.value?.premium.test || '')
+    : (productIds.value?.premium.prod || '')
 }
 
 // Upgrade/downgrade existing subscription
-const upgradeSubscription = async (target: 'premium' | 'premium_plus') => {
+const upgradeSubscription = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
   const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
   if (!subscriptionId) {
     // No existing subscription, use checkout instead
@@ -153,7 +262,7 @@ const upgradeSubscription = async (target: 'premium' | 'premium_plus') => {
       ? 'proration-charge-immediately' 
       : 'proration-charge'
     
-    const productId = getProductIdForPlan(target)
+    const productId = await getProductIdForPlan(target)
     await subscriptionClient.post(`/subscriptions/${subscriptionId}/upgrade`, {
       productId,
       updateBehavior,
@@ -179,14 +288,14 @@ const upgradeSubscription = async (target: 'premium' | 'premium_plus') => {
 }
 
 // Start new checkout (for users without subscription)
-const startCheckout = async (target: 'premium' | 'premium_plus') => {
+const startCheckout = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
   try {
     isLoading.value = true
     error.value = null
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Please sign in first')
 
-    const productId = getProductIdForPlan(target)
+    const productId = await getProductIdForPlan(target)
     const response = await subscriptionClient.post('/checkouts', {
       productId,
       successUrl: `${window.location.origin}/pricing?success=true`,
@@ -236,7 +345,7 @@ const plans = computed(() => ([
     slug: 'premium',
     name: 'Premium',
     price: '$5 / mo',
-    tries: '50 / month',
+    tries: '30 / month',
     desc: 'More try-ons and priority',
     action: () => upgradeSubscription('premium'),
   },
@@ -244,9 +353,17 @@ const plans = computed(() => ([
     slug: 'premium_plus',
     name: 'Premium Plus',
     price: '$15 / mo',
-    tries: '200 / month',
-    desc: 'Highest limits and priority',
+    tries: '100 / month',
+    desc: 'Higher limits and priority',
     action: () => upgradeSubscription('premium_plus'),
+  },
+  {
+    slug: 'premium_pro',
+    name: 'Premium Pro',
+    price: '$29.9 / mo',
+    tries: '250 / month',
+    desc: 'Highest limits and priority',
+    action: () => upgradeSubscription('premium_pro'),
   },
 ]))
 
@@ -259,8 +376,53 @@ const actionLabel = (slug: string) => {
 
 const isActionDisabled = (slug: string) => slug === planSlug.value || isLoading.value
 
-onMounted(() => {
-  loadSubscriptionInfo()
+onMounted(async () => {
+  // 首先加载后端配置
+  await loadConfig()
+  // 然后加载订阅信息
+  await loadSubscriptionInfo()
+  
+  // 检查是否从客户门户返回（通过 URL 参数）
+  const urlParams = new URLSearchParams(window.location.search)
+  if (urlParams.get('from') === 'portal') {
+    // 从门户返回，同步订阅状态
+    console.log('🔄 Detected return from portal via URL parameter')
+    setTimeout(() => {
+      syncFromSubscription()
+    }, 1000) // 延迟1秒，确保页面已完全加载
+    
+    // 清理 URL 参数
+    window.history.replaceState({}, '', '/profile')
+  }
+  
+  // 监听页面可见性变化，当用户从门户返回时自动刷新状态
+  // 如果在打开门户后10分钟内页面变为可见，很可能是从门户返回
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const now = Date.now()
+      // 如果门户是在10分钟内打开的，可能是从门户返回，同步状态
+      if (portalOpenedTime > 0 && (now - portalOpenedTime) < 10 * 60 * 1000) {
+        const minutesSincePortal = Math.floor((now - portalOpenedTime) / 60000)
+        console.log(`🔄 Page became visible ${minutesSincePortal} minutes after portal visit, syncing subscription status`)
+        syncFromSubscription()
+        portalOpenedTime = 0 // 重置时间戳，避免重复同步
+      } else {
+        // 普通可见性变化，只刷新不同步（避免频繁 API 调用）
+        loadSubscriptionInfo()
+      }
+    }
+  })
+  
+  // 监听页面焦点变化（用户切换回标签页）
+  window.addEventListener('focus', () => {
+    const now = Date.now()
+    if (portalOpenedTime > 0 && (now - portalOpenedTime) < 10 * 60 * 1000) {
+      const minutesSincePortal = Math.floor((now - portalOpenedTime) / 60000)
+      console.log(`🔄 Window focused ${minutesSincePortal} minutes after portal visit, syncing subscription status`)
+      syncFromSubscription()
+      portalOpenedTime = 0 // 重置时间戳
+    }
+  })
 })
 </script>
 
@@ -297,6 +459,17 @@ onMounted(() => {
                 <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
               </div>
             </div>
+            <!-- 退订按钮：只在付费计划且状态为 active/trialing 时显示 -->
+            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-gray-200">
+              <Button 
+                variant="outline" 
+                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                :disabled="isLoading"
+                @click="cancelSubscription"
+              >
+              Cancel Subscription
+              </Button>
+            </div>
             <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
           </div>
 
@@ -310,7 +483,7 @@ onMounted(() => {
               <p>Tip: upgrade to get more try-ons and priority processing.</p>
             </div>
             <div class="mt-6 space-y-3">
-              <Button variant="outline" class="w-full" @click="openPortal">Manage subscription</Button>
+              <Button variant="outline" class="w-full" @click="openPortal">Customer Portal</Button>
               <Button variant="secondary" class="w-full" @click="signOut">Sign out</Button>
             </div>
           </div>

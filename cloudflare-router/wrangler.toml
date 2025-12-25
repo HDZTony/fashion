@@ -9,14 +9,32 @@ compatibility_date = "2024-01-01"
 # - SUPABASE_URL: Your Supabase project URL
 # - SUPABASE_SERVICE_ROLE_KEY: Supabase Service Role Key (for bypassing RLS)
 # - STABLE_FRONTEND_HOST: Stable version frontend hostname (e.g., fashion-rec-frontend.pages.dev)
-# - V2_FRONTEND_HOST: V2 version frontend hostname (e.g., v2--fashion-rec-frontend.pages.dev)
+# - V2_FRONTEND_HOST: V2 version frontend hostname (e.g., v2.fashion-rec-frontend.pages.dev)
 # - STABLE_BACKEND_URL: Stable version backend URL (e.g., https://fashion-rec-backend.fly.dev)
 # - V2_BACKEND_URL: V2 version backend URL (e.g., https://fashion-rec-backend-v2.fly.dev)
+#
+# KV Namespace for caching user versions
+# Create with: wrangler kv namespace create USER_VERSIONS
+# Then add the namespace ID below
+[[kv_namespaces]]
+binding = "USER_VERSIONS"
+id = "e335d5ff4f4948718434187ca14f94b7"
 
 # Routes configuration
 # Configure routes in Cloudflare Dashboard:
 # Workers & Pages → fashion-rec-router → Settings → Triggers → Routes
-# Add route: yourdomain.com/*
+# 
+# IMPORTANT: Route format must include wildcard /* at the end
+# Correct format: fashion.hdz73.com/*
+# Wrong format: fashion.hdz73.com (will cause ERR_CONNECTION_CLOSED)
+#
+# To configure via Dashboard:
+# 1. Go to Workers & Pages → fashion-rec-router → Settings → Triggers → Routes
+# 2. Add route: fashion.hdz73.com/*
+# 3. Ensure DNS record exists with proxy enabled (orange cloud)
+#
+# Note: Routes can also be configured in this file using routes array,
+# but Dashboard configuration is recommended for custom domains.
 
 [env.production]
 # Production environment configuration
@@ -25,3 +43,9 @@ compatibility_date = "2024-01-01"
 [env.staging]
 # Staging environment configuration (optional)
 
+[observability]
+[observability.logs]
+enabled = false
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
