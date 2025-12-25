@@ -8,6 +8,8 @@ import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-nex
 
 const router = useRouter()
 
+import { createAuthenticatedApiClient } from '../lib/api-client'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
 
@@ -28,26 +30,7 @@ const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 const subscriptionInfo = ref<any>(null)
 
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-  } catch (e) {
-    console.warn('Failed to get Supabase session for request:', e)
-  }
-  return config
-})
+const apiClient = createAuthenticatedApiClient(API_URL)
 
 // Subscription service client
 const subscriptionClient = axios.create({
@@ -88,7 +71,18 @@ const loadHistory = async () => {
     historyItems.value = response.data.history || []
   } catch (e: any) {
     console.error('Failed to load try-on history:', e)
-    error.value = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
+    const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
+    error.value = errorDetail
+    
+    // If authentication failed, redirect to login
+    if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
+      // Wait a bit and check session again
+      const { data } = await supabase.auth.getSession()
+      if (!data.session) {
+        router.push('/login')
+        return
+      }
+    }
   } finally {
     isLoading.value = false
   }
@@ -158,6 +152,19 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
+  // Ensure session is loaded before making requests
+  try {
+    const { data } = await supabase.auth.getSession()
+    if (!data.session) {
+      router.push('/login')
+      return
+    }
+  } catch (e) {
+    console.error('Failed to check session:', e)
+    router.push('/login')
+    return
+  }
+  
   await loadSubscriptionInfo()
   loadHistory()
   window.addEventListener('keydown', handleKeyDown)

@@ -111,27 +111,53 @@ export const routes: RouteRecordRaw[] = [
 
 export const setupRouterGuards = (router: Router) => {
   router.beforeEach(async (to, _from, next) => {
-    // Always read Supabase session first
-    const { data, error } = await supabase.auth.getSession()
-    if (error) {
-      console.warn('Failed to get Supabase session', error)
-    }
-
-    const session = data.session
-    const token = session?.access_token
-
-    // Keep legacy token in sync to avoid stale state in older code
-    if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem('auth_token', token)
-      } else {
-        localStorage.removeItem('auth_token')
+    // For protected routes, ensure session is loaded (handles page refresh)
+    if (to.meta.requiresAuth) {
+      let attempts = 0
+      let session = null
+      
+      // Retry up to 3 times to allow Supabase session to recover on page refresh
+      while (attempts < 3 && !session) {
+        const { data, error } = await supabase.auth.getSession()
+        if (error) {
+          console.warn('Failed to get Supabase session', error)
+          break
+        }
+        session = data.session
+        
+        if (!session && attempts < 2) {
+          // Wait a bit for session to recover (Supabase may need time on page refresh)
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        attempts++
       }
-    }
+      
+      const token = session?.access_token
 
-    if (to.meta.requiresAuth && !token) {
-      next('/login')
-      return
+      // Keep legacy token in sync to avoid stale state in older code
+      if (typeof window !== 'undefined') {
+        if (token) {
+          localStorage.setItem('auth_token', token)
+        } else {
+          localStorage.removeItem('auth_token')
+        }
+      }
+
+      if (!token) {
+        next('/login')
+        return
+      }
+    } else {
+      // For non-protected routes, just sync token if available
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (typeof window !== 'undefined') {
+        if (token) {
+          localStorage.setItem('auth_token', token)
+        } else {
+          localStorage.removeItem('auth_token')
+        }
+      }
     }
 
     next()
