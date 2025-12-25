@@ -53,7 +53,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
+      - name: Create Stable Fly.io app if not exists
+        run: |
+          flyctl apps create fashion-rec-backend || true
+        working-directory: ./fashion_rec/backend
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Deploy to Stable backend
+        run: flyctl deploy --remote-only
         working-directory: ./fashion_rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -163,7 +170,7 @@ jobs:
           VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Pages (Stable)
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
