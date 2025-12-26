@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
-import { onMounted, onActivated, ref, computed } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
@@ -249,55 +249,35 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // Restore from cache first for instant display (before waiting for session)
   restoreHistoryFromCache()
-  window.addEventListener('keydown', handleKeyDown)
-})
-
-// Load data when component is activated (like Wardrobe does)
-// This ensures Supabase client is fully initialized before making API calls
-onActivated(async () => {
-  // Restore from cache if memory is empty (keep-alive may have failed)
-  if (historyItems.value.length === 0) {
-    const restored = restoreHistoryFromCache()
-    if (restored) {
-      console.log('[TryOnHistory onActivated] Restored history from cache, count:', historyItems.value.length)
-    }
-  }
   
-  // Check if we need to load data from API
-  // Only load if we don't have cached data or if cache is stale
-  if (historyItems.value.length === 0) {
-    // Check session before making API calls
-    try {
-      const { data } = await supabase.auth.getSession()
-      if (!data.session) {
-        console.warn('[TryOnHistory] No session found, redirecting to login')
-        router.push('/login')
-        return
-      }
-      
-      // Load data from API (Supabase client is fully initialized at this point)
+  // Wait for authentication to be ready before loading other data
+  try {
+    const { data } = await supabase.auth.getSession()
+    if (data.session) {
+      // Authentication is ready, load data
       await Promise.all([
         loadSubscriptionInfo(),
         loadHistory()
       ])
-    } catch (e) {
-      console.error('[TryOnHistory] Failed to check session:', e)
-      if (historyItems.value.length === 0) {
-        router.push('/login')
-      }
+    } else {
+      console.warn('[TryOnHistory] No session found on mount, but still attempting to load data')
+      await Promise.all([
+        loadSubscriptionInfo(),
+        loadHistory()
+      ])
     }
-  } else {
-    console.log('[TryOnHistory onActivated] Using cached data, count:', historyItems.value.length)
-    // Still load subscription info to ensure it's up to date
-    try {
-      await loadSubscriptionInfo()
-    } catch (e) {
-      console.warn('[TryOnHistory] Failed to load subscription info:', e)
-    }
+  } catch (error) {
+    console.error('[TryOnHistory] Failed to check session on mount:', error)
+    await Promise.all([
+      loadSubscriptionInfo(),
+      loadHistory()
+    ])
   }
+  
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 const formatDate = (dateString: string) => {

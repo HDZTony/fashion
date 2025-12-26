@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'Favorites' })
-import { onMounted, onUnmounted, onActivated, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
@@ -213,46 +213,26 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // Restore from cache first for instant display (before waiting for session)
   restoreFavoritesFromCache()
-  window.addEventListener('keydown', handleKeyDown)
-})
-
-// Load data when component is activated (like Wardrobe does)
-// This ensures Supabase client is fully initialized before making API calls
-onActivated(async () => {
-  // Restore from cache if memory is empty (keep-alive may have failed)
-  if (favorites.value.length === 0) {
-    const restored = restoreFavoritesFromCache()
-    if (restored) {
-      console.log('[Favorites onActivated] Restored favorites from cache, count:', favorites.value.length)
+  
+  // Wait for authentication to be ready before loading other data
+  try {
+    const { data } = await supabase.auth.getSession()
+    if (data.session) {
+      // Authentication is ready, load data
+      await loadFavorites()
+    } else {
+      console.warn('[Favorites] No session found on mount, but still attempting to load data')
+      await loadFavorites()
     }
+  } catch (error) {
+    console.error('[Favorites] Failed to check session on mount:', error)
+    await loadFavorites()
   }
   
-  // Check if we need to load data from API
-  // Only load if we don't have cached data or if cache is stale
-  if (favorites.value.length === 0) {
-    // Check session before making API calls
-    try {
-      const { data } = await supabase.auth.getSession()
-      if (!data.session) {
-        console.warn('[Favorites] No session found, redirecting to login')
-        router.push('/login')
-        return
-      }
-      
-      // Load data from API (Supabase client is fully initialized at this point)
-      await loadFavorites()
-    } catch (e) {
-      console.error('[Favorites] Failed to check session:', e)
-      if (favorites.value.length === 0) {
-        router.push('/login')
-      }
-    }
-  } else {
-    console.log('[Favorites onActivated] Using cached data, count:', favorites.value.length)
-  }
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 const formatDate = (dateString: string) => {
