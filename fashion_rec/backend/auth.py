@@ -1,7 +1,8 @@
 import os
 from supabase import create_client, Client
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
 
 # Initialize Supabase client
 # These env vars must be set in Fly.io secrets
@@ -64,22 +65,35 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Not authenticated",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
     if not supabase:
+        print("ERROR: Supabase client not initialized")
         raise HTTPException(status_code=500, detail="Auth configuration missing")
+
+    if not token:
+        print("ERROR: No token provided in request")
+        raise credentials_exception
 
     try:
         # Verify token with Supabase
         # get_user() verifies the JWT signature and expiration
         user_response = supabase.auth.get_user(token)
         if not user_response.user:
+            print(f"ERROR: Token validation failed - no user in response")
             raise credentials_exception
             
         return user_response.user.id
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like credentials_exception)
+        raise
     except Exception as e:
-        print(f"Auth error: {e}")
+        # Log the actual error for debugging
+        error_type = type(e).__name__
+        error_msg = str(e)
+        print(f"ERROR: Auth validation failed - {error_type}: {error_msg}")
+        # Don't expose internal error details to client
         raise credentials_exception

@@ -24,10 +24,31 @@ export function createAuthenticatedApiClient(baseURL: string) {
       while (attempts < 3 && !session) {
         const { data, error } = await supabase.auth.getSession()
         if (error) {
-          console.warn('Failed to get Supabase session:', error)
+          console.warn('[API Client] Failed to get Supabase session:', error)
           break
         }
         session = data.session
+        
+        // If session exists but token might be expired, try to refresh it
+        if (session) {
+          // Check if token is close to expiration (within 5 minutes)
+          const expiresAt = session.expires_at
+          if (expiresAt) {
+            const now = Math.floor(Date.now() / 1000)
+            const timeUntilExpiry = expiresAt - now
+            // If token expires in less than 5 minutes, refresh it
+            if (timeUntilExpiry < 300) {
+              console.log('[API Client] Token expiring soon, refreshing session...')
+              const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+              if (!refreshError && refreshData.session) {
+                session = refreshData.session
+                console.log('[API Client] Session refreshed successfully')
+              } else {
+                console.warn('[API Client] Failed to refresh session:', refreshError)
+              }
+            }
+          }
+        }
         
         if (!session && attempts < 2) {
           // Wait a bit for session to recover (Supabase may need time on page refresh)
@@ -40,15 +61,53 @@ export function createAuthenticatedApiClient(baseURL: string) {
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
+        // Debug log (remove in production if needed)
+        if (import.meta.env.DEV) {
+          console.debug(`[API Client] Added auth token to ${config.method?.toUpperCase()} ${config.url}`)
+        }
       } else {
         // If no token after retries, this will cause 401 - which is expected
-        console.warn('No auth token available for request')
+        console.warn('[API Client] No auth token available for request:', config.method?.toUpperCase(), config.url)
       }
     } catch (e) {
-      console.warn('Failed to get Supabase session for request:', e)
+      console.warn('[API Client] Failed to get Supabase session for request:', e)
     }
     return config
   })
+
+  // Add response interceptor to handle 401 errors
+  client.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const originalRequest = error.config
+      
+      // If we get a 401 and haven't retried yet, try to refresh the session
+      if (error.response?.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true
+        
+        try {
+          // Try to refresh the session
+          const { data, error: refreshError } = await supabase.auth.refreshSession()
+          
+          if (refreshError || !data.session) {
+            console.warn('[API Client] Session refresh failed:', refreshError)
+            // Clear any stale session
+            await supabase.auth.signOut()
+            throw error
+          }
+          
+          // Retry the request with new token
+          originalRequest.headers.Authorization = `Bearer ${data.session.access_token}`
+          return client(originalRequest)
+        } catch (refreshErr) {
+          console.warn('[API Client] Failed to refresh session:', refreshErr)
+          throw error
+        }
+      }
+      
+      return Promise.reject(error)
+    }
+  )
 
   return client
 }
