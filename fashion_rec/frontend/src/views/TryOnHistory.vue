@@ -19,6 +19,44 @@ const apiClient = axios.create({
   },
 })
 
+// Add interceptor to inject auth token from Supabase session
+// This ensures tokens are automatically attached to all requests, even after page refresh
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    // First, try to get session from Supabase (primary source)
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    
+    if (token) {
+      config.headers = config.headers || {}
+      config.headers.Authorization = `Bearer ${token}`
+      return config
+    }
+    
+    // Fallback: if Supabase session is not available (e.g., during page refresh),
+    // try to get token from localStorage (backup from useAuthState)
+    const backupToken = localStorage.getItem('auth_token')
+    if (backupToken) {
+      config.headers = config.headers || {}
+      config.headers.Authorization = `Bearer ${backupToken}`
+      console.log('[TryOnHistory] Using backup token from localStorage')
+      return config
+    }
+    
+    console.warn('[TryOnHistory] No auth token available from Supabase or localStorage')
+  } catch (e) {
+    console.warn('[TryOnHistory] Failed to get Supabase session for request:', e)
+    // Last resort: try localStorage backup even on error
+    const backupToken = localStorage.getItem('auth_token')
+    if (backupToken) {
+      config.headers = config.headers || {}
+      config.headers.Authorization = `Bearer ${backupToken}`
+      console.log('[TryOnHistory] Using backup token from localStorage after error')
+    }
+  }
+  return config
+})
+
 interface TryOnHistoryItem {
   id: string
   image_url: string
@@ -114,19 +152,8 @@ const loadHistory = async () => {
   isLoading.value = true
   error.value = ''
   try {
-    // Manually get session and set header like Profile.vue does
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    
-    if (!token) {
-      throw new Error('No authentication token available')
-    }
-    
-    const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    // Interceptor automatically adds Authorization header from Supabase session
+    const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
     historyItems.value = response.data.history || []
     // Save to cache for next page refresh
     saveHistoryToCache()
@@ -164,19 +191,8 @@ if (!confirm('Delete this try-on history item?')) {
   }
   
   try {
-    // Manually get session and set header like Profile.vue does
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    
-    if (!token) {
-      throw new Error('No authentication token available')
-    }
-    
-    await apiClient.delete(`/tryon-history/${historyId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    // Interceptor automatically adds Authorization header from Supabase session
+    await apiClient.delete(`/tryon-history/${historyId}`)
     await loadHistory()
   } catch (e: any) {
     console.error('Failed to delete history item:', e)

@@ -22,8 +22,21 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 // Set user version when entering studio
 const setUserVersion = async (version: 'stable' | 'v2' = 'v2') => {
   try {
+    // First, try to get session from Supabase (primary source)
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    let token = session?.access_token
+    
+    // Fallback: if Supabase session is not available, try localStorage
+    if (!token) {
+      const backupToken = localStorage.getItem('auth_token')
+      if (backupToken) {
+        token = backupToken
+        console.log('[Home] Using backup token from localStorage for setUserVersion')
+      }
+    }
+    
+    if (!token) {
+      console.warn('[Home] No auth token available for setUserVersion')
       return false
     }
 
@@ -33,6 +46,7 @@ const setUserVersion = async (version: 'stable' | 'v2' = 'v2') => {
       {
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         withCredentials: true, // Include cookies
       }
