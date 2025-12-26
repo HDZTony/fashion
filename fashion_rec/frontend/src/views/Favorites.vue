@@ -32,6 +32,11 @@ import { createAuthenticatedApiClient } from '../lib/api-client'
 const apiClient = createAuthenticatedApiClient(API_URL)
 
 const loadFavorites = async () => {
+  // Prevent duplicate concurrent calls
+  if (isLoading.value) {
+    return
+  }
+  
   isLoading.value = true
   error.value = ''
   try {

@@ -29,6 +29,7 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 const subscriptionInfo = ref<any>(null)
+const isLoadingSubscription = ref(false) // Flag to prevent duplicate subscription API calls
 
 const apiClient = createAuthenticatedApiClient(API_URL)
 
@@ -42,9 +43,18 @@ const subscriptionClient = axios.create({
 
 // Load subscription info to determine retention period
 const loadSubscriptionInfo = async () => {
+  // Prevent duplicate concurrent calls
+  if (isLoadingSubscription.value) {
+    return
+  }
+  
+  isLoadingSubscription.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      isLoadingSubscription.value = false
+      return
+    }
 
     const session = await supabase.auth.getSession()
     const response = await subscriptionClient.get('/subscription/status', {
@@ -60,10 +70,17 @@ const loadSubscriptionInfo = async () => {
     subscriptionInfo.value = {
       planName: 'Free',
     }
+  } finally {
+    isLoadingSubscription.value = false
   }
 }
 
 const loadHistory = async () => {
+  // Prevent duplicate concurrent calls
+  if (isLoading.value) {
+    return
+  }
+  
   isLoading.value = true
   error.value = ''
   try {
