@@ -114,44 +114,12 @@ async def health_check():
     """
     Health check endpoint to verify the service is ready.
     Always returns 200 to indicate the service is running and accepting connections.
-    Provides detailed status information about model and database initialization.
+    Minimal response to reduce bandwidth usage.
     """
-    try:
-        from services.vector_db import embedding_model, collection
-        
-        # Check if CLIP model is loaded
-        model_ready = embedding_model is not None
-        
-        # Check if Supabase client is initialized
-        db_ready = collection is not None
-        
-        # Always return 200 - the service is running and accepting connections
-        # Fly.io health check just needs to know the app is listening
-        status_code = 200
-        if model_ready and db_ready:
-            status = "ready"
-        else:
-            status = "initializing"
-        
-        return {
-            "status": status,
-            "service": "running",
-            "model_loaded": model_ready,
-            "database_ready": db_ready,
-            "message": "Service is running and accepting connections"
-        }
-    except Exception as e:
-        # Even if there's an error checking components, return 200
-        # to indicate the HTTP server is running
-        logger.warning(f"Health check encountered an error: {e}")
-        return {
-            "status": "running",
-            "service": "running",
-            "model_loaded": False,
-            "database_ready": False,
-            "message": "Service is running (component check failed)",
-            "error": str(e)
-        }
+    # Minimal health check - just return OK status
+    # Fly.io health check just needs to know the app is listening
+    # No need to check components on every health check (reduces overhead)
+    return {"status": "ok"}
 
 
 def _convert_unsupported_format(image_path: Path) -> Path:

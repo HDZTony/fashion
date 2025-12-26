@@ -21,7 +21,7 @@ primary_region = 'sin'
 
   [[http_service.checks]]
     grace_period = "10s"
-    interval = "30s"
+    interval = "60s"
     method = "GET"
     timeout = "5s"
     tls_skip_verify = false

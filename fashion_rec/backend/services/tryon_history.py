@@ -9,6 +9,8 @@
 """
 import os
 import json
+import logging
+import sys
 from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timedelta
@@ -17,6 +19,14 @@ from dotenv import load_dotenv
 import httpx
 
 load_dotenv()
+
+# 配置日志，确保输出到 stdout（Fly.io 会捕获 stdout）
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 # 初始化Supabase客户端
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -261,58 +271,58 @@ def list_tryon_history(user_id: str) -> List[Dict[str, Any]]:
     Returns all records without filtering. Expired records are cleaned up by periodic cleanup task.
     """
     try:
-        print(f"[Try-On History] Listing history for user_id: {user_id}")
-        print(f"[Try-On History] Table name: {TABLE_NAME}")
-        print(f"[Try-On History] Supabase URL: {SUPABASE_URL}")
-        print(f"[Try-On History] Using key type: {'SERVICE_ROLE_KEY' if SUPABASE_SERVICE_ROLE_KEY else 'ANON_KEY (RLS enabled)'}")
+        logger.info(f"[Try-On History] Listing history for user_id: {user_id}")
+        logger.info(f"[Try-On History] Table name: {TABLE_NAME}")
+        logger.info(f"[Try-On History] Supabase URL: {SUPABASE_URL}")
+        logger.info(f"[Try-On History] Using key type: {'SERVICE_ROLE_KEY' if SUPABASE_SERVICE_ROLE_KEY else 'ANON_KEY (RLS enabled)'}")
         
         # Ensure table exists
         _ensure_table_exists()
         
         # Query user's history, return all records without filtering
-        print(f"[Try-On History] Building query: select * from {TABLE_NAME} where user_id = {user_id} order by created_at desc")
+        logger.info(f"[Try-On History] Building query: select * from {TABLE_NAME} where user_id = {user_id} order by created_at desc")
         response = _table.select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
         
-        print(f"[Try-On History] Query executed successfully")
-        print(f"[Try-On History] Response data type: {type(response.data)}")
-        print(f"[Try-On History] Response data is None: {response.data is None}")
+        logger.info(f"[Try-On History] Query executed successfully")
+        logger.info(f"[Try-On History] Response data type: {type(response.data)}")
+        logger.info(f"[Try-On History] Response data is None: {response.data is None}")
         
         if response.data:
             data_count = len(response.data)
-            print(f"[Try-On History] Found {data_count} record(s)")
+            logger.info(f"[Try-On History] Found {data_count} record(s)")
             if data_count > 0:
                 # Log first record for debugging
                 first_record = response.data[0]
                 first_record_user_id = first_record.get('user_id')
-                print(f"[Try-On History] First record ID: {first_record.get('id')}")
-                print(f"[Try-On History] First record user_id: {first_record_user_id}")
-                print(f"[Try-On History] First record created_at: {first_record.get('created_at')}")
+                logger.info(f"[Try-On History] First record ID: {first_record.get('id')}")
+                logger.info(f"[Try-On History] First record user_id: {first_record_user_id}")
+                logger.info(f"[Try-On History] First record created_at: {first_record.get('created_at')}")
                 
                 # Compare user_id format
-                print(f"[Try-On History] Query user_id type: {type(user_id)}, value: '{user_id}'")
-                print(f"[Try-On History] Record user_id type: {type(first_record_user_id)}, value: '{first_record_user_id}'")
-                print(f"[Try-On History] User IDs match: {str(user_id) == str(first_record_user_id)}")
+                logger.info(f"[Try-On History] Query user_id type: {type(user_id)}, value: '{user_id}'")
+                logger.info(f"[Try-On History] Record user_id type: {type(first_record_user_id)}, value: '{first_record_user_id}'")
+                logger.info(f"[Try-On History] User IDs match: {str(user_id) == str(first_record_user_id)}")
                 
                 # Check all user_ids in response
                 all_user_ids = [r.get('user_id') for r in response.data]
                 unique_user_ids = list(set(all_user_ids))
-                print(f"[Try-On History] Unique user_ids in response: {unique_user_ids}")
-                print(f"[Try-On History] Requested user_id in results: {str(user_id) in [str(uid) for uid in unique_user_ids]}")
+                logger.info(f"[Try-On History] Unique user_ids in response: {unique_user_ids}")
+                logger.info(f"[Try-On History] Requested user_id in results: {str(user_id) in [str(uid) for uid in unique_user_ids]}")
             
             normalized_records = [_normalize_record(record) for record in response.data]
-            print(f"[Try-On History] Returning {len(normalized_records)} normalized record(s)")
+            logger.info(f"[Try-On History] Returning {len(normalized_records)} normalized record(s)")
             return normalized_records
         else:
-            print(f"[Try-On History] No data returned from query (response.data is empty or None)")
-            print(f"[Try-On History] This could mean:")
-            print(f"[Try-On History]   1. No records exist for user_id: {user_id}")
-            print(f"[Try-On History]   2. RLS policy is blocking the query")
-            print(f"[Try-On History]   3. user_id format mismatch")
+            logger.warning(f"[Try-On History] No data returned from query (response.data is empty or None)")
+            logger.warning(f"[Try-On History] This could mean:")
+            logger.warning(f"[Try-On History]   1. No records exist for user_id: {user_id}")
+            logger.warning(f"[Try-On History]   2. RLS policy is blocking the query")
+            logger.warning(f"[Try-On History]   3. user_id format mismatch")
             return []
     except Exception as e:
         import traceback
-        print(f"[Try-On History] Error listing history: {e}")
-        print(f"[Try-On History] Traceback: {traceback.format_exc()}")
+        logger.error(f"[Try-On History] Error listing history: {e}")
+        logger.error(f"[Try-On History] Traceback: {traceback.format_exc()}")
         return []
 
 
