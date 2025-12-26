@@ -8,10 +8,16 @@ import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-nex
 
 const router = useRouter()
 
-import { createAuthenticatedApiClient } from '../lib/api-client'
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
+
+// Use simple axios client like Studio and Wardrobe do (not createAuthenticatedApiClient)
+const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 
 interface TryOnHistoryItem {
   id: string
@@ -56,8 +62,6 @@ const restoreHistoryFromCache = () => {
   return false
 }
 const isLoadingSubscription = ref(false) // Flag to prevent duplicate subscription API calls
-
-const apiClient = createAuthenticatedApiClient(API_URL)
 
 // Subscription service client
 const subscriptionClient = axios.create({
@@ -110,7 +114,19 @@ const loadHistory = async () => {
   isLoading.value = true
   error.value = ''
   try {
-    const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
+    // Manually get session and set header like Profile.vue does
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    
+    if (!token) {
+      throw new Error('No authentication token available')
+    }
+    
+    const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
     historyItems.value = response.data.history || []
     // Save to cache for next page refresh
     saveHistoryToCache()
@@ -118,23 +134,19 @@ const loadHistory = async () => {
     console.error('Failed to load try-on history:', e)
     const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
     
-    // If authentication failed, redirect to login
+    // If authentication failed, check session again
     if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
-      // Wait a bit and check session again
       const { data } = await supabase.auth.getSession()
       if (!data.session) {
-        router.push('/login')
-        return
-      }
-      // If session exists but request failed, don't show error if we have cached data
-      if (historyItems.value.length > 0) {
-        console.log('[TryOnHistory] API failed but using cached data')
-        error.value = '' // Clear error if we have cached data
-        return
+        // Only redirect if we don't have cached data
+        if (historyItems.value.length === 0) {
+          router.push('/login')
+          return
+        }
       }
     }
     
-    // Only show error if we don't have cached data
+    // Only show error if we don't have cached data (like Profile.vue does)
     if (historyItems.value.length === 0) {
       error.value = errorDetail
     } else {
@@ -210,18 +222,24 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
+  // Restore from cache first for instant display (before waiting for session)
+  restoreHistoryFromCache()
+  
   // Ensure session is loaded before making requests (handles page refresh)
   try {
     let attempts = 0
     let session = null
+    const maxAttempts = 10 // Increased attempts for page refresh scenarios
+    const baseDelay = 100 // Base delay in ms
     
-    // Retry up to 5 times with longer delays to allow Supabase session to recover on page refresh
-    while (attempts < 5 && !session) {
+    // Retry with exponential backoff to allow Supabase session to recover on page refresh
+    while (attempts < maxAttempts && !session) {
       const { data, error } = await supabase.auth.getSession()
       if (error) {
-        console.warn('[TryOnHistory] Failed to get session:', error)
-        if (attempts < 4) {
-          await new Promise(resolve => setTimeout(resolve, 200))
+        console.warn(`[TryOnHistory] Attempt ${attempts + 1}/${maxAttempts} - Failed to get session:`, error)
+        if (attempts < maxAttempts - 1) {
+          const delay = baseDelay * Math.min(attempts + 1, 5)
+          await new Promise(resolve => setTimeout(resolve, delay))
         }
         attempts++
         continue
@@ -229,39 +247,54 @@ onMounted(async () => {
       
       if (data.session?.access_token) {
         session = data.session
-        console.log('[TryOnHistory] Session recovered after', attempts + 1, 'attempt(s)')
+        if (attempts > 0) {
+          console.log(`[TryOnHistory] Session recovered after ${attempts + 1} attempt(s)`)
+        }
         break
       }
       
-      if (attempts < 4) {
-        // Wait longer for session to recover (Supabase may need more time on page refresh)
-        await new Promise(resolve => setTimeout(resolve, 200))
+      if (attempts < maxAttempts - 1) {
+        // Exponential backoff: wait longer on later attempts
+        const delay = baseDelay * Math.min(attempts + 1, 5)
+        await new Promise(resolve => setTimeout(resolve, delay))
       }
       attempts++
     }
     
     if (!session || !session.access_token) {
-      console.warn('[TryOnHistory] No valid session after retries, redirecting to login')
-      router.push('/login')
-      return
+      console.warn('[TryOnHistory] No valid session after retries')
+      // Don't redirect if we have cached data - user can still see their history
+      if (historyItems.value.length === 0) {
+        router.push('/login')
+        return
+      } else {
+        console.log('[TryOnHistory] Using cached data, skipping API calls')
+        return
+      }
     }
     
     // Ensure token is available before making any API calls
     // Wait a bit more to ensure Supabase client is fully initialized
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise(resolve => setTimeout(resolve, 150))
     
   } catch (e) {
     console.error('[TryOnHistory] Failed to check session:', e)
-    router.push('/login')
-    return
+    // Don't redirect if we have cached data
+    if (historyItems.value.length === 0) {
+      router.push('/login')
+      return
+    } else {
+      console.log('[TryOnHistory] Using cached data after error, skipping API calls')
+      return
+    }
   }
   
-  // Restore from cache first for instant display
-  restoreHistoryFromCache()
-  
   // Load data after session is confirmed
-  await loadSubscriptionInfo()
-  loadHistory()
+  // Use Promise.all to load both in parallel, but ensure session is ready first
+  await Promise.all([
+    loadSubscriptionInfo(),
+    loadHistory()
+  ])
   window.addEventListener('keydown', handleKeyDown)
 })
 

@@ -69,11 +69,18 @@ def _create_authenticated_client(user_token: str) -> Client:
     使用 anon key 创建客户端，然后设置用户会话以尊重 RLS 策略。
     这样 auth.uid() 在 RLS 策略中才能正确工作。
     """
-    client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    # Set the user session with the JWT token to respect RLS policies
-    # This allows auth.uid() in RLS policies to work correctly
-    client.auth.set_session(access_token=user_token, refresh_token='')
-    return client
+    try:
+        client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Set the user session with the JWT token to respect RLS policies
+        # This allows auth.uid() in RLS policies to work correctly
+        # Note: set_session may fail if token is invalid/expired, but we'll catch that in the calling function
+        client.auth.set_session(access_token=user_token, refresh_token='')
+        return client
+    except Exception as e:
+        logger.error(f"[Try-On History] Failed to create authenticated client: {e}")
+        logger.error(f"[Try-On History] Token prefix: {user_token[:30] if user_token else 'None'}...")
+        # Re-raise to let calling function handle it
+        raise
 
 
 def _get_retention_days_for_user(user_id: str) -> int:
@@ -294,8 +301,14 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[D
         # Create authenticated client if user_token is provided
         # This is required for RLS policies to work correctly with auth.uid()
         if user_token:
-            client = _create_authenticated_client(user_token)
-            table = client.table(TABLE_NAME)
+            try:
+                client = _create_authenticated_client(user_token)
+                table = client.table(TABLE_NAME)
+            except Exception as auth_error:
+                # If setting session fails (e.g., token invalid/expired), fall back to global client
+                # This allows the query to proceed, but RLS may block it if using anon key
+                logger.warning(f"[Try-On History] Failed to create authenticated client, falling back to global client: {auth_error}")
+                table = _table
         else:
             # Use global client (service role key or anon key)
             # Note: If using anon key without user token, RLS policies may block the query

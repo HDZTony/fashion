@@ -18,15 +18,20 @@ export function createAuthenticatedApiClient(baseURL: string) {
   client.interceptors.request.use(async (config) => {
     try {
       // Wait for session to be available (handles page refresh scenarios)
+      // On page refresh, Supabase client may need time to initialize and recover session from storage
       let attempts = 0
       let session = null
+      const maxAttempts = 10 // Increased attempts for page refresh scenarios
+      const baseDelay = 100 // Base delay in ms
       
-      while (attempts < 5 && !session) {
+      while (attempts < maxAttempts && !session) {
         const { data, error } = await supabase.auth.getSession()
         if (error) {
-          console.warn('[API Client] Failed to get Supabase session:', error)
-          if (attempts < 4) {
-            await new Promise(resolve => setTimeout(resolve, 200))
+          console.warn(`[API Client] Attempt ${attempts + 1}/${maxAttempts} - Failed to get Supabase session:`, error)
+          if (attempts < maxAttempts - 1) {
+            // Exponential backoff: wait longer on later attempts
+            const delay = baseDelay * Math.min(attempts + 1, 5)
+            await new Promise(resolve => setTimeout(resolve, delay))
           }
           attempts++
           continue
@@ -56,13 +61,17 @@ export function createAuthenticatedApiClient(baseURL: string) {
           
           // If we have a session with token, break early
           if (session.access_token) {
+            if (attempts > 0) {
+              console.log(`[API Client] Session recovered after ${attempts + 1} attempt(s)`)
+            }
             break
           }
         }
         
-        if (!session && attempts < 4) {
-          // Wait longer for session to recover (Supabase may need more time on page refresh)
-          await new Promise(resolve => setTimeout(resolve, 200))
+        if (!session && attempts < maxAttempts - 1) {
+          // Exponential backoff: wait longer on later attempts
+          const delay = baseDelay * Math.min(attempts + 1, 5)
+          await new Promise(resolve => setTimeout(resolve, delay))
         }
         attempts++
       }
@@ -76,8 +85,10 @@ export function createAuthenticatedApiClient(baseURL: string) {
           console.debug(`[API Client] Added auth token to ${config.method?.toUpperCase()} ${config.url}`)
         }
       } else {
-        // If no token after retries, this will cause 401 - which is expected
-        console.warn('[API Client] No auth token available for request:', config.method?.toUpperCase(), config.url)
+        // If no token after retries, log warning but don't block the request
+        // The backend will return 401, and the response interceptor will handle it
+        console.warn('[API Client] No auth token available for request after retries:', config.method?.toUpperCase(), config.url, '- Request will likely fail with 401')
+        // Don't add Authorization header if no token - let backend handle it
       }
     } catch (e) {
       console.warn('[API Client] Failed to get Supabase session for request:', e)
@@ -91,26 +102,48 @@ export function createAuthenticatedApiClient(baseURL: string) {
     async (error) => {
       const originalRequest = error.config
       
-      // If we get a 401 and haven't retried yet, try to refresh the session
+      // If we get a 401 and haven't retried yet, try to get/refresh the session
       if (error.response?.status === 401 && !originalRequest._retry) {
         originalRequest._retry = true
         
         try {
-          // Try to refresh the session
-          const { data, error: refreshError } = await supabase.auth.refreshSession()
+          // First, try to get the current session (might have recovered by now)
+          let session = null
+          let attempts = 0
           
-          if (refreshError || !data.session) {
-            console.warn('[API Client] Session refresh failed:', refreshError)
+          while (attempts < 3 && !session) {
+            const { data, error: sessionError } = await supabase.auth.getSession()
+            if (!sessionError && data.session?.access_token) {
+              session = data.session
+              break
+            }
+            if (attempts < 2) {
+              await new Promise(resolve => setTimeout(resolve, 200))
+            }
+            attempts++
+          }
+          
+          // If we have a session, use it; otherwise try to refresh
+          if (!session) {
+            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+            if (!refreshError && refreshData.session?.access_token) {
+              session = refreshData.session
+            }
+          }
+          
+          if (session?.access_token) {
+            console.log('[API Client] Retrying request with recovered/refreshed session')
+            // Retry the request with new token
+            originalRequest.headers.Authorization = `Bearer ${session.access_token}`
+            return client(originalRequest)
+          } else {
+            console.warn('[API Client] No session available after 401, cannot retry')
             // Clear any stale session
             await supabase.auth.signOut()
             throw error
           }
-          
-          // Retry the request with new token
-          originalRequest.headers.Authorization = `Bearer ${data.session.access_token}`
-          return client(originalRequest)
         } catch (refreshErr) {
-          console.warn('[API Client] Failed to refresh session:', refreshErr)
+          console.warn('[API Client] Failed to recover session after 401:', refreshErr)
           throw error
         }
       }

@@ -2,6 +2,7 @@
 defineOptions({ name: 'Favorites' })
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
@@ -53,9 +54,13 @@ const restoreFavoritesFromCache = () => {
   return false
 }
 
-import { createAuthenticatedApiClient } from '../lib/api-client'
-
-const apiClient = createAuthenticatedApiClient(API_URL)
+// Use simple axios client like Studio and Wardrobe do (not createAuthenticatedApiClient)
+const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 
 const loadFavorites = async () => {
   // Prevent duplicate concurrent calls
@@ -101,7 +106,19 @@ if (!confirm('Delete this favorite?')) {
   }
   
   try {
-    await apiClient.delete(`/favorites/${favoriteId}`)
+    // Manually get session and set header like Profile.vue does
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    
+    if (!token) {
+      throw new Error('No authentication token available')
+    }
+    
+    await apiClient.delete(`/favorites/${favoriteId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
     await loadFavorites()
   } catch (e: any) {
     console.error('Failed to delete favorite:', e)
@@ -159,37 +176,72 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
+  // Restore from cache first for instant display (before waiting for session)
+  restoreFavoritesFromCache()
+  
   // Ensure session is loaded before making requests (handles page refresh)
   try {
     let attempts = 0
     let session = null
+    const maxAttempts = 10 // Increased attempts for page refresh scenarios
+    const baseDelay = 100 // Base delay in ms
     
-    // Retry up to 3 times to allow Supabase session to recover on page refresh
-    while (attempts < 3 && !session) {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
+    // Retry with exponential backoff to allow Supabase session to recover on page refresh
+    while (attempts < maxAttempts && !session) {
+      const { data, error } = await supabase.auth.getSession()
+      if (error) {
+        console.warn(`[Favorites] Attempt ${attempts + 1}/${maxAttempts} - Failed to get session:`, error)
+        if (attempts < maxAttempts - 1) {
+          const delay = baseDelay * Math.min(attempts + 1, 5)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+        attempts++
+        continue
+      }
+      
+      if (data.session?.access_token) {
         session = data.session
+        if (attempts > 0) {
+          console.log(`[Favorites] Session recovered after ${attempts + 1} attempt(s)`)
+        }
         break
       }
-      if (attempts < 2) {
-        // Wait a bit for session to recover (Supabase may need time on page refresh)
-        await new Promise(resolve => setTimeout(resolve, 100))
+      
+      if (attempts < maxAttempts - 1) {
+        // Exponential backoff: wait longer on later attempts
+        const delay = baseDelay * Math.min(attempts + 1, 5)
+        await new Promise(resolve => setTimeout(resolve, delay))
       }
       attempts++
     }
     
-    if (!session) {
+    if (!session || !session.access_token) {
+      console.warn('[Favorites] No valid session after retries')
+      // Don't redirect if we have cached data - user can still see their favorites
+      if (favorites.value.length === 0) {
+        router.push('/login')
+        return
+      } else {
+        console.log('[Favorites] Using cached data, skipping API calls')
+        return
+      }
+    }
+    
+    // Ensure token is available before making any API calls
+    // Wait a bit more to ensure Supabase client is fully initialized
+    await new Promise(resolve => setTimeout(resolve, 150))
+    
+  } catch (e) {
+    console.error('[Favorites] Failed to check session:', e)
+    // Don't redirect if we have cached data
+    if (favorites.value.length === 0) {
       router.push('/login')
       return
+    } else {
+      console.log('[Favorites] Using cached data after error, skipping API calls')
+      return
     }
-  } catch (e) {
-    console.error('Failed to check session:', e)
-    router.push('/login')
-    return
   }
-  
-  // Restore from cache first for instant display
-  restoreFavoritesFromCache()
   
   loadFavorites()
   window.addEventListener('keydown', handleKeyDown)
