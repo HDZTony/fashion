@@ -164,7 +164,19 @@ if (!confirm('Delete this try-on history item?')) {
   }
   
   try {
-    await apiClient.delete(`/tryon-history/${historyId}`)
+    // Manually get session and set header like Profile.vue does
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    
+    if (!token) {
+      throw new Error('No authentication token available')
+    }
+    
+    await apiClient.delete(`/tryon-history/${historyId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
     await loadHistory()
   } catch (e: any) {
     console.error('Failed to delete history item:', e)
