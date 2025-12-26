@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, onActivated, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
@@ -249,81 +249,55 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   // Restore from cache first for instant display (before waiting for session)
   restoreHistoryFromCache()
-  
-  // Ensure session is loaded before making requests (handles page refresh)
-  try {
-    let attempts = 0
-    let session = null
-    const maxAttempts = 10 // Increased attempts for page refresh scenarios
-    const baseDelay = 100 // Base delay in ms
-    
-    // Retry with exponential backoff to allow Supabase session to recover on page refresh
-    while (attempts < maxAttempts && !session) {
-      const { data, error } = await supabase.auth.getSession()
-      if (error) {
-        console.warn(`[TryOnHistory] Attempt ${attempts + 1}/${maxAttempts} - Failed to get session:`, error)
-        if (attempts < maxAttempts - 1) {
-          const delay = baseDelay * Math.min(attempts + 1, 5)
-          await new Promise(resolve => setTimeout(resolve, delay))
-        }
-        attempts++
-        continue
-      }
-      
-      if (data.session?.access_token) {
-        session = data.session
-        if (attempts > 0) {
-          console.log(`[TryOnHistory] Session recovered after ${attempts + 1} attempt(s)`)
-        }
-        break
-      }
-      
-      if (attempts < maxAttempts - 1) {
-        // Exponential backoff: wait longer on later attempts
-        const delay = baseDelay * Math.min(attempts + 1, 5)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-      attempts++
-    }
-    
-    if (!session || !session.access_token) {
-      console.warn('[TryOnHistory] No valid session after retries')
-      // Don't redirect if we have cached data - user can still see their history
-      if (historyItems.value.length === 0) {
-        router.push('/login')
-        return
-      } else {
-        console.log('[TryOnHistory] Using cached data, skipping API calls')
-        return
-      }
-    }
-    
-    // Ensure token is available before making any API calls
-    // Wait a bit more to ensure Supabase client is fully initialized
-    await new Promise(resolve => setTimeout(resolve, 150))
-    
-  } catch (e) {
-    console.error('[TryOnHistory] Failed to check session:', e)
-    // Don't redirect if we have cached data
-    if (historyItems.value.length === 0) {
-      router.push('/login')
-      return
-    } else {
-      console.log('[TryOnHistory] Using cached data after error, skipping API calls')
-      return
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+// Load data when component is activated (like Wardrobe does)
+// This ensures Supabase client is fully initialized before making API calls
+onActivated(async () => {
+  // Restore from cache if memory is empty (keep-alive may have failed)
+  if (historyItems.value.length === 0) {
+    const restored = restoreHistoryFromCache()
+    if (restored) {
+      console.log('[TryOnHistory onActivated] Restored history from cache, count:', historyItems.value.length)
     }
   }
   
-  // Load data after session is confirmed
-  // Use Promise.all to load both in parallel, but ensure session is ready first
-  await Promise.all([
-    loadSubscriptionInfo(),
-    loadHistory()
-  ])
-  window.addEventListener('keydown', handleKeyDown)
+  // Check if we need to load data from API
+  // Only load if we don't have cached data or if cache is stale
+  if (historyItems.value.length === 0) {
+    // Check session before making API calls
+    try {
+      const { data } = await supabase.auth.getSession()
+      if (!data.session) {
+        console.warn('[TryOnHistory] No session found, redirecting to login')
+        router.push('/login')
+        return
+      }
+      
+      // Load data from API (Supabase client is fully initialized at this point)
+      await Promise.all([
+        loadSubscriptionInfo(),
+        loadHistory()
+      ])
+    } catch (e) {
+      console.error('[TryOnHistory] Failed to check session:', e)
+      if (historyItems.value.length === 0) {
+        router.push('/login')
+      }
+    }
+  } else {
+    console.log('[TryOnHistory onActivated] Using cached data, count:', historyItems.value.length)
+    // Still load subscription info to ensure it's up to date
+    try {
+      await loadSubscriptionInfo()
+    } catch (e) {
+      console.warn('[TryOnHistory] Failed to load subscription info:', e)
+    }
+  }
 })
 
 const formatDate = (dateString: string) => {
