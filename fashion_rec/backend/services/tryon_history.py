@@ -239,9 +239,16 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
         created_at = datetime.utcnow()
         expires_at = created_at + timedelta(days=retention_days)
         
+        # Log user_id details when saving
+        logger.info(f"[Try-On History] Saving record with user_id:")
+        logger.info(f"[Try-On History]   - Value: '{user_id}'")
+        logger.info(f"[Try-On History]   - Type: {type(user_id)}")
+        logger.info(f"[Try-On History]   - Length: {len(str(user_id))}")
+        logger.info(f"[Try-On History]   - Repr: {repr(user_id)}")
+        
         record = {
             "id": history_id,
-            "user_id": user_id,
+            "user_id": str(user_id),  # Ensure it's a string
             "image_url": history.get("image_url", ""),
             "garment_urls": garment_urls,  # Selected items from Applied Outfit Items (JSONB array)
             "scene_image_url": history.get("scene_image_url"),
@@ -279,9 +286,31 @@ def list_tryon_history(user_id: str) -> List[Dict[str, Any]]:
         # Ensure table exists
         _ensure_table_exists()
         
+        # First, query ALL records to see what user_ids exist in the database
+        logger.info(f"[Try-On History] DEBUG: Querying ALL records to check user_ids in database...")
+        all_records_response = _table.select("id", "user_id", "created_at").limit(10).execute()
+        if all_records_response.data:
+            logger.info(f"[Try-On History] DEBUG: Found {len(all_records_response.data)} total record(s) in database")
+            for i, rec in enumerate(all_records_response.data[:5]):  # Show first 5
+                db_user_id = rec.get('user_id')
+                logger.info(f"[Try-On History] DEBUG: Record {i+1}: user_id='{db_user_id}' (type: {type(db_user_id)}, len: {len(str(db_user_id)) if db_user_id else 0})")
+        else:
+            logger.warning(f"[Try-On History] DEBUG: No records found in database at all!")
+        
+        # Log query user_id details
+        logger.info(f"[Try-On History] Query user_id details:")
+        logger.info(f"[Try-On History]   - Value: '{user_id}'")
+        logger.info(f"[Try-On History]   - Type: {type(user_id)}")
+        logger.info(f"[Try-On History]   - Length: {len(str(user_id))}")
+        logger.info(f"[Try-On History]   - Repr: {repr(user_id)}")
+        
+        # Ensure user_id is a string for query
+        query_user_id = str(user_id).strip()
+        logger.info(f"[Try-On History] Query user_id after normalization: '{query_user_id}'")
+        
         # Query user's history, return all records without filtering
-        logger.info(f"[Try-On History] Building query: select * from {TABLE_NAME} where user_id = {user_id} order by created_at desc")
-        response = _table.select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        logger.info(f"[Try-On History] Building query: select * from {TABLE_NAME} where user_id = '{query_user_id}' order by created_at desc")
+        response = _table.select("*").eq("user_id", query_user_id).order("created_at", desc=True).execute()
         
         logger.info(f"[Try-On History] Query executed successfully")
         logger.info(f"[Try-On History] Response data type: {type(response.data)}")
