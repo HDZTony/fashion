@@ -1780,7 +1780,10 @@ async def delete_favorite(
 
 
 @app.get("/tryon-history")
-async def get_tryon_history(user_id: str = Depends(get_current_user)):
+async def get_tryon_history(
+    user_id: str = Depends(get_current_user),
+    user_token: str = Depends(get_current_user_token),
+):
     """
     Get all try-on history for the current user.
     Returns all records without filtering. Expired records are cleaned up by periodic cleanup task.
@@ -1788,14 +1791,9 @@ async def get_tryon_history(user_id: str = Depends(get_current_user)):
     from services.tryon_history import list_tryon_history
 
     try:
-        logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}")
-        history = list_tryon_history(user_id)
-        logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id}")
-        
+        history = list_tryon_history(user_id, user_token)
         # Sort by created_at descending (newest first)
         history.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        
-        logger.info(f"[API] /tryon-history returning {len(history)} sorted record(s)")
         return {"history": history}
     except Exception as e:
         import traceback
@@ -1826,7 +1824,10 @@ async def delete_tryon_history(
 
 
 @app.get("/tryon-history/debug")
-async def debug_tryon_history(user_id: str = Depends(get_current_user)):
+async def debug_tryon_history(
+    user_id: str = Depends(get_current_user),
+    user_token: str = Depends(get_current_user_token),
+):
     """
     Debug endpoint: Get all try-on history records without user_id filter.
     This helps diagnose why history might be empty.
@@ -1834,13 +1835,11 @@ async def debug_tryon_history(user_id: str = Depends(get_current_user)):
     from services.tryon_history import debug_list_all_history, list_tryon_history
 
     try:
-        logger.info(f"[API Debug] /tryon-history/debug called for user_id: {user_id}")
-        
-        # Get all records (for debugging)
+        # Get all records (for debugging - uses service role key if available)
         all_records = debug_list_all_history()
         
-        # Get user-specific records
-        user_records = list_tryon_history(user_id)
+        # Get user-specific records (uses user token for RLS)
+        user_records = list_tryon_history(user_id, user_token)
         
         return {
             "debug_info": {
