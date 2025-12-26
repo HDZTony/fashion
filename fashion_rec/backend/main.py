@@ -1820,11 +1820,19 @@ async def get_tryon_history(user_id: str = Depends(get_current_user)):
     from services.tryon_history import list_tryon_history
 
     try:
+        logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}")
         history = list_tryon_history(user_id)
+        logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id}")
+        
         # Sort by created_at descending (newest first)
         history.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        logger.info(f"[API] /tryon-history returning {len(history)} sorted record(s)")
         return {"history": history}
     except Exception as e:
+        import traceback
+        logger.error(f"[API] /tryon-history error for user_id {user_id}: {e}")
+        logger.error(f"[API] /tryon-history traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get try-on history: {e}")
 
 
@@ -1847,6 +1855,39 @@ async def delete_tryon_history(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete history record: {e}")
+
+
+@app.get("/tryon-history/debug")
+async def debug_tryon_history(user_id: str = Depends(get_current_user)):
+    """
+    Debug endpoint: Get all try-on history records without user_id filter.
+    This helps diagnose why history might be empty.
+    """
+    from services.tryon_history import debug_list_all_history, list_tryon_history
+
+    try:
+        logger.info(f"[API Debug] /tryon-history/debug called for user_id: {user_id}")
+        
+        # Get all records (for debugging)
+        all_records = debug_list_all_history()
+        
+        # Get user-specific records
+        user_records = list_tryon_history(user_id)
+        
+        return {
+            "debug_info": {
+                "requested_user_id": user_id,
+                "total_records_in_table": len(all_records),
+                "user_specific_records": len(user_records),
+            },
+            "all_records_sample": all_records[:10] if all_records else [],  # First 10 records
+            "user_records": user_records,
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"[API Debug] /tryon-history/debug error: {e}")
+        logger.error(f"[API Debug] /tryon-history/debug traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Debug endpoint error: {e}")
 
 
 # Schedule periodic cleanup on startup
