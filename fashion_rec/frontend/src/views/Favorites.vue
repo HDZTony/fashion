@@ -27,6 +27,32 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
+// Cache management for page refresh
+const saveFavoritesToCache = () => {
+  try {
+    sessionStorage.setItem('favorites_cache', JSON.stringify(favorites.value))
+  } catch (e) {
+    console.warn('[Favorites] Failed to save favorites to cache:', e)
+  }
+}
+
+const restoreFavoritesFromCache = () => {
+  try {
+    const cached = sessionStorage.getItem('favorites_cache')
+    if (cached) {
+      const items = JSON.parse(cached)
+      if (Array.isArray(items) && items.length > 0) {
+        favorites.value = items
+        console.log('[Favorites] Restored favorites from cache:', items.length, 'items')
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('[Favorites] Failed to restore favorites from cache:', e)
+  }
+  return false
+}
+
 import { createAuthenticatedApiClient } from '../lib/api-client'
 
 const apiClient = createAuthenticatedApiClient(API_URL)
@@ -42,9 +68,28 @@ const loadFavorites = async () => {
   try {
     const response = await apiClient.get<{ favorites: Favorite[] }>('/favorites')
     favorites.value = response.data.favorites || []
+    // Save to cache for next page refresh
+    saveFavoritesToCache()
   } catch (e: any) {
     console.error('Failed to load favorites:', e)
-    error.value = e?.response?.data?.detail || e?.message || 'Failed to load favorites'
+    const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load favorites'
+    
+    // If authentication failed, don't show error if we have cached data
+    if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
+      if (favorites.value.length > 0) {
+        console.log('[Favorites] API failed but using cached data')
+        error.value = '' // Clear error if we have cached data
+        return
+      }
+    }
+    
+    // Only show error if we don't have cached data
+    if (favorites.value.length === 0) {
+      error.value = errorDetail
+    } else {
+      console.log('[Favorites] API failed but using cached data, hiding error')
+      error.value = '' // Clear error if we have cached data
+    }
   } finally {
     isLoading.value = false
   }
@@ -142,6 +187,9 @@ onMounted(async () => {
     router.push('/login')
     return
   }
+  
+  // Restore from cache first for instant display
+  restoreFavoritesFromCache()
   
   loadFavorites()
   window.addEventListener('keydown', handleKeyDown)

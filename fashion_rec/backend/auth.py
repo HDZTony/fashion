@@ -43,7 +43,9 @@ async def get_current_user_and_token(token: str = Depends(oauth2_scheme)):
         return (user_response.user.id, token)
         
     except Exception as e:
-        print(f"Auth error: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Auth error in get_current_user_and_token: {type(e).__name__}: {e}")
         raise credentials_exception
 
 
@@ -63,6 +65,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     Get the current user's ID.
     Note: This verifies the token. If you also need the token, use get_current_user_and_token instead.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
@@ -70,11 +75,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     
     if not supabase:
-        print("ERROR: Supabase client not initialized")
+        logger.error("ERROR: Supabase client not initialized")
         raise HTTPException(status_code=500, detail="Auth configuration missing")
 
     if not token:
-        print("ERROR: No token provided in request")
+        logger.warning("ERROR: No token provided in request")
         raise credentials_exception
 
     try:
@@ -82,7 +87,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         # get_user() verifies the JWT signature and expiration
         user_response = supabase.auth.get_user(token)
         if not user_response.user:
-            print(f"ERROR: Token validation failed - no user in response")
+            logger.warning(f"ERROR: Token validation failed - no user in response. Token prefix: {token[:20] if token else 'None'}...")
             raise credentials_exception
             
         return user_response.user.id
@@ -94,6 +99,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         # Log the actual error for debugging
         error_type = type(e).__name__
         error_msg = str(e)
-        print(f"ERROR: Auth validation failed - {error_type}: {error_msg}")
+        logger.error(f"ERROR: Auth validation failed - {error_type}: {error_msg}. Token prefix: {token[:20] if token else 'None'}...")
         # Don't expose internal error details to client
         raise credentials_exception

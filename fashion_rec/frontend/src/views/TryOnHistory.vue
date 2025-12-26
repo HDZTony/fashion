@@ -29,6 +29,32 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 const subscriptionInfo = ref<any>(null)
+
+// Cache management for page refresh
+const saveHistoryToCache = () => {
+  try {
+    sessionStorage.setItem('tryon_history_cache', JSON.stringify(historyItems.value))
+  } catch (e) {
+    console.warn('[TryOnHistory] Failed to save history to cache:', e)
+  }
+}
+
+const restoreHistoryFromCache = () => {
+  try {
+    const cached = sessionStorage.getItem('tryon_history_cache')
+    if (cached) {
+      const items = JSON.parse(cached)
+      if (Array.isArray(items) && items.length > 0) {
+        historyItems.value = items
+        console.log('[TryOnHistory] Restored history from cache:', items.length, 'items')
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('[TryOnHistory] Failed to restore history from cache:', e)
+  }
+  return false
+}
 const isLoadingSubscription = ref(false) // Flag to prevent duplicate subscription API calls
 
 const apiClient = createAuthenticatedApiClient(API_URL)
@@ -86,10 +112,11 @@ const loadHistory = async () => {
   try {
     const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
     historyItems.value = response.data.history || []
+    // Save to cache for next page refresh
+    saveHistoryToCache()
   } catch (e: any) {
     console.error('Failed to load try-on history:', e)
     const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
-    error.value = errorDetail
     
     // If authentication failed, redirect to login
     if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
@@ -99,6 +126,20 @@ const loadHistory = async () => {
         router.push('/login')
         return
       }
+      // If session exists but request failed, don't show error if we have cached data
+      if (historyItems.value.length > 0) {
+        console.log('[TryOnHistory] API failed but using cached data')
+        error.value = '' // Clear error if we have cached data
+        return
+      }
+    }
+    
+    // Only show error if we don't have cached data
+    if (historyItems.value.length === 0) {
+      error.value = errorDetail
+    } else {
+      console.log('[TryOnHistory] API failed but using cached data, hiding error')
+      error.value = '' // Clear error if we have cached data
     }
   } finally {
     isLoading.value = false
@@ -174,30 +215,51 @@ onMounted(async () => {
     let attempts = 0
     let session = null
     
-    // Retry up to 3 times to allow Supabase session to recover on page refresh
-    while (attempts < 3 && !session) {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
+    // Retry up to 5 times with longer delays to allow Supabase session to recover on page refresh
+    while (attempts < 5 && !session) {
+      const { data, error } = await supabase.auth.getSession()
+      if (error) {
+        console.warn('[TryOnHistory] Failed to get session:', error)
+        if (attempts < 4) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+        attempts++
+        continue
+      }
+      
+      if (data.session?.access_token) {
         session = data.session
+        console.log('[TryOnHistory] Session recovered after', attempts + 1, 'attempt(s)')
         break
       }
-      if (attempts < 2) {
-        // Wait a bit for session to recover (Supabase may need time on page refresh)
-        await new Promise(resolve => setTimeout(resolve, 100))
+      
+      if (attempts < 4) {
+        // Wait longer for session to recover (Supabase may need more time on page refresh)
+        await new Promise(resolve => setTimeout(resolve, 200))
       }
       attempts++
     }
     
-    if (!session) {
+    if (!session || !session.access_token) {
+      console.warn('[TryOnHistory] No valid session after retries, redirecting to login')
       router.push('/login')
       return
     }
+    
+    // Ensure token is available before making any API calls
+    // Wait a bit more to ensure Supabase client is fully initialized
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
   } catch (e) {
-    console.error('Failed to check session:', e)
+    console.error('[TryOnHistory] Failed to check session:', e)
     router.push('/login')
     return
   }
   
+  // Restore from cache first for instant display
+  restoreHistoryFromCache()
+  
+  // Load data after session is confirmed
   await loadSubscriptionInfo()
   loadHistory()
   window.addEventListener('keydown', handleKeyDown)

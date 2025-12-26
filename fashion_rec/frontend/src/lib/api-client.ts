@@ -21,12 +21,17 @@ export function createAuthenticatedApiClient(baseURL: string) {
       let attempts = 0
       let session = null
       
-      while (attempts < 3 && !session) {
+      while (attempts < 5 && !session) {
         const { data, error } = await supabase.auth.getSession()
         if (error) {
           console.warn('[API Client] Failed to get Supabase session:', error)
-          break
+          if (attempts < 4) {
+            await new Promise(resolve => setTimeout(resolve, 200))
+          }
+          attempts++
+          continue
         }
+        
         session = data.session
         
         // If session exists but token might be expired, try to refresh it
@@ -48,11 +53,16 @@ export function createAuthenticatedApiClient(baseURL: string) {
               }
             }
           }
+          
+          // If we have a session with token, break early
+          if (session.access_token) {
+            break
+          }
         }
         
-        if (!session && attempts < 2) {
-          // Wait a bit for session to recover (Supabase may need time on page refresh)
-          await new Promise(resolve => setTimeout(resolve, 100))
+        if (!session && attempts < 4) {
+          // Wait longer for session to recover (Supabase may need more time on page refresh)
+          await new Promise(resolve => setTimeout(resolve, 200))
         }
         attempts++
       }
