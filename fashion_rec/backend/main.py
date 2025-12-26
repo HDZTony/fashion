@@ -47,6 +47,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add middleware to log authentication-related requests
+@app.middleware("http")
+async def log_auth_requests(request: Request, call_next):
+    """Log authentication-related requests for debugging"""
+    if request.url.path in ["/tryon-history", "/favorites"]:
+        auth_header = request.headers.get("authorization")
+        if not auth_header:
+            logger.warning(f"[Auth Middleware] {request.method} {request.url.path} - No Authorization header")
+        else:
+            token_prefix = auth_header[:30] if len(auth_header) > 30 else auth_header
+            logger.info(f"[Auth Middleware] {request.method} {request.url.path} - Has Authorization header: {token_prefix}...")
+    
+    response = await call_next(request)
+    
+    # Log 401 responses
+    if response.status_code == 401 and request.url.path in ["/tryon-history", "/favorites"]:
+        auth_header = request.headers.get("authorization")
+        logger.error(f"[Auth Middleware] 401 Unauthorized for {request.method} {request.url.path} - Auth header: {'Present' if auth_header else 'Missing'}")
+    
+    return response
+
 # Directories
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)

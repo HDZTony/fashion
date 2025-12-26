@@ -16,14 +16,17 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 else:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
-async def get_current_user_and_token(token: str = Depends(oauth2_scheme)):
+async def get_current_user_and_token(token: Optional[str] = Depends(oauth2_scheme)):
     """
     Get both user ID and token in a single verification.
     This avoids duplicate authentication requests when both are needed.
     Returns a tuple of (user_id, token).
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -31,36 +34,53 @@ async def get_current_user_and_token(token: str = Depends(oauth2_scheme)):
     )
     
     if not supabase:
+        logger.error("ERROR: Supabase client not initialized")
         raise HTTPException(status_code=500, detail="Auth configuration missing")
+
+    if not token:
+        logger.warning("ERROR: No token provided in request to get_current_user_and_token")
+        raise credentials_exception
 
     try:
         # Verify token with Supabase (only once)
         # get_user() verifies the JWT signature and expiration
         user_response = supabase.auth.get_user(token)
         if not user_response.user:
+            logger.warning(f"ERROR: Token validation failed - no user in response. Token prefix: {token[:20] if token else 'None'}...")
             raise credentials_exception
             
         return (user_response.user.id, token)
         
+    except HTTPException:
+        raise
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Auth error in get_current_user_and_token: {type(e).__name__}: {e}")
+        logger.error(f"Auth error in get_current_user_and_token: {type(e).__name__}: {e}. Token prefix: {token[:20] if token else 'None'}...")
         raise credentials_exception
 
 
-async def get_current_user_token(token: str = Depends(oauth2_scheme)) -> str:
+async def get_current_user_token(token: Optional[str] = Depends(oauth2_scheme)) -> str:
     """
     Get the current user's JWT token.
     This can be used to create authenticated Supabase clients that respect RLS policies.
     Note: This does NOT verify the token (for performance). Use get_current_user_and_token if you need both.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not token:
+        logger.warning("ERROR: No token provided in request to get_current_user_token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     # Just return the token without verification to avoid duplicate auth requests
     # The token will be verified when used with Supabase client
     return token
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: Optional[str] = Depends(oauth2_scheme)):
     """
     Get the current user's ID.
     Note: This verifies the token. If you also need the token, use get_current_user_and_token instead.

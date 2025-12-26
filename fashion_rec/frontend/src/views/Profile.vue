@@ -63,15 +63,14 @@ const planDisplay = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
   if (name === 'premium_pro' || name === 'premium pro') return 'Premium Pro ($29.9)'
   if (name === 'premium_plus' || name === 'premium plus') return 'Premium Plus ($15)'
-  if (name === 'premium' || name === '高级版') return 'Premium ($5)'
-  if (name === '免费版') return 'Free'
+  if (name === 'premium') return 'Premium ($5)'
   return subscriptionInfo.value?.planName || 'Free'
 })
 const planSlug = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
   if (name === 'premium_pro' || name === 'premium pro') return 'premium_pro'
   if (name === 'premium_plus' || name === 'premium plus') return 'premium_plus'
-  if (name === 'premium' || name === '高级版') return 'premium'
+  if (name === 'premium') return 'premium'
   return 'free'
 })
 const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2, premium_pro: 3 }
@@ -337,7 +336,7 @@ const plans = computed(() => ([
     slug: 'free',
     name: 'Free',
     price: '$0',
-    tries: '1/day',
+    tries: '3/day',
     desc: 'Core features and saved history',
     action: () => cancelSubscription(), // downgrade to free via cancel
   },
@@ -345,7 +344,7 @@ const plans = computed(() => ([
     slug: 'premium',
     name: 'Premium',
     price: '$5 / mo',
-    tries: '30 / month',
+    tries: '50 / month',
     desc: 'More try-ons and priority',
     action: () => upgradeSubscription('premium'),
   },
@@ -353,7 +352,7 @@ const plans = computed(() => ([
     slug: 'premium_plus',
     name: 'Premium Plus',
     price: '$15 / mo',
-    tries: '100 / month',
+    tries: '200 / month',
     desc: 'Higher limits and priority',
     action: () => upgradeSubscription('premium_plus'),
   },
@@ -361,7 +360,7 @@ const plans = computed(() => ([
     slug: 'premium_pro',
     name: 'Premium Pro',
     price: '$29.9 / mo',
-    tries: '250 / month',
+    tries: '500 / month',
     desc: 'Highest limits and priority',
     action: () => upgradeSubscription('premium_pro'),
   },
