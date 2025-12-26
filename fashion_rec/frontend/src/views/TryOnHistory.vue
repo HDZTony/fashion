@@ -22,6 +22,7 @@ const apiClient = axios.create({
 // Add interceptor to inject auth token from Supabase session
 // This ensures tokens are automatically attached to all requests, even after page refresh
 apiClient.interceptors.request.use(async (config) => {
+  console.log(`[TryOnHistory Interceptor] Processing ${config.method?.toUpperCase()} ${config.url}`)
   try {
     // First, try to get session from Supabase (primary source)
     const { data } = await supabase.auth.getSession()
@@ -30,28 +31,32 @@ apiClient.interceptors.request.use(async (config) => {
     if (token) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${token}`
+      console.log(`[TryOnHistory Interceptor] Added token from Supabase session for ${config.method?.toUpperCase()} ${config.url}`)
       return config
     }
     
+    console.log('[TryOnHistory Interceptor] No token from Supabase session, trying localStorage...')
     // Fallback: if Supabase session is not available (e.g., during page refresh),
     // try to get token from localStorage (backup from useAuthState)
     const backupToken = localStorage.getItem('auth_token')
     if (backupToken) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${backupToken}`
-      console.log('[TryOnHistory] Using backup token from localStorage')
+      console.log(`[TryOnHistory Interceptor] Using backup token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
       return config
     }
     
-    console.warn('[TryOnHistory] No auth token available from Supabase or localStorage')
+    console.warn(`[TryOnHistory Interceptor] No auth token available from Supabase or localStorage for ${config.method?.toUpperCase()} ${config.url}`)
   } catch (e) {
-    console.warn('[TryOnHistory] Failed to get Supabase session for request:', e)
+    console.warn(`[TryOnHistory Interceptor] Failed to get Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
     // Last resort: try localStorage backup even on error
     const backupToken = localStorage.getItem('auth_token')
     if (backupToken) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${backupToken}`
-      console.log('[TryOnHistory] Using backup token from localStorage after error')
+      console.log(`[TryOnHistory Interceptor] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
+    } else {
+      console.error(`[TryOnHistory Interceptor] No backup token available in localStorage for ${config.method?.toUpperCase()} ${config.url}`)
     }
   }
   return config

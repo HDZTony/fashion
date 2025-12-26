@@ -65,6 +65,7 @@ const apiClient = axios.create({
 // Add interceptor to inject auth token from Supabase session
 // This ensures tokens are automatically attached to all requests, even after page refresh
 apiClient.interceptors.request.use(async (config) => {
+  console.log(`[Favorites Interceptor] Processing ${config.method?.toUpperCase()} ${config.url}`)
   try {
     // First, try to get session from Supabase (primary source)
     const { data } = await supabase.auth.getSession()
@@ -73,28 +74,32 @@ apiClient.interceptors.request.use(async (config) => {
     if (token) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${token}`
+      console.log(`[Favorites Interceptor] Added token from Supabase session for ${config.method?.toUpperCase()} ${config.url}`)
       return config
     }
     
+    console.log('[Favorites Interceptor] No token from Supabase session, trying localStorage...')
     // Fallback: if Supabase session is not available (e.g., during page refresh),
     // try to get token from localStorage (backup from useAuthState)
     const backupToken = localStorage.getItem('auth_token')
     if (backupToken) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${backupToken}`
-      console.log('[Favorites] Using backup token from localStorage')
+      console.log(`[Favorites Interceptor] Using backup token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
       return config
     }
     
-    console.warn('[Favorites] No auth token available from Supabase or localStorage')
+    console.warn(`[Favorites Interceptor] No auth token available from Supabase or localStorage for ${config.method?.toUpperCase()} ${config.url}`)
   } catch (e) {
-    console.warn('[Favorites] Failed to get Supabase session for request:', e)
+    console.warn(`[Favorites Interceptor] Failed to get Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
     // Last resort: try localStorage backup even on error
     const backupToken = localStorage.getItem('auth_token')
     if (backupToken) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${backupToken}`
-      console.log('[Favorites] Using backup token from localStorage after error')
+      console.log(`[Favorites Interceptor] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
+    } else {
+      console.error(`[Favorites Interceptor] No backup token available in localStorage for ${config.method?.toUpperCase()} ${config.url}`)
     }
   }
   return config
