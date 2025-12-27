@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
-import { onMounted, ref } from 'vue'
+import { onMounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
@@ -17,7 +17,21 @@ const router = useRouter()
 // #region agent log
 fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:17',message:'useAuthState called',data:{hasWindow:typeof window!=='undefined',localStorageToken:typeof window!=='undefined'?localStorage.getItem('auth_token')?.substring(0,20)+'...':null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
 // #endregion
-const { isAuthenticated: _isAuthenticated } = useAuthState()
+const { isAuthenticated: _isAuthenticated, refreshSession } = useAuthState()
+
+// Ensure token is synced when component is activated (for keep-alive scenarios)
+// This is important because keep-alive may cache the component, and token might
+// need to be refreshed when the component is activated again
+onActivated(async () => {
+  // Refresh session to ensure token is synced to localStorage
+  // This handles cases where the component was cached by keep-alive
+  // and the session might have changed or expired
+  try {
+    await refreshSession()
+  } catch (e) {
+    console.warn('[TryOnHistory] Failed to refresh session on activated:', e)
+  }
+})
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
