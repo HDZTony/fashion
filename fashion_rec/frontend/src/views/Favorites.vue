@@ -2,10 +2,10 @@
 defineOptions({ name: 'Favorites' })
 import { onMounted, onUnmounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { useAuthState } from '../composables/useAuthState'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
+import { apiClient } from '../lib/api-client'
 
 const router = useRouter()
 
@@ -25,8 +25,6 @@ onActivated(async () => {
     console.warn('[Favorites] Failed to refresh session on activated:', e)
   }
 })
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 interface Favorite {
   id: string
@@ -73,104 +71,8 @@ const restoreFavoritesFromCache = () => {
   return false
 }
 
-// Use simple axios client like Studio and Wardrobe do (not createAuthenticatedApiClient)
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add interceptor to inject auth token from Supabase session
-// Note: While Supabase docs recommend getUser()/getClaims() over getSession(),
-// for interceptors we use getSession() because:
-// 1. Interceptors need fast response (can't wait for network requests)
-// 2. In browser, getSession() reads from localStorage (very fast)
-// 3. If token is invalid, backend will return 401 and we can handle it
-// 4. getSession() auto-refreshes expired tokens in background
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    // Wait for session to be available (handles page refresh scenarios, especially on fly.io where network may be slower)
-    // On page refresh, Supabase client may need time to initialize and recover session from storage
-    let attempts = 0
-    let session = null
-    const maxAttempts = 10 // Increased attempts for page refresh scenarios and fly.io environment
-    const baseDelay = 100 // Base delay in ms
-    
-    // First, try localStorage backup (fastest path)
-    const backupToken = localStorage.getItem('auth_token')
-    if (backupToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${backupToken}`
-      console.log(`[Favorites Interceptor] Using backup token from localStorage (fast path) for ${config.method?.toUpperCase()} ${config.url}`)
-      return config
-    }
-    
-    // Retry logic to wait for Supabase session to be available (for fly.io environment where initialization may be slower)
-    while (attempts < maxAttempts && !session) {
-      const { data, error } = await supabase.auth.getSession()
-      
-      if (error) {
-        console.warn(`[Favorites Interceptor] Attempt ${attempts + 1}/${maxAttempts} - Failed to get Supabase session:`, error)
-        if (attempts < maxAttempts - 1) {
-          // Exponential backoff: wait longer on later attempts
-          const delay = baseDelay * Math.min(attempts + 1, 5)
-          await new Promise(resolve => setTimeout(resolve, delay))
-        }
-        attempts++
-        continue
-      }
-      
-      session = data.session
-      
-      // If we have a session with token, break early
-      if (session?.access_token) {
-        if (attempts > 0) {
-          console.log(`[Favorites Interceptor] Session recovered after ${attempts + 1} attempt(s)`)
-        }
-        break
-      }
-      
-      // If no session yet, wait and retry (especially important for fly.io)
-      if (!session && attempts < maxAttempts - 1) {
-        const delay = baseDelay * Math.min(attempts + 1, 5)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-      attempts++
-    }
-    
-    const token = session?.access_token
-    
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-      return config
-    }
-    
-    // Final fallback: try localStorage again (in case useAuthState synced it during retries)
-    const finalBackupToken = localStorage.getItem('auth_token')
-    if (finalBackupToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${finalBackupToken}`
-      console.log(`[Favorites Interceptor] Using final backup token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
-      return config
-    }
-    
-    console.warn(`[Favorites Interceptor] No auth token available from Supabase or localStorage after ${maxAttempts} attempts for ${config.method?.toUpperCase()} ${config.url}`)
-  } catch (e) {
-    console.error(`[Favorites Interceptor] Exception while getting Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
-    // Last resort: try localStorage backup even on error
-    const backupToken = localStorage.getItem('auth_token')
-    if (backupToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${backupToken}`
-      console.log(`[Favorites Interceptor] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
-    } else {
-      console.error(`[Favorites Interceptor] No backup token available in localStorage after exception. Request will fail with 401.`)
-    }
-  }
-  return config
-})
+// Use unified API client from api-client.ts
+// The unified client already handles authentication, retries, and token refresh
 
 const loadFavorites = async () => {
   // Prevent duplicate concurrent calls

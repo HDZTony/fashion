@@ -236,6 +236,7 @@ function routeToBackend(request: Request, backendUrl: string): Request {
   url.protocol = backendUrlObj.protocol
 
   // Create new request with updated URL
+  // CRITICAL: Preserve all headers including Authorization
   const headers = new Headers(request.headers)
   
   // Update Host header
@@ -244,6 +245,12 @@ function routeToBackend(request: Request, backendUrl: string): Request {
   // Remove X-Forwarded-* headers that might interfere
   headers.delete('X-Forwarded-Host')
   headers.delete('X-Forwarded-Proto')
+  
+  // Ensure Authorization header is explicitly preserved (defensive programming)
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader) {
+    headers.set('Authorization', authHeader)
+  }
 
   return new Request(url.toString(), {
     method: request.method,
@@ -260,7 +267,11 @@ function isApiRequest(url: URL): boolean {
   // API requests typically start with /api/
   // Also handle other common API patterns
   const path = url.pathname
+  
+  // List of all API endpoints from backend (main.py)
+  // This ensures all API requests are routed to backend, not frontend
   return path.startsWith('/api/') || 
+         path === '/' ||  // Root endpoint
          path.startsWith('/health') ||
          path.startsWith('/outfit') ||
          path.startsWith('/try-on') ||
@@ -273,7 +284,8 @@ function isApiRequest(url: URL): boolean {
          path.startsWith('/scene-image') ||
          path.startsWith('/tryon-history') ||
          path.startsWith('/lv-products') ||
-         path.startsWith('/subscription')
+         path.startsWith('/subscription') ||
+         path.startsWith('/cleanup-expired-files')
 }
 
 /**
@@ -364,8 +376,17 @@ export default {
           ? env.V2_BACKEND_URL 
           : env.STABLE_BACKEND_URL
         
+        // Log Authorization header status for debugging
+        const authHeader = request.headers.get('Authorization')
+        console.log(`[Router] API request ${path} - Authorization header: ${authHeader ? 'Present (' + authHeader.substring(0, 30) + '...)' : 'Missing'}`)
+        
         console.log(`[Router] Routing API request to ${backendUrl}`)
         const backendRequest = routeToBackend(request, backendUrl)
+        
+        // Verify Authorization header is preserved in forwarded request
+        const forwardedAuthHeader = backendRequest.headers.get('Authorization')
+        console.log(`[Router] Forwarded request Authorization header: ${forwardedAuthHeader ? 'Present (' + forwardedAuthHeader.substring(0, 30) + '...)' : 'Missing'}`)
+        
         const response = await fetch(backendRequest)
         
         return new Response(response.body, {

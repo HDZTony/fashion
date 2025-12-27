@@ -3,38 +3,12 @@ defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
-import axios from 'axios'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
+import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 
 const route = useRoute()
 const router = useRouter()
-
-// Axios client with auth headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add interceptor to inject auth token from Supabase session
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-  } catch (e) {
-    console.warn('Failed to get Supabase session for request:', e)
-  }
-  return config
-})
 
 const uploadedItems = ref<Item[]>([])
 const selectedItem = ref<Item | null>(null)
@@ -83,14 +57,6 @@ const showModelImageError = ref(false)
 // Subscription info
 const subscriptionInfo = ref<any>(null)
 const isLoadingSubscription = ref(false)
-
-// Subscription service client
-const subscriptionClient = axios.create({
-  baseURL: SUBSCRIPTION_API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
 
 // Load subscription info
 const loadSubscriptionInfo = async () => {
@@ -610,7 +576,7 @@ const getRecommendations = async () => {
       formData.append('file', sceneImageFile.value)
 
       try {
-        const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+        const resp = await uploadApiClient.post<{ url: string }>('/scene-image', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
@@ -745,7 +711,7 @@ const handleModelImageChange = async (event: Event) => {
       }
     }, 200)
     
-    await apiClient.post<{ url: string }>('/model-image', formData, {
+    await uploadApiClient.post<{ url: string }>('/model-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -1026,7 +992,7 @@ const performTryOn = async () => {
       formData.append('prompt', customPrompt.value)
     }
 
-    const response = await apiClient.post<{ url: string }>('/try-on', formData, {
+    const response = await uploadApiClient.post<{ url: string }>('/try-on', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

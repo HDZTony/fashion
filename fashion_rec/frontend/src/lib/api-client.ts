@@ -1,17 +1,19 @@
 import axios from 'axios'
 import { supabase } from './supabase'
+import { API_URL, SUBSCRIPTION_API_URL } from '../config/api'
 
 /**
  * Create an axios instance with authentication interceptor.
  * This ensures that auth tokens are properly attached to requests,
  * especially after page refreshes when Supabase session may need time to recover.
  */
-export function createAuthenticatedApiClient(baseURL: string) {
+export function createAuthenticatedApiClient(baseURL: string, timeout?: number) {
   const client = axios.create({
     baseURL,
     headers: {
       'Content-Type': 'application/json',
     },
+    timeout: timeout || 30000, // Default 30 seconds, can be overridden per request
   })
 
   // Add interceptor to inject auth token from Supabase session
@@ -154,4 +156,35 @@ export function createAuthenticatedApiClient(baseURL: string) {
 
   return client
 }
+
+/**
+ * Default API client instance using unified API_URL configuration.
+ * Use this for all API requests to ensure consistency across development and production.
+ * 
+ * For file uploads that need longer timeout, specify timeout in the request config:
+ *   await apiClient.post('/upload', formData, { timeout: 300000 }) // 5 minutes
+ * 
+ * @example
+ *   import { apiClient } from '@/lib/api-client'
+ *   const response = await apiClient.get('/items')
+ */
+export const apiClient = createAuthenticatedApiClient(API_URL)
+
+/**
+ * API client with extended timeout for file uploads and long-running operations.
+ * Use this for upload operations that may take several minutes.
+ */
+export const uploadApiClient = createAuthenticatedApiClient(API_URL, 300000) // 5 minutes
+
+/**
+ * API client with very long timeout for URL uploads that require download + processing.
+ * Use this for URL uploads that may take up to 10 minutes.
+ */
+export const longUploadApiClient = createAuthenticatedApiClient(API_URL, 600000) // 10 minutes
+
+/**
+ * Subscription service API client.
+ * Use this for subscription-related API calls.
+ */
+export const subscriptionClient = createAuthenticatedApiClient(SUBSCRIPTION_API_URL)
 

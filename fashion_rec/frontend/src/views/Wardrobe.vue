@@ -2,35 +2,12 @@
 defineOptions({ name: 'Wardrobe' })
 import { ref, onMounted, onUnmounted, onActivated, watch, computed } from 'vue'
 import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle } from 'lucide-vue-next'
-import axios from 'axios'
 import { useRoute } from 'vue-router'
 import type { Item, PendingItem } from '../types'
-import { supabase } from '../lib/supabase'
+import { apiClient, uploadApiClient, longUploadApiClient } from '../lib/api-client'
+import { API_URL } from '../config/api'
 
 const route = useRoute()
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 300000, // 5 minutes timeout for image upload and analysis
-})
-
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-  } catch (e) {
-    console.warn('Failed to get Supabase session for request:', e)
-  }
-  return config
-})
 
 const uploadedItems = ref<Item[]>([])
 const hasLoadedItems = ref(false)
@@ -269,7 +246,7 @@ const handleFileUpload = async (event: Event) => {
     formData.append('file', file)
 
     try {
-      const response = await apiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
+      const response = await uploadApiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -358,13 +335,12 @@ const handleUrlUpload = async () => {
     const formData = new FormData()
     formData.append('image_url', url)
     
-    // Increased timeout to 10 minutes for URL uploads (download + upload to R2 + analysis)
-    // Large images or slow networks may need more time
-    const response = await apiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
+    // Use long timeout client for URL uploads (download + upload to R2 + analysis)
+    // Large images or slow networks may need up to 10 minutes
+    const response = await longUploadApiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: 600000, // 10 minutes timeout for URL upload
     })
     
     if (response.data.auto_added) {
