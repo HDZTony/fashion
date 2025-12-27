@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
+import { getTokenFromCookie } from '../lib/cookie-storage'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -14,10 +15,17 @@ const authStore = useAuthStore()
 // This is important because keep-alive may cache the component, and token might
 // need to be refreshed when the component is activated again
 onActivated(async () => {
-  // Refresh session to ensure token is synced to localStorage
+  // Refresh session to ensure token is synced to localStorage and cookie
   // This handles cases where the component was cached by keep-alive
   // and the session might have changed or expired
   try {
+    // Check cookie first (fastest, available immediately)
+    const cookieToken = getTokenFromCookie()
+    if (cookieToken) {
+      console.log('[TryOnHistory] Cookie token available on activated')
+    }
+    
+    // Refresh Supabase session (will sync to cookie via authStore)
     await authStore.refreshSession()
   } catch (e) {
     console.warn('[TryOnHistory] Failed to refresh session on activated:', e)
@@ -46,31 +54,7 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
-// Cache management for page refresh
-const saveHistoryToCache = () => {
-  try {
-    sessionStorage.setItem('tryon_history_cache', JSON.stringify(historyItems.value))
-  } catch (e) {
-    console.warn('[TryOnHistory] Failed to save history to cache:', e)
-  }
-}
 
-const restoreHistoryFromCache = () => {
-  try {
-    const cached = sessionStorage.getItem('tryon_history_cache')
-    if (cached) {
-      const items = JSON.parse(cached)
-      if (Array.isArray(items) && items.length > 0) {
-        historyItems.value = items
-        console.log('[TryOnHistory] Restored history from cache:', items.length, 'items')
-        return true
-      }
-    }
-  } catch (e) {
-    console.warn('[TryOnHistory] Failed to restore history from cache:', e)
-  }
-  return false
-}
 
 const loadHistory = async () => {
   // Prevent duplicate concurrent calls
@@ -81,11 +65,10 @@ const loadHistory = async () => {
   isLoading.value = true
   error.value = ''
   try {
-    // Interceptor automatically adds Authorization header from Supabase session
+    // Interceptor automatically adds Authorization header from Supabase session or cookie
     const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
     historyItems.value = response.data.history || []
-    // Save to cache for next page refresh
-    saveHistoryToCache()
+
   } catch (e: any) {
     console.error('Failed to load try-on history:', e)
     const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
@@ -94,21 +77,14 @@ const loadHistory = async () => {
     if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
       const { data } = await supabase.auth.getSession()
       if (!data.session) {
-        // Only redirect if we don't have cached data
-        if (historyItems.value.length === 0) {
-          router.push('/login')
-          return
-        }
+        // No session, redirect to login
+        router.push('/login')
+        return
       }
     }
     
-    // Only show error if we don't have cached data (like Profile.vue does)
-    if (historyItems.value.length === 0) {
-      error.value = errorDetail
-    } else {
-      console.log('[TryOnHistory] API failed but using cached data, hiding error')
-      error.value = '' // Clear error if we have cached data
-    }
+    // Always show error on failure (no cache fallback)
+    error.value = errorDetail
   } finally {
     isLoading.value = false
   }
@@ -179,22 +155,48 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // Restore from cache first for instant display (before waiting for session)
-  restoreHistoryFromCache()
+  // CRITICAL: Always load fresh data from backend on page refresh
+  // No cache restoration - always get latest data from server
   
-  // Wait for authentication to be ready before loading other data
+  // Check cookie first for page refresh scenarios
+  // Cookie is automatically sent by browser, even before JavaScript loads
+  // This ensures authentication works immediately on page refresh
+  const cookieToken = getTokenFromCookie()
+  if (cookieToken) {
+    console.log('[TryOnHistory] Found token in cookie, loading fresh data from backend')
+    // Load immediately with cookie token (api-client will use it)
+    // Don't await - let it run in parallel with session check
+    loadHistory()
+  }
+  
+  // Also wait for Supabase session to be ready (for full session data)
+  // This ensures session is synced to localStorage and authStore
   try {
     const { data } = await supabase.auth.getSession()
     if (data.session) {
-      // Authentication is ready, load data
-      await loadHistory()
+      console.log('[TryOnHistory] Supabase session restored from cookie')
+      // Refresh auth store to sync session
+      await authStore.refreshSession()
+      // If we didn't load from cookie, load now
+      if (!cookieToken) {
+        await loadHistory()
+      }
     } else {
-      console.warn('[TryOnHistory] No session found on mount, but still attempting to load data')
-      await loadHistory()
+      // No Supabase session, but cookie might still work
+      if (cookieToken) {
+        console.log('[TryOnHistory] No Supabase session, but cookie token available - loading from backend')
+        // Already loading from cookie above
+      } else {
+        console.warn('[TryOnHistory] No session or cookie found, but still attempting to load data')
+        await loadHistory()
+      }
     }
   } catch (error) {
     console.error('[TryOnHistory] Failed to check session on mount:', error)
-    await loadHistory()
+    // If cookie exists, api-client will use it
+    if (!cookieToken) {
+      await loadHistory()
+    }
   }
   
   window.addEventListener('keydown', handleKeyDown)
