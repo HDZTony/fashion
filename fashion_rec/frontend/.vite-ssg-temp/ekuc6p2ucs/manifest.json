@@ -1,0 +1,16 @@
+{
+  "name": "Fashion Rec",
+  "short_name": "FashionRec",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/images/brand/hdz.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+

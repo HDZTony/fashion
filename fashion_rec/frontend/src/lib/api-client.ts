@@ -19,7 +19,14 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
 
   // Add interceptor to inject auth token from Pinia auth store
   // Priority: localStorage (fastest) -> Pinia store -> reject request
+  // Note: In SSR, this interceptor will skip token injection (no token available)
   client.interceptors.request.use(async (config) => {
+    // Skip token injection in SSR (server-side rendering)
+    // SSR should only render public pages that don't require authentication
+    if (typeof window === 'undefined') {
+      return config
+    }
+
     try {
       // STEP 1: First, try localStorage backup (fastest path)
       // This is critical for page refresh scenarios where Pinia store may not be initialized yet

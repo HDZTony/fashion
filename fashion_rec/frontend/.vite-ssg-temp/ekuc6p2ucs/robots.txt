@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /studio
+Disallow: /history
+Disallow: /wardrobe
+Disallow: /lv-products
+Disallow: /favorites
+Disallow: /tryon-history
+Disallow: /profile
+
+Sitemap: https://fashion.hdz73.com/sitemap.xml
+

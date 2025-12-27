@@ -89,9 +89,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Initialize on store creation
-  setupAuthListener()
-  loadSession()
+  // Initialize on store creation (only in browser, not in SSR)
+  // This prevents SSR from trying to access localStorage or Supabase session
+  if (typeof window !== 'undefined') {
+    setupAuthListener()
+    loadSession()
+  } else {
+    // In SSR, mark as not loading since we can't load session
+    isLoading.value = false
+  }
 
   return {
     // State

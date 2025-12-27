@@ -104,6 +104,15 @@ export const routes: RouteRecordRaw[] = [
 
 export const setupRouterGuards = (router: Router) => {
   router.beforeEach(async (to, _from, next) => {
+    // Skip auth check in SSR (server-side rendering)
+    // SSR should only render public pages, authenticated pages are rendered on client
+    if (typeof window === 'undefined') {
+      // In SSR, allow navigation but don't check auth
+      // This ensures SSR only renders public pages (which don't require auth)
+      next()
+      return
+    }
+
     const authStore = useAuthStore()
 
     // Wait for initial session load if still loading
