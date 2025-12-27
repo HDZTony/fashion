@@ -2,30 +2,16 @@
 defineOptions({ name: 'TryOnHistory' })
 import { onMounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
-import { getTokenFromCookie } from '../lib/cookie-storage'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
 // Ensure token is synced when component is activated (for keep-alive scenarios)
-// This is important because keep-alive may cache the component, and token might
-// need to be refreshed when the component is activated again
 onActivated(async () => {
-  // Refresh session to ensure token is synced to localStorage and cookie
-  // This handles cases where the component was cached by keep-alive
-  // and the session might have changed or expired
   try {
-    // Check cookie first (fastest, available immediately)
-    const cookieToken = getTokenFromCookie()
-    if (cookieToken) {
-      console.log('[TryOnHistory] Cookie token available on activated')
-    }
-    
-    // Refresh Supabase session (will sync to cookie via authStore)
     await authStore.refreshSession()
   } catch (e) {
     console.warn('[TryOnHistory] Failed to refresh session on activated:', e)
@@ -73,40 +59,12 @@ const loadHistory = async () => {
     console.error('Failed to load try-on history:', e)
     const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
     
-    // If authentication failed, try to refresh session and retry once
+    // If authentication failed, redirect to login
     if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
-      console.log('[TryOnHistory] Authentication failed, attempting to refresh session and retry')
-      
-      try {
-        // Try to refresh session (this will sync token to cookie)
-        await authStore.refreshSession()
-        
-        // Check if we now have a token
-        const token = authStore.accessToken || getTokenFromCookie()
-        if (token) {
-          console.log('[TryOnHistory] Session refreshed, retrying request')
-          // Retry the request once
-          const retryResponse = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
-          historyItems.value = retryResponse.data.history || []
-          error.value = '' // Clear error on success
-          isLoading.value = false // Important: reset loading state on success
-          return
-        }
-      } catch (refreshError) {
-        console.error('[TryOnHistory] Failed to refresh session:', refreshError)
-      }
-      
-      // If refresh failed or no token, check if we have any session
-      const { data } = await supabase.auth.getSession()
-      if (!data.session) {
-        // No session at all, redirect to login
-        console.log('[TryOnHistory] No session found, redirecting to login')
-        router.push('/login')
-        return
-      }
+      router.push('/login')
+      return
     }
     
-    // Always show error on failure (no cache fallback)
     error.value = errorDetail
   } finally {
     isLoading.value = false
@@ -178,40 +136,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // CRITICAL: Always load fresh data from backend on page refresh
-  // No cache restoration - always get latest data from server
-  
-  // Wait for authentication to be ready before loading data
-  // This ensures token is available (either from cookie or session)
-  try {
-    // First, try to restore Supabase session (this will also sync to cookie via authStore)
-    const { data } = await supabase.auth.getSession()
-    
-    if (data.session) {
-      console.log('[TryOnHistory] Supabase session restored, syncing to cookie')
-      // Refresh auth store to sync session to localStorage and cookie
-      await authStore.refreshSession()
-      // Now load data (token is available in cookie/localStorage/session)
-      await loadHistory()
-    } else {
-      // No Supabase session, check if cookie exists
-      const cookieToken = getTokenFromCookie()
-      if (cookieToken) {
-        console.log('[TryOnHistory] No Supabase session, but cookie token found - loading from backend')
-        // Cookie exists, try loading (api-client will use it)
-        await loadHistory()
-      } else {
-        // No session and no cookie - try loading anyway (might be a temporary issue)
-        console.warn('[TryOnHistory] No session or cookie found, attempting to load data anyway')
-        await loadHistory()
-      }
-    }
-  } catch (error) {
-    console.error('[TryOnHistory] Failed to check session on mount:', error)
-    // Last resort: try loading anyway (api-client might have token from localStorage)
-    await loadHistory()
-  }
-  
+  await loadHistory()
   window.addEventListener('keydown', handleKeyDown)
 })
 

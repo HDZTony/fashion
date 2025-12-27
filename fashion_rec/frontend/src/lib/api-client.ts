@@ -66,7 +66,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
       
       // STEP 3: If store is still loading, wait for it with timeout
       if (!token && authStore.isLoading) {
-        console.log(`[API Client] Store is loading, waiting for session...`)
         // Wait up to 2 seconds for store to load (with exponential backoff)
         let attempts = 0
         const maxAttempts = 10
@@ -80,7 +79,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
       
       // STEP 4: If still no token, try refreshing session
       if (!token) {
-        console.warn(`[API Client] No token in store, attempting to refresh session...`)
         await authStore.refreshSession()
         token = authStore.accessToken
       }
@@ -90,7 +88,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         const finalBackupToken = localStorage.getItem('auth_token')
         if (finalBackupToken) {
           token = finalBackupToken
-          console.log(`[API Client] Found token in localStorage after store check for ${config.method?.toUpperCase()} ${config.url}`)
         }
       }
       
@@ -114,7 +111,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         if (backupToken) {
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${backupToken}`
-          console.log(`[API Client] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
           return config
         }
       }

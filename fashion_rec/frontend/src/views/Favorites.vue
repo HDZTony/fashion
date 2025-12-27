@@ -2,7 +2,6 @@
 defineOptions({ name: 'Favorites' })
 import { onMounted, onUnmounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 import { apiClient } from '../lib/api-client'
@@ -109,24 +108,12 @@ const loadFavorites = async () => {
 }
 
 const deleteFavorite = async (favoriteId: string) => {
-if (!confirm('Delete this favorite?')) {
+  if (!confirm('Delete this favorite?')) {
     return
   }
   
   try {
-    // Manually get session and set header like Profile.vue does
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    
-    if (!token) {
-      throw new Error('No authentication token available')
-    }
-    
-    await apiClient.delete(`/favorites/${favoriteId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    await apiClient.delete(`/favorites/${favoriteId}`)
     await loadFavorites()
   } catch (e: any) {
     console.error('Failed to delete favorite:', e)
@@ -184,24 +171,9 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // Restore from cache first for instant display (before waiting for session)
+  // Restore from cache first for instant display
   restoreFavoritesFromCache()
-  
-  // Wait for authentication to be ready before loading other data
-  try {
-    const { data } = await supabase.auth.getSession()
-    if (data.session) {
-      // Authentication is ready, load data
-      await loadFavorites()
-    } else {
-      console.warn('[Favorites] No session found on mount, but still attempting to load data')
-      await loadFavorites()
-    }
-  } catch (error) {
-    console.error('[Favorites] Failed to check session on mount:', error)
-    await loadFavorites()
-  }
-  
+  await loadFavorites()
   window.addEventListener('keydown', handleKeyDown)
 })
 

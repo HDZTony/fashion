@@ -25,17 +25,10 @@ export const useAuthStore = defineStore('auth', () => {
           if (parsed?.session?.access_token) {
             session.value = parsed.session
             isLoading.value = false
-            console.log('[Auth Store] Restored session from persisted state')
           }
         }
       } catch (e) {
         console.warn('[Auth Store] Failed to parse persisted auth state:', e)
-      }
-      
-      // If session not restored from persisted state, at least we have the token in localStorage
-      // The async loadSession() will restore the full session
-      if (!session.value && savedToken) {
-        console.log('[Auth Store] Token found in localStorage, will restore session asynchronously')
       }
     }
   }

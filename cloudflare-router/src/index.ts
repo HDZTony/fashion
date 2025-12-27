@@ -62,7 +62,6 @@ function extractUserIdFromCookie(request: Request): string | null {
     if (match && match[1]) {
       const userId = extractUserIdFromToken(match[1])
       if (userId) {
-        console.log(`[Router] Extracted user ID from Authorization header: ${userId}`)
         return userId
       }
     }
@@ -85,7 +84,6 @@ function extractUserIdFromCookie(request: Request): string | null {
     const token = match[1]
     const userId = extractUserIdFromToken(token)
     if (userId) {
-      console.log(`[Router] Extracted user ID from Cookie: ${userId}`)
       return userId
     }
   } catch (error) {
@@ -117,7 +115,6 @@ async function cacheUserVersion(userId: string, version: string, env: Env): Prom
     await env.USER_VERSIONS.put(userId, version, {
       expirationTtl: 2592000
     })
-    console.log(`[Router] Cached version ${version} for user ${userId}`)
   } catch (error) {
     console.error('[Router] Error caching user version:', error)
   }
@@ -174,12 +171,10 @@ async function getUserVersion(userId: string, env: Env): Promise<string> {
   // 1. Try KV cache first
   const cached = await getUserVersionFromCache(userId, env)
   if (cached) {
-    console.log(`[Router] Cache hit for user ${userId}: ${cached}`)
     return cached
   }
 
   // 2. Cache miss, query database
-  console.log(`[Router] Cache miss for user ${userId}, querying database`)
   const version = await getUserFrontendVersionFromDB(userId, env)
   
   // 3. Cache the result
@@ -237,7 +232,6 @@ async function setUserVersion(userId: string, version: string, env: Env): Promis
     // 2. Update KV cache
     await cacheUserVersion(userId, version, env)
 
-    console.log(`[Router] Set version ${version} for user ${userId}`)
     return true
   } catch (error) {
     console.error('[Router] Error setting user version:', error)
@@ -425,14 +419,9 @@ export default {
       // This ensures all pages use the version determined when they first accessed /studio
       if (userId && requiresVersionRouting(path, userId)) {
         version = await getUserVersion(userId, env)
-        console.log(`[Router] User ${userId} assigned version: ${version} for path: ${path}`)
       } else if (userId && isApiRequest(url, request)) {
         // API requests also use user's version
         version = await getUserVersion(userId, env)
-        console.log(`[Router] User ${userId} API request, assigned version: ${version}`)
-      } else {
-        // Unauthenticated users always use stable
-        console.log('[Router] No user ID found, routing to stable')
       }
 
       // Check if this is an API request
@@ -442,36 +431,7 @@ export default {
           ? env.V2_BACKEND_URL 
           : env.STABLE_BACKEND_URL
         
-        // Log all headers for debugging (especially Authorization)
-        const allHeaders: Record<string, string> = {}
-        request.headers.forEach((value, key) => {
-          allHeaders[key] = value
-        })
-        console.log(`[Router] API request ${path} - All headers:`, JSON.stringify(Object.keys(allHeaders)))
-        
-        // Log Authorization header status for debugging (case-insensitive check)
-        const authHeader = request.headers.get('Authorization') || request.headers.get('authorization')
-        console.log(`[Router] API request ${path} - Authorization header: ${authHeader ? 'Present (' + authHeader.substring(0, 30) + '...)' : 'Missing'}`)
-        if (authHeader) {
-          console.log(`[Router] Authorization header full value: ${authHeader}`)
-        }
-        
-        console.log(`[Router] Routing API request to ${backendUrl}`)
         const backendRequest = routeToBackend(request, backendUrl)
-        
-        // Verify Authorization header is preserved in forwarded request
-        const forwardedAuthHeader = backendRequest.headers.get('Authorization') || backendRequest.headers.get('authorization')
-        console.log(`[Router] Forwarded request Authorization header: ${forwardedAuthHeader ? 'Present (' + forwardedAuthHeader.substring(0, 30) + '...)' : 'Missing'}`)
-        if (forwardedAuthHeader) {
-          console.log(`[Router] Forwarded Authorization header full value: ${forwardedAuthHeader}`)
-        }
-        
-        // Log all forwarded headers
-        const forwardedHeaders: Record<string, string> = {}
-        backendRequest.headers.forEach((value, key) => {
-          forwardedHeaders[key] = value
-        })
-        console.log(`[Router] Forwarded request headers:`, JSON.stringify(Object.keys(forwardedHeaders)))
         
         const response = await fetch(backendRequest)
         
@@ -486,7 +446,6 @@ export default {
           ? env.V2_FRONTEND_HOST 
           : env.STABLE_FRONTEND_HOST
         
-        console.log(`[Router] Routing frontend request to ${frontendHost}`)
         const frontendRequest = routeToFrontend(request, frontendHost)
         const response = await fetch(frontendRequest)
         

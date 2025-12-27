@@ -10,11 +10,7 @@ onMounted(async () => {
   // If store is still loading, wait for it to complete
   // This ensures token is available before any components make requests
   if (authStore.isLoading) {
-    console.log('[App] Waiting for auth store to initialize...')
     await authStore.loadSession()
-    console.log('[App] Auth store initialized, token available:', !!authStore.accessToken)
-  } else {
-    console.log('[App] Auth store already initialized, token available:', !!authStore.accessToken)
   }
 })
 </script>
