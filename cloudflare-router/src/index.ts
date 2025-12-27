@@ -27,10 +27,48 @@ interface Env {
 }
 
 /**
- * Extract user ID from Supabase session cookie
- * Cookie format: sb-<project-ref>-auth-token=<jwt-token>
+ * Extract user ID from JWT token
+ * JWT format: header.payload.signature
+ */
+function extractUserIdFromToken(token: string): string | null {
+  try {
+    // Parse JWT to extract user_id (sub claim)
+    const parts = token.split('.')
+    if (parts.length !== 3) {
+      return null
+    }
+
+    // Decode base64 payload
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    
+    // Return user_id (sub claim)
+    return payload.sub || null
+  } catch (error) {
+    console.error('[Router] Error parsing JWT token:', error)
+    return null
+  }
+}
+
+/**
+ * Extract user ID from request
+ * Tries Authorization header first (Bearer token), then Cookie
  */
 function extractUserIdFromCookie(request: Request): string | null {
+  // 1. Try Authorization header first (Bearer token)
+  const authHeader = request.headers.get('Authorization') || request.headers.get('authorization')
+  if (authHeader) {
+    // Extract token from "Bearer <token>" format
+    const match = authHeader.match(/^Bearer\s+(.+)$/i)
+    if (match && match[1]) {
+      const userId = extractUserIdFromToken(match[1])
+      if (userId) {
+        console.log(`[Router] Extracted user ID from Authorization header: ${userId}`)
+        return userId
+      }
+    }
+  }
+
+  // 2. Fallback to Cookie header
   try {
     const cookies = request.headers.get('Cookie')
     if (!cookies) {
@@ -45,23 +83,16 @@ function extractUserIdFromCookie(request: Request): string | null {
     }
 
     const token = match[1]
-    
-    // Parse JWT to extract user_id (sub claim)
-    // JWT format: header.payload.signature
-    const parts = token.split('.')
-    if (parts.length !== 3) {
-      return null
+    const userId = extractUserIdFromToken(token)
+    if (userId) {
+      console.log(`[Router] Extracted user ID from Cookie: ${userId}`)
+      return userId
     }
-
-    // Decode base64 payload
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
-    
-    // Return user_id (sub claim)
-    return payload.sub || null
   } catch (error) {
     console.error('[Router] Error extracting user ID from cookie:', error)
-    return null
   }
+
+  return null
 }
 
 /**

@@ -68,7 +68,7 @@ def list_favorites(user_id: str, user_token: Optional[str] = None) -> List[Dict[
         if user_token:
             try:
                 # Use authenticated client for RLS
-                client = _create_authenticated_client(user_token)
+                client = create_authenticated_client(user_token)
                 table = client.table(TABLE_NAME)
             except Exception as auth_error:
                 # If setting session fails (e.g., token invalid/expired), fall back to global client

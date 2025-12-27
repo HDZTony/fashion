@@ -24,6 +24,20 @@ export const createApp = ViteSSG(
     pinia.use(piniaPluginPersistedstate)
     app.use(pinia)
 
+    // CRITICAL: Initialize auth store immediately (synchronously)
+    // The store will restore token from localStorage immediately, then load session asynchronously
+    // This ensures token is available even before async loadSession() completes
+    if (typeof window !== 'undefined') {
+      // Import and initialize store immediately
+      // The store's accessToken getter has localStorage fallback, so token is available immediately
+      import('./stores/auth').then(({ useAuthStore }) => {
+        const authStore = useAuthStore()
+        // Store initialization happens in the store definition itself
+        // The accessToken getter will return localStorage token immediately if session not loaded yet
+        console.log('[Main] Auth store initialized, token available:', !!authStore.accessToken)
+      })
+    }
+
     setupRouterGuards(router)
   }
 )

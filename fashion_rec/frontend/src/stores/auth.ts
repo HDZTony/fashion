@@ -9,10 +9,53 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoading = ref(true)
   let unsubscribe: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null
 
+  // CRITICAL: Immediately restore token from localStorage on store creation (synchronous)
+  // This ensures token is available even before async loadSession() completes
+  // This is essential for page refresh scenarios where requests might be made immediately
+  if (typeof window !== 'undefined') {
+    const savedToken = localStorage.getItem('auth_token')
+    if (savedToken) {
+      // Try to restore session from persisted state first (if available)
+      // The persist plugin should have restored it, but we also check localStorage as backup
+      try {
+        const persistedAuth = localStorage.getItem('auth-store')
+        if (persistedAuth) {
+          const parsed = JSON.parse(persistedAuth)
+          if (parsed?.session?.access_token) {
+            session.value = parsed.session
+            isLoading.value = false
+            console.log('[Auth Store] Restored session from persisted state')
+          }
+        }
+      } catch (e) {
+        console.warn('[Auth Store] Failed to parse persisted auth state:', e)
+      }
+      
+      // If session not restored from persisted state, at least we have the token in localStorage
+      // The async loadSession() will restore the full session
+      if (!session.value && savedToken) {
+        console.log('[Auth Store] Token found in localStorage, will restore session asynchronously')
+      }
+    }
+  }
+
   // Getters
   const isAuthenticated = computed(() => !!session.value)
   const user = computed(() => session.value?.user ?? null)
-  const accessToken = computed(() => session.value?.access_token ?? null)
+  const accessToken = computed(() => {
+    // CRITICAL: Fallback to localStorage if session not yet loaded
+    // This ensures token is available immediately on page refresh
+    if (session.value?.access_token) {
+      return session.value.access_token
+    }
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        return token
+      }
+    }
+    return null
+  })
 
   // Actions
   const loadSession = async () => {

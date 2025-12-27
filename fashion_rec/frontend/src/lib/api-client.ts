@@ -18,7 +18,7 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
   })
 
   // Add interceptor to inject auth token from Pinia auth store
-  // Priority: localStorage (fastest) -> Pinia store -> reject request
+  // Priority: localStorage (fastest, synchronous) -> Pinia store -> Supabase session -> reject request
   // Note: In SSR, this interceptor will skip token injection (no token available)
   client.interceptors.request.use(async (config) => {
     // Skip token injection in SSR (server-side rendering)
@@ -28,8 +28,9 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
     }
 
     try {
-      // STEP 1: First, try localStorage backup (fastest path)
-      // This is critical for page refresh scenarios where Pinia store may not be initialized yet
+      // STEP 1: First, try localStorage (fastest path, synchronous)
+      // This is CRITICAL for page refresh scenarios where Pinia store may not be initialized yet
+      // localStorage is always available immediately, even before JavaScript modules load
       let token: string | null = null
       if (typeof window !== 'undefined') {
         token = localStorage.getItem('auth_token')
@@ -37,31 +38,41 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${token}`
           if (import.meta.env.DEV) {
-            console.debug(`[API Client] Using token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
+            console.debug(`[API Client] Using token from localStorage (fast path) for ${config.method?.toUpperCase()} ${config.url}`)
           }
           return config
         }
       }
       
       // STEP 2: Try Pinia auth store (with retry logic for page refresh scenarios)
+      // The store's accessToken getter also falls back to localStorage, so this should work
       const authStore = useAuthStore()
       
-      // Wait for store to load if still loading
-      if (authStore.isLoading) {
-        await authStore.loadSession()
-      }
-      
-      // Get token from store
+      // Get token from store (accessToken getter has localStorage fallback)
       token = authStore.accessToken
       
-      // STEP 3: If no token from store, try refreshing session
+      // STEP 3: If store is still loading, wait for it with timeout
+      if (!token && authStore.isLoading) {
+        console.log(`[API Client] Store is loading, waiting for session...`)
+        // Wait up to 2 seconds for store to load (with exponential backoff)
+        let attempts = 0
+        const maxAttempts = 10
+        while (attempts < maxAttempts && authStore.isLoading && !token) {
+          await new Promise(resolve => setTimeout(resolve, 100 * Math.min(attempts + 1, 5)))
+          await authStore.loadSession()
+          token = authStore.accessToken
+          attempts++
+        }
+      }
+      
+      // STEP 4: If still no token, try refreshing session
       if (!token) {
         console.warn(`[API Client] No token in store, attempting to refresh session...`)
         await authStore.refreshSession()
         token = authStore.accessToken
       }
       
-      // STEP 4: Final fallback - try localStorage one more time
+      // STEP 5: Final fallback - try localStorage one more time (in case it was set during retries)
       if (!token && typeof window !== 'undefined') {
         const finalBackupToken = localStorage.getItem('auth_token')
         if (finalBackupToken) {
@@ -70,7 +81,7 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         }
       }
       
-      // STEP 5: Add token to request or reject
+      // STEP 6: Add token to request or reject
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
