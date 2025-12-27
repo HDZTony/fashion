@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
+import { setTokenInCookie, removeTokenFromCookie, getTokenFromCookie } from '@/lib/cookie-storage'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -43,15 +44,21 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!session.value)
   const user = computed(() => session.value?.user ?? null)
   const accessToken = computed(() => {
-    // CRITICAL: Fallback to localStorage if session not yet loaded
+    // CRITICAL: Priority order: session -> localStorage -> cookie
     // This ensures token is available immediately on page refresh
     if (session.value?.access_token) {
       return session.value.access_token
     }
     if (typeof window !== 'undefined') {
+      // Try localStorage first (faster)
       const token = localStorage.getItem('auth_token')
       if (token) {
         return token
+      }
+      // Fallback to cookie (for browser-initiated requests)
+      const cookieToken = getTokenFromCookie()
+      if (cookieToken) {
+        return cookieToken
       }
     }
     return null
@@ -66,12 +73,14 @@ export const useAuthStore = defineStore('auth', () => {
     session.value = data.session ?? null
     isLoading.value = false
 
-    // Keep legacy localStorage token in sync for existing logic
+    // Sync token to both localStorage and cookie for maximum compatibility
     if (typeof window !== 'undefined') {
       if (session.value?.access_token) {
         localStorage.setItem('auth_token', session.value.access_token)
+        setTokenInCookie(session.value.access_token)
       } else {
         localStorage.removeItem('auth_token')
+        removeTokenFromCookie()
       }
     }
 
@@ -89,12 +98,14 @@ export const useAuthStore = defineStore('auth', () => {
       session.value = newSession
       isLoading.value = false
 
-      // Sync to localStorage for backward compatibility
+      // Sync to both localStorage and cookie
       if (typeof window !== 'undefined') {
         if (newSession?.access_token) {
           localStorage.setItem('auth_token', newSession.access_token)
+          setTokenInCookie(newSession.access_token)
         } else {
           localStorage.removeItem('auth_token')
+          removeTokenFromCookie()
         }
       }
     })

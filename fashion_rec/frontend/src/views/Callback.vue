@@ -39,6 +39,9 @@ onMounted(async () => {
         if (retryError) throw retryError
         if (retryData.session) {
           localStorage.setItem('auth_token', retryData.session.access_token)
+          // Also set cookie for browser-initiated requests
+          const { setTokenInCookie } = await import('../lib/cookie-storage')
+          setTokenInCookie(retryData.session.access_token)
           router.push('/studio')
           return
         }
@@ -49,6 +52,9 @@ onMounted(async () => {
     if (data.session) {
       // Store the access token
       localStorage.setItem('auth_token', data.session.access_token)
+      // Also set cookie for browser-initiated requests
+      const { setTokenInCookie } = await import('../lib/cookie-storage')
+      setTokenInCookie(data.session.access_token)
       
       // Redirect to studio
       router.push('/studio')

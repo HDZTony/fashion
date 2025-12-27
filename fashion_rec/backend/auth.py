@@ -23,6 +23,10 @@ async def get_current_user_and_token(request: Request, token: Optional[str] = De
     Get both user ID and token in a single verification.
     This avoids duplicate authentication requests when both are needed.
     Returns a tuple of (user_id, token).
+    
+    Token can come from:
+    1. Authorization header (Bearer token) - highest priority
+    2. Cookie (auth_token) - fallback for browser-initiated requests
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -41,6 +45,15 @@ async def get_current_user_and_token(request: Request, token: Optional[str] = De
             auth_header_original = header_name
             auth_header_lower = header_value
             break
+    
+    # CRITICAL: If no token from Authorization header, try cookie
+    # This is essential for browser-initiated requests (page refresh, direct navigation)
+    # where JavaScript may not have loaded yet to set the Authorization header
+    if not token:
+        cookie_token = request.cookies.get('auth_token')
+        if cookie_token:
+            token = cookie_token
+            logger.info(f"[Auth Debug] Token found in cookie (fallback for browser-initiated request)")
     
     logger.info(f"[Auth Debug] get_current_user_and_token called - Path: {request.url.path}")
     logger.info(f"[Auth Debug] OAuth2PasswordBearer extracted token: {'Present' if token else 'Missing'}")
@@ -81,6 +94,10 @@ async def get_current_user_token(request: Request, token: Optional[str] = Depend
     Get the current user's JWT token.
     This can be used to create authenticated Supabase clients that respect RLS policies.
     Note: This does NOT verify the token (for performance). Use get_current_user_and_token if you need both.
+    
+    Token can come from:
+    1. Authorization header (Bearer token) - highest priority
+    2. Cookie (auth_token) - fallback for browser-initiated requests
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -93,6 +110,13 @@ async def get_current_user_token(request: Request, token: Optional[str] = Depend
             auth_header_original = header_name
             auth_header_lower = header_value
             break
+    
+    # CRITICAL: If no token from Authorization header, try cookie
+    if not token:
+        cookie_token = request.cookies.get('auth_token')
+        if cookie_token:
+            token = cookie_token
+            logger.info(f"[Auth Debug] Token found in cookie (fallback for browser-initiated request)")
     
     logger.info(f"[Auth Debug] get_current_user_token called - Path: {request.url.path}")
     logger.info(f"[Auth Debug] OAuth2PasswordBearer extracted token: {'Present' if token else 'Missing'}")
@@ -120,6 +144,10 @@ async def get_current_user(request: Request, token: Optional[str] = Depends(oaut
     """
     Get the current user's ID.
     Note: This verifies the token. If you also need the token, use get_current_user_and_token instead.
+    
+    Token can come from:
+    1. Authorization header (Bearer token) - highest priority
+    2. Cookie (auth_token) - fallback for browser-initiated requests
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -138,6 +166,13 @@ async def get_current_user(request: Request, token: Optional[str] = Depends(oaut
             auth_header_original = header_name
             auth_header_lower = header_value
             break
+    
+    # CRITICAL: If no token from Authorization header, try cookie
+    if not token:
+        cookie_token = request.cookies.get('auth_token')
+        if cookie_token:
+            token = cookie_token
+            logger.info(f"[Auth Debug] Token found in cookie (fallback for browser-initiated request)")
     
     logger.info(f"[Auth Debug] get_current_user called - Path: {request.url.path}")
     logger.info(f"[Auth Debug] OAuth2PasswordBearer extracted token: {'Present' if token else 'Missing'}")

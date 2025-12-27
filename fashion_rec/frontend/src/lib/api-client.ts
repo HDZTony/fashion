@@ -2,6 +2,7 @@ import axios from 'axios'
 import { supabase } from './supabase'
 import { useAuthStore } from '../stores/auth'
 import { API_URL, SUBSCRIPTION_API_URL } from '../config/api'
+import { getTokenFromCookie } from './cookie-storage'
 
 /**
  * Create an axios instance with authentication interceptor.
@@ -28,11 +29,23 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
     }
 
     try {
-      // STEP 1: First, try localStorage (fastest path, synchronous)
-      // This is CRITICAL for page refresh scenarios where Pinia store may not be initialized yet
-      // localStorage is always available immediately, even before JavaScript modules load
+      // STEP 1: First, try cookie (fastest path, automatically sent by browser)
+      // Cookies are automatically sent with every request, including page refresh
+      // This is CRITICAL for browser-initiated requests where JavaScript may not have loaded yet
       let token: string | null = null
       if (typeof window !== 'undefined') {
+        // Try cookie first (automatically sent by browser)
+        token = getTokenFromCookie()
+        if (token) {
+          config.headers = config.headers || {}
+          config.headers.Authorization = `Bearer ${token}`
+          if (import.meta.env.DEV) {
+            console.debug(`[API Client] Using token from cookie (fast path) for ${config.method?.toUpperCase()} ${config.url}`)
+          }
+          return config
+        }
+        
+        // Fallback to localStorage (also fast, synchronous)
         token = localStorage.getItem('auth_token')
         if (token) {
           config.headers = config.headers || {}

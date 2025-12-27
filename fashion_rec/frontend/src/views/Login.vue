@@ -57,6 +57,9 @@ const handleLogin = async () => {
           // Session present; no verification needed
           message.value = 'Sign-up successful! Signing you in...'
           localStorage.setItem('auth_token', data.session.access_token)
+          // Also set cookie for browser-initiated requests
+          const { setTokenInCookie } = await import('../lib/cookie-storage')
+          setTokenInCookie(data.session.access_token)
           router.push('/wardrobe')
         } else {
           // Verification required
@@ -107,6 +110,9 @@ const handleLogin = async () => {
       if (data.session) {
         // Save token and navigate
         localStorage.setItem('auth_token', data.session.access_token)
+        // Also set cookie for browser-initiated requests
+        const { setTokenInCookie } = await import('../lib/cookie-storage')
+        setTokenInCookie(data.session.access_token)
         router.push('/wardrobe')
       }
     }
