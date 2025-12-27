@@ -132,11 +132,40 @@ apiClient.interceptors.request.use(async (config) => {
       return config
     }
     
-    console.warn(`[TryOnHistory Interceptor] No auth token available from Supabase or localStorage after ${maxAttempts} attempts for ${config.method?.toUpperCase()} ${config.url}`)
-    console.warn(`[TryOnHistory Interceptor] Debug info: localStorage.getItem('auth_token') =`, localStorage.getItem('auth_token') ? 'exists' : 'null')
+    // If we still don't have a token after all retries, wait a bit more and try one final time
+    // This handles edge cases where Supabase client takes longer to initialize on page refresh
+    console.warn(`[TryOnHistory Interceptor] No auth token available after ${maxAttempts} attempts, waiting 500ms for final attempt...`)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Final attempt: check localStorage one more time (useAuthState might have synced it)
+    const finalToken = localStorage.getItem('auth_token')
+    if (finalToken) {
+      config.headers = config.headers || {}
+      config.headers.Authorization = `Bearer ${finalToken}`
+      console.log(`[TryOnHistory Interceptor] Found token in localStorage after final wait for ${config.method?.toUpperCase()} ${config.url}`)
+      return config
+    }
+    
+    // Final attempt: try getSession one more time
+    try {
+      const { data } = await supabase.auth.getSession()
+      if (data.session?.access_token) {
+        config.headers = config.headers || {}
+        config.headers.Authorization = `Bearer ${data.session.access_token}`
+        console.log(`[TryOnHistory Interceptor] Found token from getSession after final wait for ${config.method?.toUpperCase()} ${config.url}`)
+        return config
+      }
+    } catch (finalError) {
+      console.warn(`[TryOnHistory Interceptor] Final getSession attempt failed:`, finalError)
+    }
+    
+    // If we still don't have a token, reject the request to prevent 401
+    console.error(`[TryOnHistory Interceptor] No auth token available after all attempts for ${config.method?.toUpperCase()} ${config.url}`)
+    console.error(`[TryOnHistory Interceptor] Debug info: localStorage.getItem('auth_token') =`, localStorage.getItem('auth_token') ? 'exists' : 'null')
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:100',message:'No token available after retries',data:{method:config.method,url:config.url,attempts:maxAttempts,hasLocalStorageToken:!!localStorage.getItem('auth_token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:100',message:'No token available after retries - rejecting request',data:{method:config.method,url:config.url,attempts:maxAttempts,hasLocalStorageToken:!!localStorage.getItem('auth_token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
     // #endregion
+    return Promise.reject(new Error('Authentication token not available. Please refresh the page or log in again.'))
   } catch (e) {
     console.error(`[TryOnHistory Interceptor] Exception while getting Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
     // Last resort: try localStorage backup even on error

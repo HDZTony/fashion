@@ -270,8 +270,8 @@ function isApiRequest(url: URL): boolean {
   
   // List of all API endpoints from backend (main.py)
   // This ensures all API requests are routed to backend, not frontend
+  // NOTE: Root path '/' should route to frontend, not backend
   return path.startsWith('/api/') || 
-         path === '/' ||  // Root endpoint
          path.startsWith('/health') ||
          path.startsWith('/outfit') ||
          path.startsWith('/try-on') ||
@@ -376,16 +376,36 @@ export default {
           ? env.V2_BACKEND_URL 
           : env.STABLE_BACKEND_URL
         
-        // Log Authorization header status for debugging
-        const authHeader = request.headers.get('Authorization')
+        // Log all headers for debugging (especially Authorization)
+        const allHeaders: Record<string, string> = {}
+        request.headers.forEach((value, key) => {
+          allHeaders[key] = value
+        })
+        console.log(`[Router] API request ${path} - All headers:`, JSON.stringify(Object.keys(allHeaders)))
+        
+        // Log Authorization header status for debugging (case-insensitive check)
+        const authHeader = request.headers.get('Authorization') || request.headers.get('authorization')
         console.log(`[Router] API request ${path} - Authorization header: ${authHeader ? 'Present (' + authHeader.substring(0, 30) + '...)' : 'Missing'}`)
+        if (authHeader) {
+          console.log(`[Router] Authorization header full value: ${authHeader}`)
+        }
         
         console.log(`[Router] Routing API request to ${backendUrl}`)
         const backendRequest = routeToBackend(request, backendUrl)
         
         // Verify Authorization header is preserved in forwarded request
-        const forwardedAuthHeader = backendRequest.headers.get('Authorization')
+        const forwardedAuthHeader = backendRequest.headers.get('Authorization') || backendRequest.headers.get('authorization')
         console.log(`[Router] Forwarded request Authorization header: ${forwardedAuthHeader ? 'Present (' + forwardedAuthHeader.substring(0, 30) + '...)' : 'Missing'}`)
+        if (forwardedAuthHeader) {
+          console.log(`[Router] Forwarded Authorization header full value: ${forwardedAuthHeader}`)
+        }
+        
+        // Log all forwarded headers
+        const forwardedHeaders: Record<string, string> = {}
+        backendRequest.headers.forEach((value, key) => {
+          forwardedHeaders[key] = value
+        })
+        console.log(`[Router] Forwarded request headers:`, JSON.stringify(Object.keys(forwardedHeaders)))
         
         const response = await fetch(backendRequest)
         

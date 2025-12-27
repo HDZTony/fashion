@@ -78,7 +78,26 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         attempts++
       }
       
-      const token = session?.access_token
+      let token = session?.access_token
+      
+      // If we still don't have a token after all retries, wait a bit more and try one final time
+      // This handles edge cases where Supabase client takes longer to initialize on page refresh
+      if (!token) {
+        console.warn(`[API Client] No auth token available after ${maxAttempts} attempts, waiting 500ms for final attempt...`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // Final attempt: try getSession one more time
+        try {
+          const { data } = await supabase.auth.getSession()
+          if (data.session?.access_token) {
+            token = data.session.access_token
+            console.log(`[API Client] Found token from getSession after final wait for ${config.method?.toUpperCase()} ${config.url}`)
+          }
+        } catch (finalError) {
+          console.warn(`[API Client] Final getSession attempt failed:`, finalError)
+        }
+      }
+      
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
@@ -87,9 +106,11 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
           console.debug(`[API Client] Added auth token to ${config.method?.toUpperCase()} ${config.url}`)
         }
       } else {
-        // If no token after retries, log warning but don't block the request
+        // If no token after all attempts, log error but still allow the request to proceed
         // The backend will return 401, and the response interceptor will handle it
-        console.warn('[API Client] No auth token available for request after retries:', config.method?.toUpperCase(), config.url, '- Request will likely fail with 401')
+        // Note: We could reject the request here, but allowing it to proceed gives the response
+        // interceptor a chance to recover the session and retry
+        console.error('[API Client] No auth token available for request after all attempts:', config.method?.toUpperCase(), config.url, '- Request will likely fail with 401')
         // Don't add Authorization header if no token - let backend handle it
       }
     } catch (e) {

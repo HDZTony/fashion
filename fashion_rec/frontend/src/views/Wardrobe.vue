@@ -397,7 +397,8 @@ const confirmAddItems = async () => {
 
   try {
     isConfirming.value = true
-    await apiClient.post<{ items: Item[] }>('/items/batch', selectedItems)
+    // Use uploadApiClient for batch operations as they may take longer
+    await uploadApiClient.post<{ items: Item[] }>('/items/batch', selectedItems)
     
     // Refresh data to ensure consistency
     await loadUserItems()
