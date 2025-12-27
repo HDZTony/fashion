@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 
@@ -108,11 +108,10 @@ export const useAuthStore = defineStore('auth', () => {
     cleanup,
   }
 }, {
-  // Persist configuration
-  persist: {
+  // Persist configuration (only in browser, not in SSR)
+  persist: typeof window !== 'undefined' ? {
     key: 'auth-store',
     storage: localStorage,
-    paths: ['session'], // Only persist session, not isLoading
-  },
+  } : false,
 })
 
