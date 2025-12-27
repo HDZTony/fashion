@@ -177,14 +177,15 @@ apiClient.interceptors.request.use(async (config) => {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:111',message:'Using backup token after error',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
       // #endregion
+      return config
     } else {
-      console.error(`[TryOnHistory Interceptor] No backup token available in localStorage after exception. Request will fail with 401.`)
+      console.error(`[TryOnHistory Interceptor] No backup token available in localStorage after exception. Rejecting request.`)
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:111',message:'No backup token after error - rejecting request',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+      // #endregion
+      return Promise.reject(new Error('Authentication token not available after exception. Please refresh the page or log in again.'))
     }
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:115',message:'Interceptor exit',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
-  return config
 })
 
 interface TryOnHistoryItem {
