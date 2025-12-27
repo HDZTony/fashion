@@ -1,39 +1,18 @@
 """
 Looks service - using Supabase for storage
 """
-import os
 from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timedelta, timezone
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# Initialize Supabase client
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+from supabase import Client
+from .supabase_client import create_supabase_client, create_authenticated_client
 
 # Table name
 TABLE_NAME = "looks"
 
 # Global Supabase client instance (for cleanup operations)
-_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+_client: Client = create_supabase_client()
 _table = _client.table(TABLE_NAME)
-
-
-def _create_authenticated_client(user_token: str) -> Client:
-    """
-    Create an authenticated Supabase client using user JWT token.
-    Uses anon key to create client, then sets user session.
-    """
-    client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    # Set the user session with the JWT token to respect RLS policies
-    client.auth.set_session(access_token=user_token, refresh_token='')
-    return client
 
 
 def save_look(user_id: str, look: Dict[str, Any], user_token: Optional[str] = None) -> Dict[str, Any]:
@@ -59,7 +38,7 @@ def save_look(user_id: str, look: Dict[str, Any], user_token: Optional[str] = No
     try:
         if user_token:
             # Use authenticated client for RLS
-            client = _create_authenticated_client(user_token)
+            client = create_authenticated_client(user_token)
             table = client.table(TABLE_NAME)
         else:
             # Use global client (for background tasks)
@@ -88,7 +67,7 @@ def list_looks(user_id: str, user_token: Optional[str] = None) -> List[Dict[str,
     try:
         if user_token:
             # Use authenticated client for RLS
-            client = _create_authenticated_client(user_token)
+            client = create_authenticated_client(user_token)
             table = client.table(TABLE_NAME)
         else:
             # Use global client (for background tasks)
@@ -117,7 +96,7 @@ def get_look_by_id(look_id: str, user_id: str, user_token: Optional[str] = None)
     try:
         if user_token:
             # Use authenticated client for RLS
-            client = _create_authenticated_client(user_token)
+            client = create_authenticated_client(user_token)
             table = client.table(TABLE_NAME)
         else:
             # Use global client (for background tasks)

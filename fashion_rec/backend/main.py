@@ -1142,7 +1142,7 @@ async def try_on(
     garment_urls: str = Form(...),
     scene_image_url: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
-    user_id: str = Depends(get_current_user),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
     Virtual try-on:
@@ -1157,6 +1157,9 @@ async def try_on(
     from services.qwen_image_edit import QwenImageEditClient, _load_env_config
     from services.storage import upload_file_to_r2
     import httpx
+    
+    # Extract user_id and user_token from auth tuple
+    user_id, user_token = auth
     
     # 检查并消耗试穿次数（调用 subscription-service）
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
@@ -1472,7 +1475,7 @@ async def try_on(
             "garment_urls": garment_list,  # Use parsed list, not JSON string (selected items from Applied Outfit Items)
             "scene_image_url": scene_image_url,
             "prompt": user_custom_prompt,  # User's original custom prompt (from Form parameter), not the system-generated prompt
-        })
+        }, user_token)
     except Exception as e:
         # Log error but don't fail the request
         import traceback
@@ -1836,7 +1839,7 @@ async def get_tryon_history(
 @app.delete("/tryon-history/{history_id}")
 async def delete_tryon_history(
     history_id: str,
-    user_id: str = Depends(get_current_user),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
     Delete a try-on history record by ID.
@@ -1844,7 +1847,8 @@ async def delete_tryon_history(
     from services.tryon_history import delete_tryon_history as delete_history_service
 
     try:
-        deleted = delete_history_service(user_id, history_id)
+        user_id, user_token = auth
+        deleted = delete_history_service(user_id, history_id, user_token)
         if not deleted:
             raise HTTPException(status_code=404, detail="History record not found")
         return {"message": "History record deleted successfully"}

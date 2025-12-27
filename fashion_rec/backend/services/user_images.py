@@ -2,39 +2,18 @@
 用户图片历史服务
 使用Supabase存储用户图片历史
 """
-import os
 from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timedelta
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# 初始化Supabase客户端
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+from supabase import Client
+from .supabase_client import create_supabase_client, create_authenticated_client
 
 # 表名
 TABLE_NAME = "user_images"
 
 # 全局Supabase客户端实例（仅用于 cleanup_expired_images）
-_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+_client: Client = create_supabase_client()
 _table = _client.table(TABLE_NAME)
-
-
-def _create_authenticated_client(user_token: str) -> Client:
-    """
-    创建使用用户 JWT token 认证的 Supabase 客户端。
-    使用 anon key 创建客户端，然后设置用户会话。
-    """
-    client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    # Set the user session with the JWT token to respect RLS policies
-    client.auth.set_session(access_token=user_token, refresh_token='')
-    return client
 
 
 def save_user_image(user_id: str, image_url: str, image_type: str, user_token: str, r2_filename: Optional[str] = None) -> Dict[str, Any]:
@@ -46,7 +25,7 @@ def save_user_image(user_id: str, image_url: str, image_type: str, user_token: s
     """
     try:
         # Create authenticated client with user token
-        client = _create_authenticated_client(user_token)
+        client = create_authenticated_client(user_token)
         table = client.table(TABLE_NAME)
         
         image_id = str(uuid.uuid4())
@@ -82,7 +61,7 @@ def list_user_images(user_id: str, user_token: str, image_type: Optional[str] = 
     """
     try:
         # Create authenticated client with user token
-        client = _create_authenticated_client(user_token)
+        client = create_authenticated_client(user_token)
         table = client.table(TABLE_NAME)
         
         current_time = datetime.utcnow().isoformat() + "Z"
@@ -133,7 +112,7 @@ def delete_user_image(user_id: str, image_id: str, user_token: str) -> bool:
     """
     try:
         # Create authenticated client with user token
-        client = _create_authenticated_client(user_token)
+        client = create_authenticated_client(user_token)
         table = client.table(TABLE_NAME)
         
         # First, get the image to check if it exists and get R2 filename

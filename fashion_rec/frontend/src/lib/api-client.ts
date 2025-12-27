@@ -17,10 +17,32 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
   })
 
   // Add interceptor to inject auth token from Supabase session
+  // Priority: localStorage (fastest) -> Supabase session -> reject request
   client.interceptors.request.use(async (config) => {
     try {
-      // Wait for session to be available (handles page refresh scenarios)
-      // On page refresh, Supabase client may need time to initialize and recover session from storage
+      // STEP 1: First, try localStorage backup (fastest path)
+      // This is critical for page refresh scenarios where Supabase client may not be initialized yet
+      // Token is stored in localStorage during login (see Login.vue, Callback.vue, useAuthState.ts)
+      let token: string | null = null
+      if (typeof window !== 'undefined') {
+        token = localStorage.getItem('auth_token')
+        if (token) {
+          config.headers = config.headers || {}
+          config.headers.Authorization = `Bearer ${token}`
+          // #region agent log
+          if (typeof window !== 'undefined') {
+            fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:29',message:'Using token from localStorage (fast path)',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          }
+          // #endregion
+          if (import.meta.env.DEV) {
+            console.debug(`[API Client] Using token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
+          }
+          return config
+        }
+      }
+      
+      // STEP 2: If no token in localStorage, try Supabase session (with retry logic)
+      // This handles cases where localStorage token was cleared but session still exists
       let attempts = 0
       let session = null
       const maxAttempts = 10 // Increased attempts for page refresh scenarios
@@ -54,6 +76,10 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
               const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
               if (!refreshError && refreshData.session) {
                 session = refreshData.session
+                // Sync refreshed token to localStorage
+                if (typeof window !== 'undefined' && session.access_token) {
+                  localStorage.setItem('auth_token', session.access_token)
+                }
                 console.log('[API Client] Session refreshed successfully')
               } else {
                 console.warn('[API Client] Failed to refresh session:', refreshError)
@@ -61,8 +87,12 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
             }
           }
           
-          // If we have a session with token, break early
+          // If we have a session with token, sync to localStorage and break early
           if (session.access_token) {
+            // Sync token to localStorage for future fast access
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('auth_token', session.access_token)
+            }
             if (attempts > 0) {
               console.log(`[API Client] Session recovered after ${attempts + 1} attempt(s)`)
             }
@@ -78,9 +108,9 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         attempts++
       }
       
-      let token = session?.access_token
+      token = session?.access_token || null
       
-      // If we still don't have a token after all retries, wait a bit more and try one final time
+      // STEP 3: If we still don't have a token after all retries, wait a bit more and try one final time
       // This handles edge cases where Supabase client takes longer to initialize on page refresh
       if (!token) {
         console.warn(`[API Client] No auth token available after ${maxAttempts} attempts, waiting 500ms for final attempt...`)
@@ -91,30 +121,74 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
           const { data } = await supabase.auth.getSession()
           if (data.session?.access_token) {
             token = data.session.access_token
+            // Sync to localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('auth_token', token)
+            }
             console.log(`[API Client] Found token from getSession after final wait for ${config.method?.toUpperCase()} ${config.url}`)
           }
         } catch (finalError) {
           console.warn(`[API Client] Final getSession attempt failed:`, finalError)
         }
+        
+        // Final fallback: try localStorage one more time (in case useAuthState synced it during retries)
+        if (!token && typeof window !== 'undefined') {
+          const finalBackupToken = localStorage.getItem('auth_token')
+          if (finalBackupToken) {
+            token = finalBackupToken as string
+            console.log(`[API Client] Found token in localStorage after final wait for ${config.method?.toUpperCase()} ${config.url}`)
+          }
+        }
       }
       
+      // STEP 4: Add token to request or reject
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
-        // Debug log (remove in production if needed)
+        // #region agent log
+        if (typeof window !== 'undefined') {
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:108',message:'Using token from getSession',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        }
+        // #endregion
         if (import.meta.env.DEV) {
           console.debug(`[API Client] Added auth token to ${config.method?.toUpperCase()} ${config.url}`)
         }
       } else {
-        // If no token after all attempts, log error but still allow the request to proceed
-        // The backend will return 401, and the response interceptor will handle it
-        // Note: We could reject the request here, but allowing it to proceed gives the response
-        // interceptor a chance to recover the session and retry
-        console.error('[API Client] No auth token available for request after all attempts:', config.method?.toUpperCase(), config.url, '- Request will likely fail with 401')
-        // Don't add Authorization header if no token - let backend handle it
+        // If no token after all attempts, reject the request to prevent 401
+        // This ensures we don't send unauthenticated requests to the backend
+        console.error('[API Client] No auth token available for request after all attempts:', config.method?.toUpperCase(), config.url, '- Rejecting request')
+        // #region agent log
+        if (typeof window !== 'undefined') {
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:119',message:'Rejecting request - no token',data:{method:config.method,url:config.url,hasLocalStorageToken:!!(typeof window!=='undefined'?localStorage.getItem('auth_token'):null)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+        }
+        // #endregion
+        return Promise.reject(new Error('Authentication token not available. Please refresh the page or log in again.'))
       }
     } catch (e) {
       console.warn('[API Client] Failed to get Supabase session for request:', e)
+      // Last resort: try localStorage backup even on error
+      if (typeof window !== 'undefined') {
+        const backupToken = localStorage.getItem('auth_token')
+        if (backupToken) {
+          config.headers = config.headers || {}
+          config.headers.Authorization = `Bearer ${backupToken}`
+          console.log(`[API Client] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
+          // #region agent log
+          if (typeof window !== 'undefined') {
+            fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:131',message:'Using backup token after error',data:{method:config.method,url:config.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+          }
+          // #endregion
+          return config
+        }
+      }
+      // If no backup token, reject the request
+      console.error(`[API Client] No backup token available in localStorage after exception. Rejecting request for ${config.method?.toUpperCase()} ${config.url}`)
+      // #region agent log
+      if (typeof window !== 'undefined') {
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:140',message:'No backup token after error - rejecting request',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+      }
+      // #endregion
+      return Promise.reject(new Error('Authentication token not available after exception. Please refresh the page or log in again.'))
     }
     return config
   })

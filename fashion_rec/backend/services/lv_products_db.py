@@ -2,22 +2,12 @@
 LV商品数据库存储服务
 使用Supabase存储商品信息
 """
-import os
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
 import uuid
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# 初始化Supabase客户端
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+from supabase import Client
+from .supabase_client import create_supabase_client
 
 # 表名
 TABLE_NAME = "lv_products"
@@ -30,7 +20,7 @@ class LVProductsDB:
         """
         初始化Supabase客户端
         """
-        self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        self.client: Client = create_supabase_client()
         self.table = self.client.table(TABLE_NAME)
         # 确保表存在（如果不存在，需要在Supabase Dashboard中手动创建）
         self._ensure_table_exists()

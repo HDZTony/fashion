@@ -1,46 +1,18 @@
 """
 Favorites service - using Supabase for storage
 """
-import os
 from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timezone
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# Initialize Supabase client
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+from supabase import Client
+from .supabase_client import create_supabase_client, create_authenticated_client
 
 # Table name
 TABLE_NAME = "favorites"
 
 # Global Supabase client instance
-_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+_client: Client = create_supabase_client()
 _table = _client.table(TABLE_NAME)
-
-
-def _create_authenticated_client(user_token: str) -> Client:
-    """
-    Create an authenticated Supabase client using user JWT token.
-    Uses anon key to create client, then sets user session.
-    """
-    try:
-        client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        # Set the user session with the JWT token to respect RLS policies
-        # Note: set_session may fail if token is invalid/expired
-        client.auth.set_session(access_token=user_token, refresh_token='')
-        return client
-    except Exception as e:
-        print(f"[Favorites] Failed to create authenticated client: {e}")
-        print(f"[Favorites] Token prefix: {user_token[:30] if user_token else 'None'}...")
-        # Re-raise to let calling function handle it
-        raise
 
 
 def save_favorite(user_id: str, favorite: Dict[str, Any], user_token: Optional[str] = None) -> Dict[str, Any]:
@@ -66,7 +38,7 @@ def save_favorite(user_id: str, favorite: Dict[str, Any], user_token: Optional[s
     try:
         if user_token:
             # Use authenticated client for RLS
-            client = _create_authenticated_client(user_token)
+            client = create_authenticated_client(user_token)
             table = client.table(TABLE_NAME)
         else:
             # Use global client (for background tasks)
@@ -130,7 +102,7 @@ def delete_favorite(user_id: str, favorite_id: str, user_token: Optional[str] = 
     try:
         if user_token:
             # Use authenticated client for RLS
-            client = _create_authenticated_client(user_token)
+            client = create_authenticated_client(user_token)
             table = client.table(TABLE_NAME)
         else:
             # Use global client (for background tasks)

@@ -14,7 +14,7 @@ import sys
 from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timedelta
-from supabase import create_client, Client
+from supabase import Client
 from dotenv import load_dotenv
 import httpx
 
@@ -27,17 +27,6 @@ if not logger.handlers:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
-
-# 初始化Supabase客户端
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-# 优先使用 service role key（如果可用），否则使用 anon key
-# 注意：使用 anon key 时，RLS 策略会确保用户只能访问自己的数据
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_KEY")
-SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
 
 # 表名
 TABLE_NAME = "tryon_history"
@@ -59,28 +48,9 @@ PLAN_RETENTION_DAYS = {
 }
 
 # 全局Supabase客户端实例（用于不需要用户认证的操作，如清理过期记录）
-_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+from .supabase_client import create_supabase_client, create_authenticated_client, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+_client: Client = create_supabase_client()
 _table = _client.table(TABLE_NAME)
-
-
-def _create_authenticated_client(user_token: str) -> Client:
-    """
-    创建使用用户 JWT token 认证的 Supabase 客户端。
-    使用 anon key 创建客户端，然后设置用户会话以尊重 RLS 策略。
-    这样 auth.uid() 在 RLS 策略中才能正确工作。
-    """
-    try:
-        client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        # Set the user session with the JWT token to respect RLS policies
-        # This allows auth.uid() in RLS policies to work correctly
-        # Note: set_session may fail if token is invalid/expired, but we'll catch that in the calling function
-        client.auth.set_session(access_token=user_token, refresh_token='')
-        return client
-    except Exception as e:
-        logger.error(f"[Try-On History] Failed to create authenticated client: {e}")
-        logger.error(f"[Try-On History] Token prefix: {user_token[:30] if user_token else 'None'}...")
-        # Re-raise to let calling function handle it
-        raise
 
 
 def _get_retention_days_for_user(user_id: str) -> int:
@@ -229,7 +199,7 @@ def _cleanup_expired(user_id: Optional[str] = None) -> int:
         return 0
 
 
-def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
+def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Optional[str] = None) -> Dict[str, Any]:
     """
     Persist a single try-on history record for a user.
     Automatically cleans up expired records before saving.
@@ -238,6 +208,13 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
     - Premium: 360 days
     - Premium Plus: 540 days
     - Premium Pro: 540 days
+    
+    Args:
+        user_id: The user ID
+        history: History data dictionary
+        user_token: JWT token for authenticated requests. Required for RLS policies to work correctly.
+                   If provided, creates an authenticated client that respects RLS policies.
+                   If None, uses service role key (if available) or anon key (may be blocked by RLS).
     """
     try:
         # Clean up expired records for this user first
@@ -245,6 +222,24 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
         
         # Ensure table exists
         _ensure_table_exists()
+        
+        # Create authenticated client if user_token is provided
+        # This is required for RLS policies to work correctly with auth.uid()
+        if user_token:
+            try:
+                client = create_authenticated_client(user_token)
+                table = client.table(TABLE_NAME)
+                logger.info(f"[Try-On History] Using authenticated client for save operation")
+            except Exception as auth_error:
+                # If setting session fails (e.g., token invalid/expired), fall back to global client
+                # This allows the operation to proceed, but RLS may block it if using anon key
+                logger.warning(f"[Try-On History] Failed to create authenticated client, falling back to global client: {auth_error}")
+                table = _table
+        else:
+            # Use global client (service role key or anon key)
+            # Note: If using anon key without user token, RLS policies may block the operation
+            table = _table
+            logger.info(f"[Try-On History] Using global client for save operation (no user token)")
         
         # Prepare record data
         history_id = str(uuid.uuid4())
@@ -272,7 +267,7 @@ def save_tryon_history(user_id: str, history: Dict[str, Any]) -> Dict[str, Any]:
         }
         
         # Insert into database
-        response = _table.insert(record).execute()
+        response = table.insert(record).execute()
         if response.data and len(response.data) > 0:
             saved_record = _normalize_record(response.data[0])
             logger.info(f"[Try-On History] Saved history record {history_id} for user {user_id} (retention: {retention_days} days)")
@@ -306,7 +301,7 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[D
         # This is required for RLS policies to work correctly with auth.uid()
         if user_token:
             try:
-                client = _create_authenticated_client(user_token)
+                client = create_authenticated_client(user_token)
                 table = client.table(TABLE_NAME)
                 logger.info(f"[Try-On History] Using authenticated client with user token")
             except Exception as auth_error:
@@ -357,16 +352,41 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[D
         return []
 
 
-def delete_tryon_history(user_id: str, history_id: str) -> bool:
+def delete_tryon_history(user_id: str, history_id: str, user_token: Optional[str] = None) -> bool:
     """
     Delete a try-on history record by ID.
     Returns True if deleted, False if not found.
+    
+    Args:
+        user_id: The user ID
+        history_id: The history record ID to delete
+        user_token: JWT token for authenticated requests. Required for RLS policies to work correctly.
+                   If provided, creates an authenticated client that respects RLS policies.
+                   If None, uses service role key (if available) or anon key (may be blocked by RLS).
     """
     try:
         _ensure_table_exists()
         
+        # Create authenticated client if user_token is provided
+        # This is required for RLS policies to work correctly with auth.uid()
+        if user_token:
+            try:
+                client = create_authenticated_client(user_token)
+                table = client.table(TABLE_NAME)
+                logger.info(f"[Try-On History] Using authenticated client for delete operation")
+            except Exception as auth_error:
+                # If setting session fails (e.g., token invalid/expired), fall back to global client
+                # This allows the operation to proceed, but RLS may block it if using anon key
+                logger.warning(f"[Try-On History] Failed to create authenticated client, falling back to global client: {auth_error}")
+                table = _table
+        else:
+            # Use global client (service role key or anon key)
+            # Note: If using anon key without user token, RLS policies may block the operation
+            table = _table
+            logger.info(f"[Try-On History] Using global client for delete operation (no user token)")
+        
         # Delete the record (RLS will ensure user can only delete their own records)
-        response = _table.delete().eq("id", history_id).eq("user_id", user_id).execute()
+        response = table.delete().eq("id", history_id).eq("user_id", user_id).execute()
         return len(response.data) > 0 if response.data else False
     except Exception as e:
         logger.error(f"[Try-On History] Error deleting history: {e}")

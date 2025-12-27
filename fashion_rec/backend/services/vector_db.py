@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 from pathlib import Path
 import uuid
 from PIL import Image
-from supabase import create_client, Client
+from supabase import Client
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -226,15 +226,14 @@ except Exception as e:
     print(f"[Vector DB] Could not verify huggingface_hub endpoint: {e}")
 
 # Initialize Supabase client
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("[Vector DB] Warning: SUPABASE_URL or SUPABASE_KEY not set. Vector DB will fail.")
-    supabase = None
-else:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    from .supabase_client import create_supabase_client
+    supabase: Client = create_supabase_client()
     print("[Vector DB] Supabase client initialized")
+except RuntimeError as e:
+    print(f"[Vector DB] Warning: Failed to initialize Supabase client: {e}")
+    print("[Vector DB] Vector DB will fail.")
+    supabase = None
 
 # Initialize CLIP model for embeddings
 # Environment variables and cache check are already done above
