@@ -150,7 +150,7 @@ const loadSubscriptionInfo = async () => {
     const response = await subscriptionClient.get('/subscription/status', {
       params: { user_id: user.id },
       headers: {
-        Authorization: `Bearer ${session.data.session?.access_token || user.id}`,
+        Authorization: `Bearer ${session.data.session?.access_token}`,
       },
     })
     subscriptionInfo.value = response.data
@@ -452,7 +452,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
                   {{ item.garment_urls.length }} item(s)
                 </p>
                 <p v-if="item.scene_image_url" class="text-xs text-blue-500 mt-1">
-                  include sence
+                  Includes scene
                 </p>
               </div>
               <div class="flex items-center gap-1">
