@@ -311,11 +311,28 @@ function routeToBackend(request: Request, backendUrl: string): Request {
 
 /**
  * Check if request is an API request
+ * 
+ * IMPORTANT: We need to distinguish between:
+ * 1. Browser page requests (should route to frontend)
+ * 2. JavaScript API requests (should route to backend)
+ * 
+ * Strategy:
+ * - Check Accept header: browser page requests usually include "text/html"
+ * - API requests usually include "application/json" or don't have Accept header
+ * - Path-based check as fallback
  */
-function isApiRequest(url: URL): boolean {
-  // API requests typically start with /api/
-  // Also handle other common API patterns
+function isApiRequest(url: URL, request: Request): boolean {
   const path = url.pathname
+  
+  // Check Accept header first (most reliable way to distinguish)
+  const acceptHeader = request.headers.get('Accept') || ''
+  const isHtmlRequest = acceptHeader.includes('text/html')
+  
+  // If it's an HTML request (browser page navigation), route to frontend
+  // Exception: /api/* paths are always API requests
+  if (isHtmlRequest && !path.startsWith('/api/')) {
+    return false
+  }
   
   // List of all API endpoints from backend (main.py)
   // This ensures all API requests are routed to backend, not frontend
@@ -409,7 +426,7 @@ export default {
       if (userId && requiresVersionRouting(path, userId)) {
         version = await getUserVersion(userId, env)
         console.log(`[Router] User ${userId} assigned version: ${version} for path: ${path}`)
-      } else if (userId && isApiRequest(url)) {
+      } else if (userId && isApiRequest(url, request)) {
         // API requests also use user's version
         version = await getUserVersion(userId, env)
         console.log(`[Router] User ${userId} API request, assigned version: ${version}`)
@@ -419,7 +436,7 @@ export default {
       }
 
       // Check if this is an API request
-      if (isApiRequest(url)) {
+      if (isApiRequest(url, request)) {
         // Route API request to appropriate backend
         const backendUrl = version === 'v2' 
           ? env.V2_BACKEND_URL 
@@ -485,7 +502,7 @@ export default {
       // On any error, route to stable version as fallback
       try {
         const url = new URL(request.url)
-        if (isApiRequest(url)) {
+        if (isApiRequest(url, request)) {
           const stableRequest = routeToBackend(request, env.STABLE_BACKEND_URL)
           return fetch(stableRequest)
         } else {
