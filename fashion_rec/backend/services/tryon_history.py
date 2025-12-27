@@ -298,12 +298,17 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[D
                    If None, uses service role key (if available) or anon key (may be blocked by RLS).
     """
     try:
+        # Log incoming user_id
+        logger.info(f"[Try-On History] Listing history for user_id: {user_id}")
+        logger.info(f"[Try-On History] Table name: {TABLE_NAME}")
+        
         # Create authenticated client if user_token is provided
         # This is required for RLS policies to work correctly with auth.uid()
         if user_token:
             try:
                 client = _create_authenticated_client(user_token)
                 table = client.table(TABLE_NAME)
+                logger.info(f"[Try-On History] Using authenticated client with user token")
             except Exception as auth_error:
                 # If setting session fails (e.g., token invalid/expired), fall back to global client
                 # This allows the query to proceed, but RLS may block it if using anon key
@@ -313,6 +318,7 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[D
             # Use global client (service role key or anon key)
             # Note: If using anon key without user token, RLS policies may block the query
             table = _table
+            logger.info(f"[Try-On History] Using global client (no user token)")
         
         # Ensure table exists
         _ensure_table_exists()
@@ -320,14 +326,29 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[D
         # Query user's history, return all records without filtering
         # RLS policy will automatically filter to only return records where auth.uid() = user_id
         query_user_id = str(user_id).strip()
+        
+        # Log query building process
+        logger.info(f"[Try-On History] Building query: SELECT * FROM {TABLE_NAME} WHERE user_id = '{query_user_id}' ORDER BY created_at DESC")
+        
         response = table.select("*").eq("user_id", query_user_id).order("created_at", desc=True).execute()
         
+        # Log query execution result
+        logger.info(f"[Try-On History] Query executed successfully")
+        logger.info(f"[Try-On History] Response data type: {type(response.data)}")
+        logger.info(f"[Try-On History] Response data is None: {response.data is None}")
+        
         if response.data:
+            data_count = len(response.data)
+            logger.info(f"[Try-On History] Query returned {data_count} record(s)")
             normalized_records = [_normalize_record(record) for record in response.data]
-            logger.info(f"[Try-On History] Found {len(normalized_records)} record(s) for user {user_id}")
+            logger.info(f"[Try-On History] Found {len(normalized_records)} normalized record(s) for user {user_id}")
             return normalized_records
         else:
-            logger.info(f"[Try-On History] No records found for user {user_id}")
+            logger.warning(f"[Try-On History] No records found for user {user_id}")
+            logger.warning(f"[Try-On History] This could mean:")
+            logger.warning(f"[Try-On History]   1. No records exist for this user_id")
+            logger.warning(f"[Try-On History]   2. RLS policy is blocking the query")
+            logger.warning(f"[Try-On History]   3. user_id format mismatch")
             return []
     except Exception as e:
         import traceback
@@ -358,9 +379,44 @@ def debug_list_all_history() -> List[Dict[str, Any]]:
     This is for debugging purposes only to check if data exists in the table.
     """
     try:
+        logger.info(f"[Try-On History Debug] Querying all records from table: {TABLE_NAME}")
+        logger.info(f"[Try-On History Debug] Supabase URL: {SUPABASE_URL}")
+        logger.info(f"[Try-On History Debug] Using key type: {'SERVICE_ROLE_KEY' if SUPABASE_SERVICE_ROLE_KEY else 'ANON_KEY (RLS enabled)'}")
+        
         _ensure_table_exists()
+        
+        # Query all records (no user_id filter)
+        logger.info(f"[Try-On History Debug] Building query: SELECT * FROM {TABLE_NAME} ORDER BY created_at DESC LIMIT 100")
         response = _table.select("*").order("created_at", desc=True).limit(100).execute()
-        return response.data if response.data else []
+        
+        logger.info(f"[Try-On History Debug] Query executed successfully")
+        logger.info(f"[Try-On History Debug] Response data type: {type(response.data)}")
+        
+        if response.data:
+            data_count = len(response.data)
+            logger.info(f"[Try-On History Debug] Found {data_count} total record(s) in table")
+            
+            # Log table structure info from first record
+            if data_count > 0:
+                first_record = response.data[0]
+                logger.info(f"[Try-On History Debug] Table columns: {list(first_record.keys())}")
+                logger.info(f"[Try-On History Debug] Sample record - id: {first_record.get('id')}, user_id: {first_record.get('user_id')}, created_at: {first_record.get('created_at')}")
+            
+            # Group by user_id for analysis
+            user_ids = {}
+            for record in response.data:
+                uid = record.get("user_id")
+                if uid:
+                    user_ids[uid] = user_ids.get(uid, 0) + 1
+            
+            logger.info(f"[Try-On History Debug] Records grouped by user_id: {user_ids}")
+            
+            return response.data
+        else:
+            logger.warning(f"[Try-On History Debug] No data found in table")
+            return []
     except Exception as e:
+        import traceback
         logger.error(f"[Try-On History Debug] Error: {e}")
+        logger.error(f"[Try-On History Debug] Traceback: {traceback.format_exc()}")
         return []

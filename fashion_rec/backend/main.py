@@ -1812,12 +1812,22 @@ async def get_tryon_history(
     from services.tryon_history import list_tryon_history
 
     try:
+        # Log received user_id
+        logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}")
+        
         history = list_tryon_history(user_id, user_token)
+        
+        # Log query result count
+        logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id}")
+        
         # Sort by created_at descending (newest first)
         history.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        logger.info(f"[API] /tryon-history returning {len(history)} sorted record(s)")
         return {"history": history}
     except Exception as e:
         import traceback
+        # Log any exceptions with full details
         logger.error(f"[API] /tryon-history error for user_id {user_id}: {e}")
         logger.error(f"[API] /tryon-history traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get try-on history: {e}")

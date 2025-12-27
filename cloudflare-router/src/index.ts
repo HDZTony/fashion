@@ -265,6 +265,7 @@ function isApiRequest(url: URL): boolean {
          path.startsWith('/outfit') ||
          path.startsWith('/try-on') ||
          path.startsWith('/items') ||
+         path.startsWith('/upload') ||
          path.startsWith('/looks') ||
          path.startsWith('/favorites') ||
          path.startsWith('/model-image') ||
