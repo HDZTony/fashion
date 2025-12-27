@@ -78,29 +78,17 @@ const loadHistory = async () => {
     return
   }
   
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:151',message:'loadHistory entry',data:{localStorageToken:localStorage.getItem('auth_token')?.substring(0,20)||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
   isLoading.value = true
   error.value = ''
   try {
     // Interceptor automatically adds Authorization header from Supabase session
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:161',message:'About to call apiClient.get',data:{localStorageToken:localStorage.getItem('auth_token')?.substring(0,20)||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:162',message:'loadHistory success',data:{historyCount:response.data.history?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     historyItems.value = response.data.history || []
     // Save to cache for next page refresh
     saveHistoryToCache()
   } catch (e: any) {
     console.error('Failed to load try-on history:', e)
     const errorDetail = e?.response?.data?.detail || e?.message || 'Failed to load try-on history'
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:166',message:'loadHistory error',data:{status:e?.response?.status,errorDetail,hasAuthHeader:!!e?.config?.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
-    // #endregion
     
     // If authentication failed, check session again
     if (e?.response?.status === 401 || errorDetail.includes('Not authenticated') || errorDetail.includes('authenticated')) {
@@ -191,36 +179,21 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:257',message:'onMounted entry',data:{localStorageToken:localStorage.getItem('auth_token')?.substring(0,20)||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
   // Restore from cache first for instant display (before waiting for session)
   restoreHistoryFromCache()
   
   // Wait for authentication to be ready before loading other data
   try {
     const { data } = await supabase.auth.getSession()
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:263',message:'onMounted getSession result',data:{hasSession:!!data.session,hasToken:!!data.session?.access_token,localStorageToken:localStorage.getItem('auth_token')?.substring(0,20)||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     if (data.session) {
       // Authentication is ready, load data
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:266',message:'Calling loadHistory (has session)',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       await loadHistory()
     } else {
       console.warn('[TryOnHistory] No session found on mount, but still attempting to load data')
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:269',message:'Calling loadHistory (no session)',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       await loadHistory()
     }
   } catch (error) {
     console.error('[TryOnHistory] Failed to check session on mount:', error)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:273',message:'Calling loadHistory (error)',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     await loadHistory()
   }
   

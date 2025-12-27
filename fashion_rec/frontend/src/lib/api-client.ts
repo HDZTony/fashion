@@ -36,11 +36,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         if (token) {
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${token}`
-          // #region agent log
-          if (typeof window !== 'undefined') {
-            fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:29',message:'Using token from localStorage (fast path)',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          }
-          // #endregion
           if (import.meta.env.DEV) {
             console.debug(`[API Client] Using token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
           }
@@ -79,22 +74,12 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
-        // #region agent log
-        if (typeof window !== 'undefined') {
-          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:65',message:'Using token from auth store',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        }
-        // #endregion
         if (import.meta.env.DEV) {
           console.debug(`[API Client] Added auth token to ${config.method?.toUpperCase()} ${config.url}`)
         }
       } else {
         // If no token after all attempts, reject the request to prevent 401
         console.error('[API Client] No auth token available for request after all attempts:', config.method?.toUpperCase(), config.url, '- Rejecting request')
-        // #region agent log
-        if (typeof window !== 'undefined') {
-          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:75',message:'Rejecting request - no token',data:{method:config.method,url:config.url,hasLocalStorageToken:!!(typeof window!=='undefined'?localStorage.getItem('auth_token'):null)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-        }
-        // #endregion
         return Promise.reject(new Error('Authentication token not available. Please refresh the page or log in again.'))
       }
     } catch (e) {
@@ -106,21 +91,11 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${backupToken}`
           console.log(`[API Client] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
-          // #region agent log
-          if (typeof window !== 'undefined') {
-            fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:92',message:'Using backup token after error',data:{method:config.method,url:config.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-          }
-          // #endregion
           return config
         }
       }
       // If no backup token, reject the request
       console.error(`[API Client] No backup token available in localStorage after exception. Rejecting request for ${config.method?.toUpperCase()} ${config.url}`)
-      // #region agent log
-      if (typeof window !== 'undefined') {
-        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:101',message:'No backup token after error - rejecting request',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-      }
-      // #endregion
       return Promise.reject(new Error('Authentication token not available after exception. Please refresh the page or log in again.'))
     }
     return config
