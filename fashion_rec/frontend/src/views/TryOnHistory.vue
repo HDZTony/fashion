@@ -2,9 +2,9 @@
 defineOptions({ name: 'TryOnHistory' })
 import { onMounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { useAuthState } from '../composables/useAuthState'
+import { apiClient } from '../lib/api-client'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -33,160 +33,10 @@ onActivated(async () => {
   }
 })
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
-// Use simple axios client like Studio and Wardrobe do (not createAuthenticatedApiClient)
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add interceptor to inject auth token from Supabase session
-// Note: While Supabase docs recommend getUser()/getClaims() over getSession(),
-// for interceptors we use getSession() because:
-// 1. Interceptors need fast response (can't wait for network requests)
-// 2. In browser, getSession() reads from localStorage (very fast)
-// 3. If token is invalid, backend will return 401 and we can handle it
-// 4. getSession() auto-refreshes expired tokens in background
-apiClient.interceptors.request.use(async (config) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:36',message:'Interceptor entry',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
-  try {
-    // Wait for session to be available (handles page refresh scenarios, especially on fly.io where network may be slower)
-    // On page refresh, Supabase client may need time to initialize and recover session from storage
-    let attempts = 0
-    let session = null
-    const maxAttempts = 10 // Increased attempts for page refresh scenarios and fly.io environment
-    const baseDelay = 100 // Base delay in ms
-    
-    // First, try localStorage backup (fastest path)
-    const backupToken = localStorage.getItem('auth_token')
-    if (backupToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${backupToken}`
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:48',message:'Using backup token from localStorage (fast path)',data:{method:config.method,url:config.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      return config
-    }
-    
-    // Retry logic to wait for Supabase session to be available (for fly.io environment where initialization may be slower)
-    while (attempts < maxAttempts && !session) {
-      const { data, error } = await supabase.auth.getSession()
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:55',message:'getSession attempt',data:{attempt:attempts+1,maxAttempts,hasError:!!error,hasSession:!!data?.session,hasToken:!!data?.session?.access_token},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-      // #endregion
-      
-      if (error) {
-        console.warn(`[TryOnHistory Interceptor] Attempt ${attempts + 1}/${maxAttempts} - Failed to get Supabase session:`, error)
-        if (attempts < maxAttempts - 1) {
-          // Exponential backoff: wait longer on later attempts
-          const delay = baseDelay * Math.min(attempts + 1, 5)
-          await new Promise(resolve => setTimeout(resolve, delay))
-        }
-        attempts++
-        continue
-      }
-      
-      session = data.session
-      
-      // If we have a session with token, break early
-      if (session?.access_token) {
-        if (attempts > 0) {
-          console.log(`[TryOnHistory Interceptor] Session recovered after ${attempts + 1} attempt(s)`)
-        }
-        break
-      }
-      
-      // If no session yet, wait and retry (especially important for fly.io)
-      if (!session && attempts < maxAttempts - 1) {
-        const delay = baseDelay * Math.min(attempts + 1, 5)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-      attempts++
-    }
-    
-    const token = session?.access_token
-    
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:82',message:'Using token from getSession after retry',data:{method:config.method,url:config.url,attempts:attempts+1,hasAuthHeaderAfterSet:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      return config
-    }
-    
-    // Final fallback: try localStorage again (in case useAuthState synced it during retries)
-    const finalBackupToken = localStorage.getItem('auth_token')
-    if (finalBackupToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${finalBackupToken}`
-      console.log(`[TryOnHistory Interceptor] Using final backup token from localStorage for ${config.method?.toUpperCase()} ${config.url}`)
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:94',message:'Using final backup token from localStorage',data:{method:config.method,url:config.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      return config
-    }
-    
-    // If we still don't have a token after all retries, wait a bit more and try one final time
-    // This handles edge cases where Supabase client takes longer to initialize on page refresh
-    console.warn(`[TryOnHistory Interceptor] No auth token available after ${maxAttempts} attempts, waiting 500ms for final attempt...`)
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Final attempt: check localStorage one more time (useAuthState might have synced it)
-    const finalToken = localStorage.getItem('auth_token')
-    if (finalToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${finalToken}`
-      console.log(`[TryOnHistory Interceptor] Found token in localStorage after final wait for ${config.method?.toUpperCase()} ${config.url}`)
-      return config
-    }
-    
-    // Final attempt: try getSession one more time
-    try {
-      const { data } = await supabase.auth.getSession()
-      if (data.session?.access_token) {
-        config.headers = config.headers || {}
-        config.headers.Authorization = `Bearer ${data.session.access_token}`
-        console.log(`[TryOnHistory Interceptor] Found token from getSession after final wait for ${config.method?.toUpperCase()} ${config.url}`)
-        return config
-      }
-    } catch (finalError) {
-      console.warn(`[TryOnHistory Interceptor] Final getSession attempt failed:`, finalError)
-    }
-    
-    // If we still don't have a token, reject the request to prevent 401
-    console.error(`[TryOnHistory Interceptor] No auth token available after all attempts for ${config.method?.toUpperCase()} ${config.url}`)
-    console.error(`[TryOnHistory Interceptor] Debug info: localStorage.getItem('auth_token') =`, localStorage.getItem('auth_token') ? 'exists' : 'null')
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:100',message:'No token available after retries - rejecting request',data:{method:config.method,url:config.url,attempts:maxAttempts,hasLocalStorageToken:!!localStorage.getItem('auth_token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-    // #endregion
-    return Promise.reject(new Error('Authentication token not available. Please refresh the page or log in again.'))
-  } catch (e) {
-    console.error(`[TryOnHistory Interceptor] Exception while getting Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
-    // Last resort: try localStorage backup even on error
-    const backupToken = localStorage.getItem('auth_token')
-    if (backupToken) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${backupToken}`
-      console.log(`[TryOnHistory Interceptor] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:111',message:'Using backup token after error',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-      // #endregion
-      return config
-    } else {
-      console.error(`[TryOnHistory Interceptor] No backup token available in localStorage after exception. Rejecting request.`)
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:111',message:'No backup token after error - rejecting request',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-      // #endregion
-      return Promise.reject(new Error('Authentication token not available after exception. Please refresh the page or log in again.'))
-    }
-  }
-})
+// Use unified API client from api-client.ts
+// This ensures consistent authentication handling across all components
+// The unified client already has interceptors with retry logic and token refresh
+// This is critical for page refresh scenarios where the component may be cached by keep-alive
 
 interface TryOnHistoryItem {
   id: string

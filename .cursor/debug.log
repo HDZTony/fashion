@@ -202,3 +202,12 @@
 {"location":"TryOnHistory.vue:48","message":"Using backup token from localStorage (fast path)","data":{"method":"get","url":"/tryon-history"},"timestamp":1766814713599,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
 {"location":"TryOnHistory.vue:162","message":"loadHistory success","data":{"historyCount":3},"timestamp":1766814714489,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
 {"location":"TryOnHistory.vue:162","message":"loadHistory success","data":{"historyCount":3},"timestamp":1766814715127,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"TryOnHistory.vue:17","message":"useAuthState called","data":{"hasWindow":true,"localStorageToken":"eyJhbGciOiJIUzI1NiIs..."},"timestamp":1766814994247,"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}
+{"location":"useAuthState.ts:43","message":"useAuthState called","data":{"isLoading":false,"hasSession":true},"timestamp":1766814994247,"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}
+{"location":"TryOnHistory.vue:257","message":"onMounted entry","data":{"localStorageToken":"eyJhbGciOiJIUzI1NiIs"},"timestamp":1766814994249,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"useAuthState.ts:49","message":"Skipping loadSession (isLoading=false)","data":{},"timestamp":1766814994247,"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}
+{"location":"TryOnHistory.vue:263","message":"onMounted getSession result","data":{"hasSession":true,"hasToken":true,"localStorageToken":"eyJhbGciOiJIUzI1NiIs"},"timestamp":1766814994254,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"TryOnHistory.vue:266","message":"Calling loadHistory (has session)","data":{},"timestamp":1766814994254,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"TryOnHistory.vue:151","message":"loadHistory entry","data":{"localStorageToken":"eyJhbGciOiJIUzI1NiIs"},"timestamp":1766814994254,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"TryOnHistory.vue:161","message":"About to call apiClient.get","data":{"localStorageToken":"eyJhbGciOiJIUzI1NiIs"},"timestamp":1766814994255,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"TryOnHistory.vue:162","message":"loadHistory success","data":{"historyCount":3},"timestamp":1766814998189,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
