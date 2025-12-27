@@ -119,11 +119,12 @@ apiClient.interceptors.request.use(async (config) => {
     }
     
     console.warn(`[TryOnHistory Interceptor] No auth token available from Supabase or localStorage after ${maxAttempts} attempts for ${config.method?.toUpperCase()} ${config.url}`)
+    console.warn(`[TryOnHistory Interceptor] Debug info: localStorage.getItem('auth_token') =`, localStorage.getItem('auth_token') ? 'exists' : 'null')
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:100',message:'No token available after retries',data:{method:config.method,url:config.url,attempts:maxAttempts},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:100',message:'No token available after retries',data:{method:config.method,url:config.url,attempts:maxAttempts,hasLocalStorageToken:!!localStorage.getItem('auth_token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
     // #endregion
   } catch (e) {
-    console.warn(`[TryOnHistory Interceptor] Failed to get Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
+    console.error(`[TryOnHistory Interceptor] Exception while getting Supabase session for ${config.method?.toUpperCase()} ${config.url}:`, e)
     // Last resort: try localStorage backup even on error
     const backupToken = localStorage.getItem('auth_token')
     if (backupToken) {
@@ -133,6 +134,8 @@ apiClient.interceptors.request.use(async (config) => {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:111',message:'Using backup token after error',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
       // #endregion
+    } else {
+      console.error(`[TryOnHistory Interceptor] No backup token available in localStorage after exception. Request will fail with 401.`)
     }
   }
   // #region agent log
