@@ -63,24 +63,35 @@ const apiClient = axios.create({
 })
 
 // Add interceptor to inject auth token from Supabase session
-// This ensures tokens are automatically attached to all requests, even after page refresh
+// Note: While Supabase docs recommend getUser()/getClaims() over getSession(),
+// for interceptors we use getSession() because:
+// 1. Interceptors need fast response (can't wait for network requests)
+// 2. In browser, getSession() reads from localStorage (very fast)
+// 3. If token is invalid, backend will return 401 and we can handle it
+// 4. getSession() auto-refreshes expired tokens in background
 apiClient.interceptors.request.use(async (config) => {
-  console.log(`[Favorites Interceptor] Processing ${config.method?.toUpperCase()} ${config.url}`)
   try {
-    // First, try to get session from Supabase (primary source)
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
+    // getSession() in browser:
+    // - Loads from localStorage (fast, no network request)
+    // - Auto-refreshes expired tokens in background
+    // - Returns very fast because refresh is async
+    const { data, error } = await supabase.auth.getSession()
+    
+    if (error) {
+      console.warn(`[Favorites Interceptor] getSession error for ${config.method?.toUpperCase()} ${config.url}:`, error)
+    }
+    
+    const token = data?.session?.access_token
     
     if (token) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${token}`
-      console.log(`[Favorites Interceptor] Added token from Supabase session for ${config.method?.toUpperCase()} ${config.url}`)
       return config
     }
     
-    console.log('[Favorites Interceptor] No token from Supabase session, trying localStorage...')
-    // Fallback: if Supabase session is not available (e.g., during page refresh),
+    // Fallback: if Supabase session is not available (e.g., during page refresh before client init),
     // try to get token from localStorage (backup from useAuthState)
+    // Note: Supabase stores session in its own localStorage key, but we also sync to 'auth_token'
     const backupToken = localStorage.getItem('auth_token')
     if (backupToken) {
       config.headers = config.headers || {}
@@ -98,8 +109,6 @@ apiClient.interceptors.request.use(async (config) => {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${backupToken}`
       console.log(`[Favorites Interceptor] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
-    } else {
-      console.error(`[Favorites Interceptor] No backup token available in localStorage for ${config.method?.toUpperCase()} ${config.url}`)
     }
   }
   return config
