@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { supabase } from './supabase'
+import { useAuthStore } from '../stores/auth'
 import { API_URL, SUBSCRIPTION_API_URL } from '../config/api'
 
 /**
@@ -16,13 +17,12 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
     timeout: timeout || 30000, // Default 30 seconds, can be overridden per request
   })
 
-  // Add interceptor to inject auth token from Supabase session
-  // Priority: localStorage (fastest) -> Supabase session -> reject request
+  // Add interceptor to inject auth token from Pinia auth store
+  // Priority: localStorage (fastest) -> Pinia store -> reject request
   client.interceptors.request.use(async (config) => {
     try {
       // STEP 1: First, try localStorage backup (fastest path)
-      // This is critical for page refresh scenarios where Supabase client may not be initialized yet
-      // Token is stored in localStorage during login (see Login.vue, Callback.vue, useAuthState.ts)
+      // This is critical for page refresh scenarios where Pinia store may not be initialized yet
       let token: string | null = null
       if (typeof window !== 'undefined') {
         token = localStorage.getItem('auth_token')
@@ -41,113 +41,40 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         }
       }
       
-      // STEP 2: If no token in localStorage, try Supabase session (with retry logic)
-      // This handles cases where localStorage token was cleared but session still exists
-      let attempts = 0
-      let session = null
-      const maxAttempts = 10 // Increased attempts for page refresh scenarios
-      const baseDelay = 100 // Base delay in ms
+      // STEP 2: Try Pinia auth store (with retry logic for page refresh scenarios)
+      const authStore = useAuthStore()
       
-      while (attempts < maxAttempts && !session) {
-        const { data, error } = await supabase.auth.getSession()
-        if (error) {
-          console.warn(`[API Client] Attempt ${attempts + 1}/${maxAttempts} - Failed to get Supabase session:`, error)
-          if (attempts < maxAttempts - 1) {
-            // Exponential backoff: wait longer on later attempts
-            const delay = baseDelay * Math.min(attempts + 1, 5)
-            await new Promise(resolve => setTimeout(resolve, delay))
-          }
-          attempts++
-          continue
-        }
-        
-        session = data.session
-        
-        // If session exists but token might be expired, try to refresh it
-        if (session) {
-          // Check if token is close to expiration (within 5 minutes)
-          const expiresAt = session.expires_at
-          if (expiresAt) {
-            const now = Math.floor(Date.now() / 1000)
-            const timeUntilExpiry = expiresAt - now
-            // If token expires in less than 5 minutes, refresh it
-            if (timeUntilExpiry < 300) {
-              console.log('[API Client] Token expiring soon, refreshing session...')
-              const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-              if (!refreshError && refreshData.session) {
-                session = refreshData.session
-                // Sync refreshed token to localStorage
-                if (typeof window !== 'undefined' && session.access_token) {
-                  localStorage.setItem('auth_token', session.access_token)
-                }
-                console.log('[API Client] Session refreshed successfully')
-              } else {
-                console.warn('[API Client] Failed to refresh session:', refreshError)
-              }
-            }
-          }
-          
-          // If we have a session with token, sync to localStorage and break early
-          if (session.access_token) {
-            // Sync token to localStorage for future fast access
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('auth_token', session.access_token)
-            }
-            if (attempts > 0) {
-              console.log(`[API Client] Session recovered after ${attempts + 1} attempt(s)`)
-            }
-            break
-          }
-        }
-        
-        if (!session && attempts < maxAttempts - 1) {
-          // Exponential backoff: wait longer on later attempts
-          const delay = baseDelay * Math.min(attempts + 1, 5)
-          await new Promise(resolve => setTimeout(resolve, delay))
-        }
-        attempts++
+      // Wait for store to load if still loading
+      if (authStore.isLoading) {
+        await authStore.loadSession()
       }
       
-      token = session?.access_token || null
+      // Get token from store
+      token = authStore.accessToken
       
-      // STEP 3: If we still don't have a token after all retries, wait a bit more and try one final time
-      // This handles edge cases where Supabase client takes longer to initialize on page refresh
+      // STEP 3: If no token from store, try refreshing session
       if (!token) {
-        console.warn(`[API Client] No auth token available after ${maxAttempts} attempts, waiting 500ms for final attempt...`)
-        await new Promise(resolve => setTimeout(resolve, 500))
-        
-        // Final attempt: try getSession one more time
-        try {
-          const { data } = await supabase.auth.getSession()
-          if (data.session?.access_token) {
-            token = data.session.access_token
-            // Sync to localStorage
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('auth_token', token)
-            }
-            console.log(`[API Client] Found token from getSession after final wait for ${config.method?.toUpperCase()} ${config.url}`)
-          }
-        } catch (finalError) {
-          console.warn(`[API Client] Final getSession attempt failed:`, finalError)
-        }
-        
-        // Final fallback: try localStorage one more time (in case useAuthState synced it during retries)
-        if (!token && typeof window !== 'undefined') {
-          const finalBackupToken = localStorage.getItem('auth_token')
-          if (finalBackupToken) {
-            token = finalBackupToken as string
-            console.log(`[API Client] Found token in localStorage after final wait for ${config.method?.toUpperCase()} ${config.url}`)
-          }
+        console.warn(`[API Client] No token in store, attempting to refresh session...`)
+        await authStore.refreshSession()
+        token = authStore.accessToken
+      }
+      
+      // STEP 4: Final fallback - try localStorage one more time
+      if (!token && typeof window !== 'undefined') {
+        const finalBackupToken = localStorage.getItem('auth_token')
+        if (finalBackupToken) {
+          token = finalBackupToken
+          console.log(`[API Client] Found token in localStorage after store check for ${config.method?.toUpperCase()} ${config.url}`)
         }
       }
       
-      // STEP 4: Add token to request or reject
+      // STEP 5: Add token to request or reject
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
         // #region agent log
         if (typeof window !== 'undefined') {
-          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:108',message:'Using token from getSession',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:65',message:'Using token from auth store',data:{method:config.method,url:config.url,hasAuthHeader:!!config.headers?.Authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         }
         // #endregion
         if (import.meta.env.DEV) {
@@ -155,17 +82,16 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         }
       } else {
         // If no token after all attempts, reject the request to prevent 401
-        // This ensures we don't send unauthenticated requests to the backend
         console.error('[API Client] No auth token available for request after all attempts:', config.method?.toUpperCase(), config.url, '- Rejecting request')
         // #region agent log
         if (typeof window !== 'undefined') {
-          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:119',message:'Rejecting request - no token',data:{method:config.method,url:config.url,hasLocalStorageToken:!!(typeof window!=='undefined'?localStorage.getItem('auth_token'):null)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:75',message:'Rejecting request - no token',data:{method:config.method,url:config.url,hasLocalStorageToken:!!(typeof window!=='undefined'?localStorage.getItem('auth_token'):null)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
         }
         // #endregion
         return Promise.reject(new Error('Authentication token not available. Please refresh the page or log in again.'))
       }
     } catch (e) {
-      console.warn('[API Client] Failed to get Supabase session for request:', e)
+      console.warn('[API Client] Failed to get auth token for request:', e)
       // Last resort: try localStorage backup even on error
       if (typeof window !== 'undefined') {
         const backupToken = localStorage.getItem('auth_token')
@@ -175,7 +101,7 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
           console.log(`[API Client] Using backup token from localStorage after error for ${config.method?.toUpperCase()} ${config.url}`)
           // #region agent log
           if (typeof window !== 'undefined') {
-            fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:131',message:'Using backup token after error',data:{method:config.method,url:config.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:92',message:'Using backup token after error',data:{method:config.method,url:config.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
           }
           // #endregion
           return config
@@ -185,7 +111,7 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
       console.error(`[API Client] No backup token available in localStorage after exception. Rejecting request for ${config.method?.toUpperCase()} ${config.url}`)
       // #region agent log
       if (typeof window !== 'undefined') {
-        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:140',message:'No backup token after error - rejecting request',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api-client.ts:101',message:'No backup token after error - rejecting request',data:{method:config.method,url:config.url,error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
       }
       // #endregion
       return Promise.reject(new Error('Authentication token not available after exception. Please refresh the page or log in again.'))
@@ -199,39 +125,22 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
     async (error) => {
       const originalRequest = error.config
       
-      // If we get a 401 and haven't retried yet, try to get/refresh the session
+      // If we get a 401 and haven't retried yet, try to refresh the session
       if (error.response?.status === 401 && !originalRequest._retry) {
         originalRequest._retry = true
         
         try {
-          // First, try to get the current session (might have recovered by now)
-          let session = null
-          let attempts = 0
+          const authStore = useAuthStore()
           
-          while (attempts < 3 && !session) {
-            const { data, error: sessionError } = await supabase.auth.getSession()
-            if (!sessionError && data.session?.access_token) {
-              session = data.session
-              break
-            }
-            if (attempts < 2) {
-              await new Promise(resolve => setTimeout(resolve, 200))
-            }
-            attempts++
-          }
+          // Try to refresh the session
+          await authStore.refreshSession()
           
-          // If we have a session, use it; otherwise try to refresh
-          if (!session) {
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-            if (!refreshError && refreshData.session?.access_token) {
-              session = refreshData.session
-            }
-          }
+          const token = authStore.accessToken
           
-          if (session?.access_token) {
-            console.log('[API Client] Retrying request with recovered/refreshed session')
+          if (token) {
+            console.log('[API Client] Retrying request with refreshed session from auth store')
             // Retry the request with new token
-            originalRequest.headers.Authorization = `Bearer ${session.access_token}`
+            originalRequest.headers.Authorization = `Bearer ${token}`
             return client(originalRequest)
           } else {
             console.warn('[API Client] No session available after 401, cannot retry')

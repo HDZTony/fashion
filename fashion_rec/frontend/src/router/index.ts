@@ -14,7 +14,7 @@ import Pricing from '../views/Pricing.vue'
 import Profile from '../views/Profile.vue'
 import AppLayout from '../layouts/AppLayout.vue'
 import HomeLayout from '../layouts/HomeLayout.vue'
-import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../stores/auth'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -104,52 +104,18 @@ export const routes: RouteRecordRaw[] = [
 
 export const setupRouterGuards = (router: Router) => {
   router.beforeEach(async (to, _from, next) => {
-    // For protected routes, ensure session is loaded (handles page refresh)
+    const authStore = useAuthStore()
+
+    // Wait for initial session load if still loading
+    if (authStore.isLoading) {
+      await authStore.loadSession()
+    }
+
+    // For protected routes, check authentication
     if (to.meta.requiresAuth) {
-      let attempts = 0
-      let session = null
-      
-      // Retry up to 3 times to allow Supabase session to recover on page refresh
-      while (attempts < 3 && !session) {
-        const { data, error } = await supabase.auth.getSession()
-        if (error) {
-          console.warn('Failed to get Supabase session', error)
-          break
-        }
-        session = data.session
-        
-        if (!session && attempts < 2) {
-          // Wait a bit for session to recover (Supabase may need time on page refresh)
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
-        attempts++
-      }
-      
-      const token = session?.access_token
-
-      // Keep legacy token in sync to avoid stale state in older code
-      if (typeof window !== 'undefined') {
-        if (token) {
-          localStorage.setItem('auth_token', token)
-        } else {
-          localStorage.removeItem('auth_token')
-        }
-      }
-
-      if (!token) {
-        next('/login')
+      if (!authStore.isAuthenticated) {
+        next({ name: 'login', query: { redirect: to.fullPath } })
         return
-      }
-    } else {
-      // For non-protected routes, just sync token if available
-      const { data } = await supabase.auth.getSession()
-      const token = data.session?.access_token
-      if (typeof window !== 'undefined') {
-        if (token) {
-          localStorage.setItem('auth_token', token)
-        } else {
-          localStorage.removeItem('auth_token')
-        }
       }
     }
 

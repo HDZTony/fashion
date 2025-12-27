@@ -44,7 +44,21 @@ export class SubscriptionService {
   private table: any;
 
   constructor(supabaseUrl: string, supabaseKey: string) {
-    this.client = createClient(supabaseUrl, supabaseKey);
+    /**
+     * Create Supabase client with explicit configuration.
+     * 
+     * For subscription service (Cloudflare Worker):
+     * - persistSession: false (no localStorage in Worker)
+     * - autoRefreshToken: false (service role key doesn't expire, or handled by Supabase)
+     * - detectSessionInUrl: false (not needed for service role)
+     */
+    this.client = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false, // No localStorage in Cloudflare Worker
+        autoRefreshToken: false, // Service role key doesn't expire, or handled by Supabase
+        detectSessionInUrl: false, // Not needed for service role
+      },
+    });
     this.table = this.client.from(TABLE_NAME);
   }
 

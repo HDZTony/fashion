@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
-import { useAuthState } from '@/composables/useAuthState'
+import { useAuthStore } from '@/stores/auth'
 import { useHead } from '@vueuse/head'
 import { useSEO } from '@/composables/useSEO'
 import { siteBaseUrl } from '@/config/seo'
@@ -14,7 +14,8 @@ defineOptions({ name: 'Home' })
 
 const router = useRouter()
 
-const { isAuthenticated } = useAuthState()
+const authStore = useAuthStore()
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isSettingVersion = ref(false)
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'

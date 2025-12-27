@@ -97,13 +97,22 @@ async function cacheUserVersion(userId: string, version: string, env: Env): Prom
  */
 async function getUserFrontendVersionFromDB(userId: string, env: Env): Promise<string> {
   try {
+    /**
+     * Create Supabase client with explicit configuration.
+     * 
+     * For service role key in Cloudflare Worker environment:
+     * - persistSession: false (no localStorage in Worker)
+     * - autoRefreshToken: false (service role key doesn't expire)
+     * - detectSessionInUrl: false (not needed for service role)
+     */
     const supabase = createClient(
       env.SUPABASE_URL,
       env.SUPABASE_SERVICE_ROLE_KEY,
       {
         auth: {
-          persistSession: false,
-          autoRefreshToken: false,
+          persistSession: false, // No localStorage in Cloudflare Worker
+          autoRefreshToken: false, // Service role key doesn't expire
+          detectSessionInUrl: false, // Not needed for service role
         },
       }
     )
@@ -159,13 +168,22 @@ async function setUserVersion(userId: string, version: string, env: Env): Promis
     }
 
     // 1. Update database
+    /**
+     * Create Supabase client with explicit configuration.
+     * 
+     * For service role key in Cloudflare Worker environment:
+     * - persistSession: false (no localStorage in Worker)
+     * - autoRefreshToken: false (service role key doesn't expire)
+     * - detectSessionInUrl: false (not needed for service role)
+     */
     const supabase = createClient(
       env.SUPABASE_URL,
       env.SUPABASE_SERVICE_ROLE_KEY,
       {
         auth: {
-          persistSession: false,
-          autoRefreshToken: false,
+          persistSession: false, // No localStorage in Cloudflare Worker
+          autoRefreshToken: false, // Service role key doesn't expire
+          detectSessionInUrl: false, // Not needed for service role
         },
       }
     )

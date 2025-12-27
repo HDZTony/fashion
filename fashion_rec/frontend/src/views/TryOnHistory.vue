@@ -3,21 +3,12 @@ defineOptions({ name: 'TryOnHistory' })
 import { onMounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase'
-import { useAuthState } from '../composables/useAuthState'
+import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const router = useRouter()
-
-// Initialize auth state to ensure token is synced to localStorage
-// This is critical for page refresh scenarios where the interceptor needs
-// the backup token from localStorage before Supabase client is fully initialized
-// Note: We call useAuthState() even though we don't use isAuthenticated here,
-// because calling it triggers loadSession() which syncs token to localStorage
-// #region agent log
-fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TryOnHistory.vue:17',message:'useAuthState called',data:{hasWindow:typeof window!=='undefined',localStorageToken:typeof window!=='undefined'?localStorage.getItem('auth_token')?.substring(0,20)+'...':null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-// #endregion
-const { isAuthenticated: _isAuthenticated, refreshSession } = useAuthState()
+const authStore = useAuthStore()
 
 // Ensure token is synced when component is activated (for keep-alive scenarios)
 // This is important because keep-alive may cache the component, and token might
@@ -27,7 +18,7 @@ onActivated(async () => {
   // This handles cases where the component was cached by keep-alive
   // and the session might have changed or expired
   try {
-    await refreshSession()
+    await authStore.refreshSession()
   } catch (e) {
     console.warn('[TryOnHistory] Failed to refresh session on activated:', e)
   }

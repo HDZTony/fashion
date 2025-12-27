@@ -2,11 +2,11 @@
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
-import { useAuthState } from '@/composables/useAuthState'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
-
-const { isAuthenticated } = useAuthState()
+const authStore = useAuthStore()
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const handleGetStarted = () => {
   if (isAuthenticated.value) {

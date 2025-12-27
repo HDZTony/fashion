@@ -3,16 +3,12 @@ defineOptions({ name: 'Favorites' })
 import { onMounted, onUnmounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase'
-import { useAuthState } from '../composables/useAuthState'
+import { useAuthStore } from '../stores/auth'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 import { apiClient } from '../lib/api-client'
 
 const router = useRouter()
-
-// Initialize auth state to ensure token is synced to localStorage
-// This is critical for page refresh scenarios where the interceptor needs
-// the backup token from localStorage before Supabase client is fully initialized
-const { isAuthenticated: _isAuthenticated, refreshSession } = useAuthState()
+const authStore = useAuthStore()
 
 // Ensure token is synced when component is activated (for keep-alive scenarios)
 onActivated(async () => {
@@ -20,7 +16,7 @@ onActivated(async () => {
   // This handles cases where the component was cached by keep-alive
   // and the session might have changed or expired
   try {
-    await refreshSession()
+    await authStore.refreshSession()
   } catch (e) {
     console.warn('[Favorites] Failed to refresh session on activated:', e)
   }
