@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
@@ -17,7 +17,6 @@ const router = useRouter()
 const { isAuthenticated: _isAuthenticated } = useAuthState()
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
 
 // Use simple axios client like Studio and Wardrobe do (not createAuthenticatedApiClient)
 const apiClient = axios.create({
@@ -86,6 +85,7 @@ interface TryOnHistoryItem {
   scene_image_url?: string
   prompt?: string
   created_at: string
+  expires_at: string
 }
 
 const historyItems = ref<TryOnHistoryItem[]>([])
@@ -94,7 +94,6 @@ const error = ref('')
 const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
-const subscriptionInfo = ref<any>(null)
 
 // Cache management for page refresh
 const saveHistoryToCache = () => {
@@ -120,49 +119,6 @@ const restoreHistoryFromCache = () => {
     console.warn('[TryOnHistory] Failed to restore history from cache:', e)
   }
   return false
-}
-const isLoadingSubscription = ref(false) // Flag to prevent duplicate subscription API calls
-
-// Subscription service client
-const subscriptionClient = axios.create({
-  baseURL: SUBSCRIPTION_API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Load subscription info to determine retention period
-const loadSubscriptionInfo = async () => {
-  // Prevent duplicate concurrent calls
-  if (isLoadingSubscription.value) {
-    return
-  }
-  
-  isLoadingSubscription.value = true
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      isLoadingSubscription.value = false
-      return
-    }
-
-    const session = await supabase.auth.getSession()
-    const response = await subscriptionClient.get('/subscription/status', {
-      params: { user_id: user.id },
-      headers: {
-        Authorization: `Bearer ${session.data.session?.access_token}`,
-      },
-    })
-    subscriptionInfo.value = response.data
-  } catch (e: any) {
-    console.warn('Failed to load subscription info:', e)
-    // Default to Free plan if subscription info is unavailable
-    subscriptionInfo.value = {
-      planName: 'Free',
-    }
-  } finally {
-    isLoadingSubscription.value = false
-  }
 }
 
 const loadHistory = async () => {
@@ -280,23 +236,14 @@ onMounted(async () => {
     const { data } = await supabase.auth.getSession()
     if (data.session) {
       // Authentication is ready, load data
-      await Promise.all([
-        loadSubscriptionInfo(),
-        loadHistory()
-      ])
+      await loadHistory()
     } else {
       console.warn('[TryOnHistory] No session found on mount, but still attempting to load data')
-      await Promise.all([
-        loadSubscriptionInfo(),
-        loadHistory()
-      ])
+      await loadHistory()
     }
   } catch (error) {
     console.error('[TryOnHistory] Failed to check session on mount:', error)
-    await Promise.all([
-      loadSubscriptionInfo(),
-      loadHistory()
-    ])
+    await loadHistory()
   }
   
   window.addEventListener('keydown', handleKeyDown)
@@ -334,26 +281,11 @@ const formatDate = (dateString: string) => {
   }
 }
 
-// Get retention days based on subscription plan
-const retentionDays = computed(() => {
-  const planName = subscriptionInfo.value?.planName || 'Free'
-  const planRetention: Record<string, number> = {
-    'Free': 7,
-    'Premium': 90,
-    'Premium Plus': 365,
-    // Support lowercase variants
-    'free': 7,
-    'premium': 90,
-    'premium_plus': 365,
-  }
-  return planRetention[planName] || 7
-})
-
-const getDaysRemaining = (dateString: string) => {
+const getDaysRemaining = (expiresAt: string) => {
   try {
-    const date = new Date(dateString)
+    const expiresDate = new Date(expiresAt)
     const now = new Date()
-    const diffMs = date.getTime() + (retentionDays.value * 24 * 60 * 60 * 1000) - now.getTime()
+    const diffMs = expiresDate.getTime() - now.getTime()
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
     return diffDays > 0 ? diffDays : 0
   } catch {
@@ -437,7 +369,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
             <!-- Days remaining badge -->
             <div class="absolute top-2 right-2 bg-blue-500/90 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-              Expires in {{ getDaysRemaining(item.created_at) }} days
+              Expires in {{ getDaysRemaining(item.expires_at) }} days
             </div>
           </div>
           
