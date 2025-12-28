@@ -681,20 +681,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8 flex items-center justify-between">
-      <h1 class="text-3xl font-bold tracking-tight">My Wardrobe</h1>
+      <h1 class="text-3xl font-bold tracking-tight text-green-800">My Wardrobe</h1>
     </header>
 
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
       <!-- Upload -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+      <section class="bg-white p-6 rounded-2xl shadow-sm border border-green-100">
+        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-green-800">
           <Upload class="w-5 h-5" />
           Add Wardrobe Items
         </h2>
         <div
-          class="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-black transition-colors cursor-pointer relative bg-gray-50 hover:bg-gray-100"
+          class="border-2 border-dashed border-green-200 rounded-xl p-8 text-center hover:border-green-600 transition-colors cursor-pointer relative bg-green-50 hover:bg-green-100"
           @click="triggerFileInput"
         >
           <input
@@ -717,14 +717,14 @@ onUnmounted(() => {
             <span class="text-sm text-gray-500">Analyzing...</span>
           </div>
           <div v-else class="pointer-events-none">
-            <p class="font-medium text-gray-700">Click or drag to upload</p>
-            <p class="text-xs text-gray-400 mt-2">You can select multiple photos (JPG, PNG, WEBP, AVIF)</p>
+            <p class="font-medium text-green-700">Click or drag to upload</p>
+            <p class="text-xs text-green-600 mt-2">You can select multiple photos (JPG, PNG, WEBP, AVIF)</p>
           </div>
         </div>
         
         <!-- URL Upload -->
-        <div class="mt-4 pt-4 border-t border-gray-200">
-          <p class="text-sm font-medium text-gray-700 mb-2">Or add via URL</p>
+        <div class="mt-4 pt-4 border-t border-green-200">
+          <p class="text-sm font-medium text-green-700 mb-2">Or add via URL</p>
           <div class="flex gap-2">
             <input
               v-model="imageUrlInput"
@@ -737,7 +737,7 @@ onUnmounted(() => {
             <button
               @click="handleUrlUpload"
               :disabled="isUploadingUrl || isUploading || !imageUrlInput.trim()"
-              class="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span v-if="isUploadingUrl">Uploading...</span>
               <span v-else>Upload</span>
@@ -748,12 +748,12 @@ onUnmounted(() => {
       </section>
 
       <!-- Wardrobe Grid -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 min-h-[400px]">
+      <section class="bg-white p-6 rounded-2xl shadow-sm border border-green-100 min-h-[400px]">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold flex items-center gap-2">
+          <h2 class="text-lg font-semibold flex items-center gap-2 text-green-800">
             <Shirt class="w-5 h-5" />
             My Wardrobe
-            <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-gray-500 ml-2">
+            <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-green-600 ml-2">
               ({{ uploadedItems.length }} items)
             </span>
           </h2>
@@ -770,7 +770,7 @@ onUnmounted(() => {
             <button
               @click="toggleSelectionMode"
               class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
-              :class="isSelectionMode ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'"
+              :class="isSelectionMode ? 'bg-green-600 text-white border-green-600' : 'border-green-200 text-green-600 hover:border-green-600'"
             >
               {{ isSelectionMode ? 'Cancel selection' : 'Bulk select' }}
             </button>
@@ -811,7 +811,7 @@ onUnmounted(() => {
             :key="item.id"
             @click="isSelectionMode ? toggleItemSelection(String(item.id), $event) : openImageViewer(index, $event)"
             class="group relative rounded-xl overflow-hidden border aspect-[3/4] cursor-pointer transition-all hover:shadow-md"
-            :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'border-blue-500 border-2 ring-2 ring-blue-200' : 'border-gray-200'"
+            :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'border-green-500 border-2 ring-2 ring-green-200' : 'border-green-200'"
           >
             <!-- Selection checkbox -->
             <div
@@ -821,7 +821,7 @@ onUnmounted(() => {
             >
               <div
                 class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
-                :class="selectedItemIds.has(String(item.id)) ? 'bg-blue-500 border-blue-500' : 'bg-white/90 border-gray-300'"
+                :class="selectedItemIds.has(String(item.id)) ? 'bg-green-500 border-green-500' : 'bg-white/90 border-green-300'"
               >
                 <svg
                   v-if="selectedItemIds.has(String(item.id))"
@@ -855,7 +855,7 @@ onUnmounted(() => {
               v-if="!isSelectionMode"
               @click.stop="toggleOutfitSelection(String(item.id), $event)"
               class="absolute top-2 right-2 z-10 p-1 rounded-full transition-all duration-200"
-              :class="isOutfitSelected(String(item.id)) ? 'bg-black text-white opacity-100 shadow-md' : 'bg-white/80 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-black hover:bg-white'"
+              :class="isOutfitSelected(String(item.id)) ? 'bg-green-600 text-white opacity-100 shadow-md' : 'bg-white/80 text-green-400 opacity-0 group-hover:opacity-100 hover:text-green-900 hover:bg-white'"
               title="Add to Outfit Generator"
             >
               <CheckCircle v-if="isOutfitSelected(String(item.id))" class="w-5 h-5 fill-current" />
@@ -865,7 +865,7 @@ onUnmounted(() => {
 
           <div
             v-if="filteredItems.length === 0"
-            class="col-span-full flex flex-col items-center justify-center text-gray-400 py-12"
+            class="col-span-full flex flex-col items-center justify-center text-green-600 py-12"
           >
             <Shirt class="w-12 h-12 mb-2 opacity-20" />
             <p class="text-sm" v-if="uploadedItems.length === 0">No items yet.</p>
@@ -933,7 +933,7 @@ onUnmounted(() => {
             <button
               @click="confirmAddItems"
               :disabled="isConfirming"
-              class="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span>{{ isConfirming ? 'Adding...' : `Add Selected (${pendingItems.filter(i => i.selected).length})` }}</span>
               <span v-if="isConfirming" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>

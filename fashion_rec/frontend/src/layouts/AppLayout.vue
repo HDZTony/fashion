@@ -1,17 +1,17 @@
 <template>
-  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
-    <nav class="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
+    <nav class="sticky top-0 z-50 w-full border-b border-green-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <router-link to="/" class="flex items-center space-x-2">
-          <span class="text-2xl font-bold tracking-tight">Fashion Rec</span>
+          <span class="text-2xl font-bold tracking-tight text-green-800">Fashion Rec</span>
           <!-- Version Badge -->
           <span 
             v-if="!isLoadingVersion && currentVersion" 
             :class="[
               'px-2 py-0.5 text-xs font-semibold rounded-full',
               isV2 
-                ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                : 'bg-gray-100 text-gray-700 border border-gray-200'
+                ? 'bg-green-100 text-green-700 border border-green-200' 
+                : 'bg-green-50 text-green-600 border border-green-200'
             ]"
             :title="`Current version: ${currentVersion}`"
           >
@@ -19,13 +19,13 @@
           </span>
         </router-link>
         <div class="flex items-center gap-4">
-          <router-link to="/studio" class="text-sm text-gray-600 hover:text-black">Studio</router-link>
-          <router-link to="/wardrobe" class="text-sm text-gray-600 hover:text-black">Wardrobe</router-link>
-          <router-link to="/tryon-history" class="text-sm text-gray-600 hover:text-black">Outfit History</router-link>
-          <router-link to="/favorites" class="text-sm text-gray-600 hover:text-black flex items-center gap-1">
+          <router-link to="/studio" class="text-sm text-green-700 hover:text-green-900 transition-colors">Studio</router-link>
+          <router-link to="/wardrobe" class="text-sm text-green-700 hover:text-green-900 transition-colors">Wardrobe</router-link>
+          <router-link to="/tryon-history" class="text-sm text-green-700 hover:text-green-900 transition-colors">Outfit History</router-link>
+          <router-link to="/favorites" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
             <Heart class="w-4 h-4" /> Favorites
           </router-link>
-          <router-link to="/profile" class="text-sm text-gray-600 hover:text-black flex items-center gap-1">
+          <router-link to="/profile" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
             <User class="w-4 h-4" />
             Profile
           </router-link>

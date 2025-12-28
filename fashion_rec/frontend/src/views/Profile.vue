@@ -426,40 +426,40 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-green-50/20">
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="max-w-4xl mx-auto space-y-8">
         <div>
-          <h1 class="text-3xl font-bold text-gray-900">Profile</h1>
-          <p class="text-gray-600 mt-2">View your subscription status and remaining tries</p>
+          <h1 class="text-3xl font-bold text-green-800">Profile</h1>
+          <p class="text-green-700 mt-2">View your subscription status and remaining tries</p>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-gray-900">Subscription</h2>
-              <span class="text-sm text-gray-500">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
+              <h2 class="text-lg font-semibold text-green-800">Subscription</h2>
+              <span class="text-sm text-green-600">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
             </div>
             <div class="space-y-3">
-              <div class="flex justify-between text-sm text-gray-600">
+              <div class="flex justify-between text-sm text-green-700">
                 <span>Current plan</span>
-                <span class="font-semibold text-gray-900">{{ planDisplay }}</span>
+                <span class="font-semibold text-green-900">{{ planDisplay }}</span>
               </div>
-              <div class="flex justify-between text-sm text-gray-600">
+              <div class="flex justify-between text-sm text-green-700">
                 <span>Status</span>
-                <span class="font-semibold text-gray-900">{{ status }}</span>
+                <span class="font-semibold text-green-900">{{ status }}</span>
               </div>
-              <div class="flex justify-between text-sm text-gray-600">
+              <div class="flex justify-between text-sm text-green-700">
                 <span>Remaining tries</span>
-                <span class="font-semibold text-gray-900">{{ remainingTries }} / {{ totalTries }}</span>
+                <span class="font-semibold text-green-900">{{ remainingTries }} / {{ totalTries }}</span>
               </div>
-              <div class="flex justify-between text-sm text-gray-600" v-if="nextResetDate">
+              <div class="flex justify-between text-sm text-green-700" v-if="nextResetDate">
                 <span>Next reset</span>
-                <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
+                <span class="font-semibold text-green-900">{{ nextResetDate }}</span>
               </div>
             </div>
             <!-- 退订按钮：只在付费计划且状态为 active/trialing 时显示 -->
-            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-gray-200">
+            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-green-200">
               <Button 
                 variant="outline" 
                 class="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -472,11 +472,11 @@ onMounted(async () => {
             <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
           </div>
 
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-gray-900">Account</h2>
+              <h2 class="text-lg font-semibold text-green-800">Account</h2>
             </div>
-            <div class="space-y-3 text-sm text-gray-700">
+            <div class="space-y-3 text-sm text-green-700">
               <p>Sign-in email: <span class="font-semibold">{{ userEmail }}</span></p>
               <p>Billing period: <span class="font-semibold">{{ subscriptionInfo?.period || 'daily' }}</span></p>
               <p>Tip: upgrade to get more try-ons and priority processing.</p>
@@ -489,30 +489,30 @@ onMounted(async () => {
         </div>
 
         <!-- Plans -->
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+        <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6 space-y-4">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Plans</h2>
-            <span class="text-sm text-gray-500">Upgrade or downgrade</span>
+            <h2 class="text-lg font-semibold text-green-800">Plans</h2>
+            <span class="text-sm text-green-600">Upgrade or downgrade</span>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
             <div
               v-for="plan in plans"
               :key="plan.slug"
               class="border rounded-xl p-4 space-y-3"
-              :class="plan.slug === planSlug ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200'"
+              :class="plan.slug === planSlug ? 'border-green-500 bg-green-50/50' : 'border-green-200'"
             >
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="font-semibold text-gray-900">{{ plan.name }}</p>
-                  <p class="text-sm text-gray-500">{{ plan.price }}</p>
+                  <p class="font-semibold text-green-900">{{ plan.name }}</p>
+                  <p class="text-sm text-green-600">{{ plan.price }}</p>
                 </div>
                 <span
                   v-if="plan.slug === planSlug"
-                  class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700"
+                  class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700"
                 >Current</span>
               </div>
-              <p class="text-sm text-gray-600">Includes: {{ plan.tries }}</p>
-              <p class="text-sm text-gray-500">{{ plan.desc }}</p>
+              <p class="text-sm text-green-700">Includes: {{ plan.tries }}</p>
+              <p class="text-sm text-green-600">{{ plan.desc }}</p>
               <Button
                 class="w-full"
                 :variant="plan.slug === planSlug ? 'outline' : 'default'"

@@ -1480,23 +1480,23 @@ const searchOnGoogle = (description: string) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
     <main class="space-y-8">
       <!-- Describe today & generate outfits -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2">Tell AI about your day</h2>
-          <p class="text-sm text-gray-500">
+          <h2 class="text-2xl font-bold mb-2 text-green-800">Tell AI about your day</h2>
+          <p class="text-sm text-green-700">
         Describe today’s weather, city, scene, and style preferences; AI will use your wardrobe to create outfits.
           </p>
         </div>
         <div class="flex flex-col gap-4">
           <div class="w-full space-y-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">
+            <label class="block text-sm font-medium text-green-700 mb-1">
               Describe today and your style
             </label>
             <!-- Rich input wrapper with integrated image upload -->
-            <div class="relative border border-gray-200 rounded-xl bg-white transition-all focus-within:border-gray-400 focus-within:shadow-md">
+            <div class="relative border border-green-200 rounded-xl bg-white transition-all focus-within:border-green-400 focus-within:shadow-md">
               <textarea
                 v-model="customPrompt"
                 rows="3"
@@ -1545,11 +1545,11 @@ const searchOnGoogle = (description: string) => {
               </div>
               
               <!-- Toolbar with image upload button -->
-              <div class="flex items-center justify-between px-4 py-2 border-t border-gray-100">
+              <div class="flex items-center justify-between px-4 py-2 border-t border-green-100">
                 <div class="flex items-center gap-2">
                   <label
                     for="sceneImageInput"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-green-600 hover:text-green-900 hover:bg-green-50 cursor-pointer transition-colors"
                     title="Upload a reference scene image"
                   >
                     <Upload class="w-4 h-4" />
@@ -1564,7 +1564,7 @@ const searchOnGoogle = (description: string) => {
                   />
                   <button
                     @click="showSceneImageHistory = !showSceneImageHistory"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-green-600 hover:text-green-900 hover:bg-green-50 cursor-pointer transition-colors"
                     title="Pick from scene history"
                   >
                     <Clock class="w-4 h-4" />
@@ -1576,7 +1576,7 @@ const searchOnGoogle = (description: string) => {
             </div>
             
             <!-- Helper text below input -->
-            <p class="text-xs text-gray-500 px-1">
+            <p class="text-xs text-green-600 px-1">
               Upload a photo of your environment (office, cafe, outdoors, etc.). AI will use it as the scene reference.
             </p>
             
@@ -1637,18 +1637,18 @@ const searchOnGoogle = (description: string) => {
             <button 
               @click="getRecommendations" 
               :disabled="isGenerating"
-              class="bg-black text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-gray-800 disabled:opacity-50 transition-colors shadow-lg shadow-black/20 w-full justify-center sm:w-auto"
+              class="bg-green-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 transition-colors shadow-lg shadow-green-500/20 w-full justify-center sm:w-auto"
             >
               <Wand2 class="w-5 h-5" />
               {{ isGenerating ? 'AI is Thinking...' : 'Generate Outfit' }}
             </button>
             <!-- AI branding and transparency note -->
-            <div class="flex items-center gap-2 text-xs text-gray-500">
-              <span class="font-medium text-gray-700">fashion</span>
-              <span class="text-gray-400">|</span>
+            <div class="flex items-center gap-2 text-xs text-green-600">
+              <span class="font-medium text-green-700">fashion</span>
+              <span class="text-green-400">|</span>
               <span>Powered by Qwen</span>
-              <span class="text-gray-400">|</span>
-              <span class="text-gray-400">Independent service</span>
+              <span class="text-green-400">|</span>
+              <span class="text-green-400">Independent service</span>
             </div>
           </div>
           
@@ -1744,32 +1744,32 @@ const searchOnGoogle = (description: string) => {
       </section>
 
       <!-- Applied Outfit Items - Independent Section -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2">Applied Outfit Items</h2>
-          <p class="text-sm text-gray-500">
+          <h2 class="text-2xl font-bold mb-2 text-green-800">Applied Outfit Items</h2>
+          <p class="text-sm text-green-700">
             Items currently in this outfit. Remove items or generate suggestions for missing roles.
           </p>
         </div>
         
-        <div class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
+        <div class="p-4 border border-green-100 rounded-xl bg-green-50/50">
           <div class="flex items-center justify-between mb-3">
-            <p class="text-sm font-medium text-gray-700">
+            <p class="text-sm font-medium text-green-700">
               Applied outfit items ({{ activeWardrobeItems.length }})
             </p>
-            <p v-if="getMissingRoles().length > 0" class="text-xs text-blue-600">
+            <p v-if="getMissingRoles().length > 0" class="text-xs text-green-600">
               {{ getMissingRoles().length }} roles removed; re-generate to fill them.
             </p>
           </div>
           
           <!-- Empty state -->
           <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
-            <Shirt class="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p class="text-sm text-gray-500 mb-2">No items selected yet</p>
-            <p class="text-xs text-gray-400 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
+            <Shirt class="w-12 h-12 mx-auto mb-3 text-green-300" />
+            <p class="text-sm text-green-700 mb-2">No items selected yet</p>
+            <p class="text-xs text-green-600 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
             <button
               @click="$router.push('/wardrobe')"
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:border-black hover:text-black transition-colors"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-green-200 text-green-700 hover:border-green-600 hover:text-green-900 transition-colors"
             >
               <Shirt class="w-4 h-4" />
               Go to Wardrobe
@@ -1788,7 +1788,7 @@ const searchOnGoogle = (description: string) => {
                   @click="openImageViewer(index)"
                   class="cursor-pointer"
                 >
-                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 transition-all hover:shadow-lg bg-gray-200">
+                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-green-200 hover:border-green-500 transition-all hover:shadow-lg bg-green-100">
                     <img
                       v-if="item.url || item.features.path"
                       :src="item.url || item.features.path"
@@ -1808,10 +1808,10 @@ const searchOnGoogle = (description: string) => {
                 </button>
               </div>
               <div class="mt-1 text-center">
-                <p class="text-xs text-gray-600 truncate max-w-[80px]">
+                <p class="text-xs text-green-700 truncate max-w-[80px]">
                   {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
                 </p>
-                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-gray-400 truncate max-w-[80px]">
+                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-green-600 truncate max-w-[80px]">
                   {{ activeWardrobeRoleMap.get(String(item.id)) }}
                 </p>
               </div>
@@ -1823,10 +1823,10 @@ const searchOnGoogle = (description: string) => {
       <!-- Step 2 moved to dedicated Wardrobe page -->
 
       <!-- Step 3: Review outfits & virtual try-on -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-8">
         <div>
-          <h2 class="text-2xl font-bold mb-2">Review outfits & try on</h2>
-          <p class="text-sm text-gray-500">
+          <h2 class="text-2xl font-bold mb-2 text-green-800">Review outfits & try on</h2>
+          <p class="text-sm text-green-700">
             先从衣橱中选择你想要的单品，让 AI 补齐整套穿搭，然后上传模特照片进行虚拟试穿。
           </p>
         </div>
@@ -2022,30 +2022,30 @@ const searchOnGoogle = (description: string) => {
             <button
               @click="performTryOn"
               :disabled="!activeWardrobeItems.length || isTryingOn"
-              class="px-4 py-2 rounded-lg border border-purple-500 text-purple-600 hover:border-purple-700 hover:text-purple-800 hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-4 py-2 rounded-lg border border-green-500 text-green-600 hover:border-green-700 hover:text-green-800 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Wand2 v-if="!isTryingOn" class="w-4 h-4" />
-              <div v-else class="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+              <div v-else class="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
               <span>{{ isTryingOn ? 'Generating try-on...' : 'Try on this outfit' }}</span>
             </button>
             <!-- AI branding and transparency note (try-on) -->
-            <div class="flex items-center gap-2 text-xs text-gray-500">
-              <span class="font-medium text-gray-700">fashion</span>
-              <span class="text-gray-400">|</span>
+            <div class="flex items-center gap-2 text-xs text-green-600">
+              <span class="font-medium text-green-700">fashion</span>
+              <span class="text-green-400">|</span>
               <span>Powered by Qwen</span>
-              <span class="text-gray-400">|</span>
-              <span class="text-gray-400">Independent service</span>
+              <span class="text-green-400">|</span>
+              <span class="text-green-400">Independent service</span>
             </div>
           </div>
         </div>
 
         <!-- Try-on Loading State -->
-        <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-gray-100 rounded-xl bg-gray-50">
-          <div class="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p class="text-gray-500 animate-pulse mb-2">Generating virtual try-on...</p>
+        <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-green-100 rounded-xl bg-green-50">
+          <div class="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p class="text-green-700 animate-pulse mb-2">Generating virtual try-on...</p>
           <!-- AI branding and transparency note (loading) -->
-          <div class="flex items-center gap-2 text-xs text-gray-400">
-            <span class="font-medium text-gray-600">fashion</span>
+          <div class="flex items-center gap-2 text-xs text-green-600">
+            <span class="font-medium text-green-700">fashion</span>
             <span>|</span>
             <span>Powered by Qwen</span>
             <span>|</span>
@@ -2107,17 +2107,17 @@ const searchOnGoogle = (description: string) => {
     </main>
     
     <!-- Footer -->
-    <footer class="mt-12 pt-8 border-t border-gray-200 pb-8">
-      <div class="flex justify-center gap-6 text-sm text-gray-500">
-        <router-link to="/privacy-policy" class="hover:text-black transition-colors">
+    <footer class="mt-12 pt-8 border-t border-green-200 pb-8">
+      <div class="flex justify-center gap-6 text-sm text-green-600">
+        <router-link to="/privacy-policy" class="hover:text-green-900 transition-colors">
           Privacy Policy
         </router-link>
-        <span class="text-gray-300">|</span>
-        <router-link to="/terms-of-service" class="hover:text-black transition-colors">
+        <span class="text-green-300">|</span>
+        <router-link to="/terms-of-service" class="hover:text-green-900 transition-colors">
           Terms of Service
         </router-link>
       </div>
-      <p class="text-center text-xs text-gray-400 mt-4">
+      <p class="text-center text-xs text-green-600 mt-4">
         © 2025 Fashion Rec. All rights reserved.
       </p>
     </footer>

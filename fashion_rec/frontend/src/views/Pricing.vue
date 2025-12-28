@@ -1,45 +1,45 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-gray-50 to-white py-12 px-4">
+  <div class="min-h-screen bg-gradient-to-b from-green-50/30 to-white py-12 px-4">
     <div class="max-w-7xl mx-auto">
       <!-- Header -->
       <div class="text-center mb-12">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">Choose the plan that fits you</h1>
-        <p class="text-lg text-gray-600">Unlock more virtual try-on power</p>
+        <h1 class="text-4xl font-bold text-green-800 mb-4">Choose the plan that fits you</h1>
+        <p class="text-lg text-green-700">Unlock more virtual try-on power</p>
       </div>
 
       <!-- Pricing Cards -->
       <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
         <!-- Free Plan -->
-        <div class="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-8 hover:border-blue-500 transition-all">
+        <div class="bg-white rounded-2xl shadow-lg border-2 border-green-200 p-8 hover:border-green-500 transition-all">
           <div class="text-center">
-            <h2 class="text-2xl font-bold text-gray-900 mb-2">Free</h2>
+            <h2 class="text-2xl font-bold text-green-800 mb-2">Free</h2>
             <div class="mb-6">
-              <span class="text-5xl font-bold text-gray-900">$0</span>
-              <span class="text-gray-600 ml-2">/mo</span>
+              <span class="text-5xl font-bold text-green-800">$0</span>
+              <span class="text-green-700 ml-2">/mo</span>
             </div>
             <ul class="text-left space-y-4 mb-8">
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span class="text-gray-700">3 virtual try-ons per day (first 3 tries are free for all plans)</span>
+                <span class="text-green-700">3 virtual try-ons per day (first 3 tries are free for all plans)</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span class="text-gray-700">Access to core features</span>
+                <span class="text-green-700">Access to core features</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span class="text-gray-700">Save your history</span>
+                <span class="text-green-700">Save your history</span>
               </li>
             </ul>
             <button
               @click="selectPlan('free')"
-              class="w-full py-3 px-6 rounded-lg font-semibold transition-all bg-gray-100 text-gray-900 hover:bg-gray-200"
+              class="w-full py-3 px-6 rounded-lg font-semibold transition-all bg-green-100 text-green-800 hover:bg-green-200"
             >
               Continue with Free
             </button>
@@ -47,7 +47,7 @@
         </div>
 
         <!-- Premium Plan -->
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl border-2 border-blue-500 p-8 text-white relative transform hover:scale-105 transition-all">
+        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-xl border-2 border-green-500 p-8 text-white relative transform hover:scale-105 transition-all">
           <!-- Popular Badge -->
           <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
             <span class="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold">Recommended</span>
@@ -57,7 +57,7 @@
             <h2 class="text-2xl font-bold mb-2">Premium</h2>
             <div class="mb-6">
               <span class="text-5xl font-bold">$5</span>
-              <span class="text-blue-100 ml-2">/mo</span>
+              <span class="text-green-100 ml-2">/mo</span>
             </div>
             <ul class="text-left space-y-4 mb-8">
               <li class="flex items-start">
@@ -91,8 +91,8 @@
               :class="[
                 'w-full py-3 px-6 rounded-lg font-semibold transition-all',
                 isLoading
-                  ? 'bg-white/80 text-blue-600 cursor-wait'
-                  : 'bg-white text-blue-600 hover:bg-blue-50'
+                  ? 'bg-white/80 text-green-600 cursor-wait'
+                  : 'bg-white text-green-600 hover:bg-green-50'
               ]"
             >
               {{ isLoading ? 'Processing...' : 'Subscribe now' }}
@@ -101,12 +101,12 @@
         </div>
 
         <!-- Premium Plus Plan -->
-        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl border-2 border-purple-500 p-8 text-white relative transform hover:scale-105 transition-all">
+        <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl shadow-xl border-2 border-emerald-500 p-8 text-white relative transform hover:scale-105 transition-all">
           <div class="text-center">
             <h2 class="text-2xl font-bold mb-2">Premium Plus</h2>
             <div class="mb-6">
               <span class="text-5xl font-bold">$15</span>
-              <span class="text-purple-100 ml-2">/mo</span>
+              <span class="text-emerald-100 ml-2">/mo</span>
             </div>
             <ul class="text-left space-y-4 mb-8">
               <li class="flex items-start">
@@ -125,7 +125,7 @@
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>Priority processing</span>
+                <span>Front and side views</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,8 +140,8 @@
               :class="[
                 'w-full py-3 px-6 rounded-lg font-semibold transition-all',
                 isLoading
-                  ? 'bg-white/80 text-purple-600 cursor-wait'
-                  : 'bg-white text-purple-600 hover:bg-purple-50'
+                  ? 'bg-white/80 text-emerald-600 cursor-wait'
+                  : 'bg-white text-emerald-600 hover:bg-emerald-50'
               ]"
             >
               {{ isLoading ? 'Processing...' : 'Subscribe now' }}
@@ -150,12 +150,12 @@
         </div>
 
         <!-- Premium Pro Plan -->
-        <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-xl border-2 border-indigo-500 p-8 text-white relative transform hover:scale-105 transition-all">
+        <div class="bg-gradient-to-br from-teal-500 to-teal-600 rounded-2xl shadow-xl border-2 border-teal-500 p-8 text-white relative transform hover:scale-105 transition-all">
           <div class="text-center">
             <h2 class="text-2xl font-bold mb-2">Premium Pro</h2>
             <div class="mb-6">
               <span class="text-5xl font-bold">$29.9</span>
-              <span class="text-indigo-100 ml-2">/mo</span>
+              <span class="text-teal-100 ml-2">/mo</span>
             </div>
             <ul class="text-left space-y-4 mb-8">
               <li class="flex items-start">
@@ -174,7 +174,7 @@
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>Priority processing</span>
+                <span>Comprehensive Perspective</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -189,8 +189,8 @@
               :class="[
                 'w-full py-3 px-6 rounded-lg font-semibold transition-all',
                 isLoading
-                  ? 'bg-white/80 text-indigo-600 cursor-wait'
-                  : 'bg-white text-indigo-600 hover:bg-indigo-50'
+                  ? 'bg-white/80 text-teal-600 cursor-wait'
+                  : 'bg-white text-teal-600 hover:bg-teal-50'
               ]"
             >
               {{ isLoading ? 'Processing...' : 'Subscribe now' }}

@@ -243,10 +243,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 font-sans text-gray-900">
+  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
-      <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2">
-        <Heart class="w-6 h-6 text-red-500 fill-current" />
+      <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2 text-green-800">
+        <Heart class="w-6 h-6 text-green-600 fill-current" />
         My Favorites
       </h1>
     </header>
@@ -256,8 +256,8 @@ onUnmounted(() => {
         v-if="isLoading"
         class="py-12 flex flex-col items-center justify-center"
       >
-        <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-gray-500">Loading favorites...</p>
+        <div class="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-green-700">Loading favorites...</p>
       </div>
 
       <div v-else-if="error" class="py-8 text-center text-red-600 text-sm">
@@ -265,16 +265,16 @@ onUnmounted(() => {
       </div>
 
       <div v-else-if="!favorites.length" class="py-12 text-center">
-        <Heart class="w-16 h-16 mx-auto mb-4 text-gray-300" />
-        <p class="text-gray-500 text-sm mb-2">No try-on results saved yet</p>
-        <p class="text-gray-400 text-xs">After you try on looks, tap Favorite to save what you like.</p>
+        <Heart class="w-16 h-16 mx-auto mb-4 text-green-300" />
+        <p class="text-green-700 text-sm mb-2">No try-on results saved yet</p>
+        <p class="text-green-600 text-xs">After you try on looks, tap Favorite to save what you like.</p>
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
           v-for="(favorite, index) in favorites"
           :key="favorite.id"
-          class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+          class="bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
         >
           <!-- Image -->
           <div
@@ -299,17 +299,17 @@ onUnmounted(() => {
                 <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-gray-500">
                   {{ favorite.garment_urls.length }} item(s)
                 </p>
-                <p v-if="favorite.scene_image_url" class="text-xs text-blue-500 mt-1">
+                <p v-if="favorite.scene_image_url" class="text-xs text-green-600 mt-1">
                   包含场景
                 </p>
               </div>
               <div class="flex items-center gap-1">
                 <button
                   @click.stop="restoreFavorite(favorite)"
-                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-blue-50 flex items-center justify-center transition-colors group"
+                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-green-50 flex items-center justify-center transition-colors group"
                   title="恢复到此试穿"
                 >
-                  <RotateCcw class="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                  <RotateCcw class="w-4 h-4 text-green-400 group-hover:text-green-600 transition-colors" />
                 </button>
                 <button
                   @click.stop="deleteFavorite(favorite.id)"

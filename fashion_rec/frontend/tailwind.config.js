@@ -42,6 +42,9 @@ export default {
   			input: 'hsl(var(--input))',
   			ring: 'hsl(var(--ring))'
   		},
+  		backgroundImage: {
+  			'natural-gradient': 'radial-gradient(circle at 20% 50%, rgba(142, 60%, 95%, 0.1) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(142, 50%, 90%, 0.08) 0%, transparent 50%)',
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

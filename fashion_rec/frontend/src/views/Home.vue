@@ -153,10 +153,10 @@ useHead({
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <!-- Hero Section -->
       <header class="text-center py-20" aria-label="Hero section">
-        <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
+        <h1 class="text-4xl font-bold tracking-tight text-green-800 sm:text-6xl">
           Your Style, Reimagined
         </h1>
-        <p class="mt-6 text-lg leading-8 text-gray-600 max-w-2xl mx-auto">
+        <p class="mt-6 text-lg leading-8 text-green-700 max-w-2xl mx-auto">
           AI-powered virtual try-on and personalized outfit recommendations. Discover your perfect look instantly with Fashion Rec.
         </p>
         <div class="mt-10 flex items-center justify-center gap-x-6">
@@ -173,13 +173,13 @@ useHead({
       </header>
 
       <!-- Use Cases Section -->
-      <section class="py-20 bg-gray-50">
+      <section class="py-20 bg-green-50/30">
         <div class="max-w-7xl mx-auto">
-          <h2 class="text-3xl font-bold text-center mb-12 text-gray-900">Solve Your Fashion Challenges</h2>
+          <h2 class="text-3xl font-bold text-center mb-12 text-green-800">Solve Your Fashion Challenges</h2>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <!-- Use Case 1: Avoid Duplicate Purchases -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <div class="aspect-[5/8] bg-gray-100 flex items-center justify-center">
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-green-100">
+              <div class="aspect-[5/8] bg-green-50 flex items-center justify-center">
                 <img
                   src="/images/use-cases/duplicate-clothes.png"
                   alt="Person organizing wardrobe to avoid duplicate purchases"
@@ -187,16 +187,16 @@ useHead({
                 />
               </div>
               <div class="p-6">
-                <h3 class="text-xl font-semibold mb-3 text-gray-900">Avoid Duplicate Purchases</h3>
-                <p class="text-gray-600">
+                <h3 class="text-xl font-semibold mb-3 text-green-800">Avoid Duplicate Purchases</h3>
+                <p class="text-green-700">
                   Keep track of your wardrobe in one place. Our smart wardrobe management helps you remember what you own, preventing you from buying the same clothes twice.
                 </p>
               </div>
             </div>
 
             <!-- Use Case 2: Preview Before Buying -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <div class="aspect-[5/8] bg-gray-100 flex items-center justify-center">
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-green-100">
+              <div class="aspect-[5/8] bg-green-50 flex items-center justify-center">
                 <img
                   src="/images/use-cases/online-preview.png"
                   alt="Person using phone to preview online clothes"
@@ -204,16 +204,16 @@ useHead({
                 />
               </div>
               <div class="p-6">
-                <h3 class="text-xl font-semibold mb-3 text-gray-900">Preview Before Buying</h3>
-                <p class="text-gray-600">
+                <h3 class="text-xl font-semibold mb-3 text-green-800">Preview Before Buying</h3>
+                <p class="text-green-700">
                   Unsure how that online purchase will look on you? Try it on virtually first. Our AI virtual try-on lets you see the fit and style before you buy.
                 </p>
               </div>
             </div>
 
             <!-- Use Case 3: Daily Outfit Ideas -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <div class="aspect-[5/8] bg-gray-100 flex items-center justify-center">
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-green-100">
+              <div class="aspect-[5/8] bg-green-50 flex items-center justify-center">
                 <img
                   src="/images/use-cases/daily-outfit.png"
                   alt="Person deciding what to wear today"
@@ -221,8 +221,8 @@ useHead({
                 />
               </div>
               <div class="p-6">
-                <h3 class="text-xl font-semibold mb-3 text-gray-900">Get Daily Outfit Ideas</h3>
-                <p class="text-gray-600">
+                <h3 class="text-xl font-semibold mb-3 text-green-800">Get Daily Outfit Ideas</h3>
+                <p class="text-green-700">
                   Not sure what to wear today? Get personalized outfit recommendations based on your wardrobe, style preferences, and the occasion.
                 </p>
               </div>
@@ -240,26 +240,26 @@ useHead({
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
               </svg>
             </div>
-            <h3 class="text-xl font-semibold mb-2">Personalized Wardrobe</h3>
-            <p class="text-gray-600">Manage your closet and keep your outfit history.</p>
+            <h3 class="text-xl font-semibold mb-2 text-green-800">Personalized Wardrobe</h3>
+            <p class="text-green-700">Manage your closet and keep your outfit history.</p>
           </div>
           <div class="text-center">
-            <div class="mx-auto h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-              <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
             </div>
-            <h3 class="text-xl font-semibold mb-2">AI Virtual Try-On</h3>
-            <p class="text-gray-600">Advanced AI lets you preview outfits effortlessly.</p>
+            <h3 class="text-xl font-semibold mb-2 text-green-800">AI Virtual Try-On</h3>
+            <p class="text-green-700">Advanced AI lets you preview outfits effortlessly.</p>
           </div>
           <div class="text-center">
-            <div class="mx-auto h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center mb-4">
-              <svg class="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
               </svg>
             </div>
-            <h3 class="text-xl font-semibold mb-2">Smart Recommendations</h3>
-            <p class="text-gray-600">Get outfit picks tailored to your style and preferences.</p>
+            <h3 class="text-xl font-semibold mb-2 text-green-800">Smart Recommendations</h3>
+            <p class="text-green-700">Get outfit picks tailored to your style and preferences.</p>
           </div>
         </div>
       </section>
@@ -267,21 +267,21 @@ useHead({
     </main>
 
     <!-- FAQ Section -->
-    <section class="bg-gray-50 py-20">
+    <section class="bg-green-50/30 py-20">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-3xl mx-auto">
-          <h2 class="text-3xl font-bold text-center mb-12 text-gray-900">Frequently Asked Questions</h2>
+          <h2 class="text-3xl font-bold text-center mb-12 text-green-800">Frequently Asked Questions</h2>
           <Accordion type="single" collapsible class="w-full">
             <AccordionItem
               v-for="(faq, index) in faqs"
               :key="index"
               :value="`item-${index}`"
-              class="border-b border-gray-200"
+              class="border-b border-green-200"
             >
-              <AccordionTrigger class="text-left font-semibold text-gray-900 hover:no-underline py-4">
+              <AccordionTrigger class="text-left font-semibold text-green-800 hover:no-underline py-4">
                 {{ faq.question }}
               </AccordionTrigger>
-              <AccordionContent class="text-gray-600 pb-4 pt-0">
+              <AccordionContent class="text-green-700 pb-4 pt-0">
                 {{ faq.answer }}
               </AccordionContent>
             </AccordionItem>
@@ -291,17 +291,17 @@ useHead({
     </section>
 
     <!-- Social Media Section -->
-    <footer class="bg-white border-t border-gray-200 py-12">
+    <footer class="bg-white border-t border-green-200 py-12">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-4xl mx-auto">
-          <h3 class="text-2xl font-bold text-center mb-8 text-gray-900">Follow Us</h3>
+          <h3 class="text-2xl font-bold text-center mb-8 text-green-800">Follow Us</h3>
           <div class="flex justify-center items-center gap-6 flex-wrap">
             <!-- 社交媒体图标 - 使用SVG图标，您也可以替换为图片 -->
             <a
               href="https://x.com/hedongzhouu?s=21"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-900 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
               aria-label="X"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -312,7 +312,7 @@ useHead({
               href="https://www.instagram.com/dongzhouhe?igsh=MXR5cmhpeHlzbHp6dw%3D%3D&utm_source=qr"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 hover:bg-pink-500 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
               aria-label="Instagram"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -323,7 +323,7 @@ useHead({
               href="www.youtube.com/@dongzhouhe"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 hover:bg-red-600 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
               aria-label="YouTube"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -334,7 +334,7 @@ useHead({
               href="https://discord.gg/7cDGjf6S"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 hover:bg-indigo-600 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
               aria-label="Discord"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -342,7 +342,7 @@ useHead({
               </svg>
             </a>
           </div>
-          <p class="text-center text-gray-600 mt-8 text-sm">
+          <p class="text-center text-green-700 mt-8 text-sm">
             © 2025 Fashion Rec. All rights reserved.
           </p>
         </div>
