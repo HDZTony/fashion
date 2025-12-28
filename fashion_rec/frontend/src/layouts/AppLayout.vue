@@ -4,6 +4,19 @@
       <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <router-link to="/" class="flex items-center space-x-2">
           <span class="text-2xl font-bold tracking-tight">Fashion Rec</span>
+          <!-- Version Badge -->
+          <span 
+            v-if="!isLoadingVersion && currentVersion" 
+            :class="[
+              'px-2 py-0.5 text-xs font-semibold rounded-full',
+              isV2 
+                ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                : 'bg-gray-100 text-gray-700 border border-gray-200'
+            ]"
+            :title="`Current version: ${currentVersion}`"
+          >
+            {{ isV2 ? 'V2' : 'Stable' }}
+          </span>
         </router-link>
         <div class="flex items-center gap-4">
           <router-link to="/studio" class="text-sm text-gray-600 hover:text-black">Studio</router-link>
@@ -26,6 +39,14 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { Heart, User } from 'lucide-vue-next'
+import { useVersion } from '@/composables/useVersion'
+
+const { currentVersion, getVersion, isV2, isLoading: isLoadingVersion } = useVersion()
+
+onMounted(async () => {
+  await getVersion()
+})
 </script>
 

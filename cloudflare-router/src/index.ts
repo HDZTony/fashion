@@ -368,6 +368,31 @@ export default {
       const url = new URL(request.url)
       const path = url.pathname
 
+      // Handle API endpoint for getting user version
+      if (path === '/api/router/get-version' && request.method === 'GET') {
+        const userId = extractUserIdFromCookie(request)
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        }
+
+        try {
+          const version = await getUserVersion(userId, env)
+          return new Response(JSON.stringify({ version }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        } catch (error) {
+          console.error('[Router] Error getting user version:', error)
+          return new Response(JSON.stringify({ error: 'Failed to get version' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        }
+      }
+
       // Handle API endpoint for setting user version
       if (path === '/api/router/set-version' && request.method === 'POST') {
         const userId = extractUserIdFromCookie(request)
