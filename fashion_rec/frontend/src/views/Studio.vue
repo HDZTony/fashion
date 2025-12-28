@@ -1826,9 +1826,6 @@ const searchOnGoogle = (description: string) => {
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-8">
         <div>
           <h2 class="text-2xl font-bold mb-2 text-green-800">Review outfits & try on</h2>
-          <p class="text-sm text-green-700">
-            先从衣橱中选择你想要的单品，让 AI 补齐整套穿搭，然后上传模特照片进行虚拟试穿。
-          </p>
         </div>
 
         <!-- Model photo uploader with integrated empty state -->
