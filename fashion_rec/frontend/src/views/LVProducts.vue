@@ -4,8 +4,7 @@ import { ref, onMounted, computed } from 'vue'
 import { Search, ExternalLink, Download, Loader2, ShoppingBag } from 'lucide-vue-next'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_URL } from '@/config/api'
 
 // Axios client with auth headers
 const apiClient = axios.create({

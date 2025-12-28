@@ -9,6 +9,7 @@ import { useSEO } from '@/composables/useSEO'
 import { siteBaseUrl } from '@/config/seo'
 import axios from 'axios'
 import { supabase } from '@/lib/supabase'
+import { API_URL } from '@/config/api'
 
 defineOptions({ name: 'Home' })
 
@@ -17,8 +18,6 @@ const router = useRouter()
 const authStore = useAuthStore()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isSettingVersion = ref(false)
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 // Set user version when entering studio
 const setUserVersion = async (version: 'stable' | 'v2' = 'v2') => {

@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
-import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/stores/auth'
 import { API_URL } from '@/config/api'
 
 /**
@@ -20,14 +20,15 @@ export function useVersion() {
     error.value = null
 
     try {
-      // Get auth token
-      const { data: { session } } = await supabase.auth.getSession()
-      let token = session?.access_token
-
-      // Fallback to localStorage
-      if (!token) {
-        token = localStorage.getItem('auth_token')
+      // Get auth token from Pinia auth store (priority: session -> localStorage -> cookie)
+      const authStore = useAuthStore()
+      
+      // Ensure session is loaded
+      if (authStore.isLoading) {
+        await authStore.loadSession()
       }
+      
+      const token = authStore.accessToken
 
       if (!token) {
         // If not authenticated, default to stable
@@ -65,14 +66,15 @@ export function useVersion() {
     error.value = null
 
     try {
-      // Get auth token
-      const { data: { session } } = await supabase.auth.getSession()
-      let token = session?.access_token
-
-      // Fallback to localStorage
-      if (!token) {
-        token = localStorage.getItem('auth_token')
+      // Get auth token from Pinia auth store
+      const authStore = useAuthStore()
+      
+      // Ensure session is loaded
+      if (authStore.isLoading) {
+        await authStore.loadSession()
       }
+      
+      const token = authStore.accessToken
 
       if (!token) {
         error.value = 'Not authenticated'

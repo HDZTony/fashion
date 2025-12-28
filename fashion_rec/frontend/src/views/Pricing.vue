@@ -214,12 +214,11 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { supabase } from '../lib/supabase'
+import { API_URL, SUBSCRIPTION_API_URL } from '@/config/api'
 
 defineOptions({ name: 'Pricing' })
 
 const router = useRouter()
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
 
 const isLoading = ref(false)
 const error = ref<string | null>(null)

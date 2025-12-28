@@ -19,8 +19,33 @@
  * - Production: https://fashion.hdz73.com (production Cloudflare Router)
  * - All environments use Cloudflare Router for consistency (no direct backend connection)
  * - Default fallback: http://127.0.0.1:8787 (local development)
+ * 
+ * IMPORTANT: In local development, this MUST point to cloudflare-router (port 8787).
+ * The router handles version routing to appropriate backend versions.
  */
-export const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8787'
+// Force use cloudflare-router in development
+const envApiUrl = import.meta.env.VITE_API_URL
+const isProdMode = import.meta.env.PROD || import.meta.env.MODE === 'production'
+const defaultDevUrl = 'http://127.0.0.1:8787'
+const defaultProdUrl = 'https://fashion.hdz73.com'
+
+export const API_URL = (() => {
+  // In production, use env or production default
+  if (isProdMode) {
+    return envApiUrl || defaultProdUrl
+  }
+  
+  // In development:
+  // - If env is explicitly set to cloudflare-router or production URL, use it
+  // - Otherwise use default cloudflare-router URL
+  if (envApiUrl && (envApiUrl.includes('8787') || envApiUrl.includes('hdz73.com'))) {
+    return envApiUrl
+  }
+  
+  // Force use cloudflare-router for development
+  return defaultDevUrl
+})()
+
 
 /**
  * Subscription Service API URL

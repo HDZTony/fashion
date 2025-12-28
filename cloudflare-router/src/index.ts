@@ -368,13 +368,45 @@ export default {
       const url = new URL(request.url)
       const path = url.pathname
 
+      // Helper function to get CORS headers
+      const getCorsHeaders = (origin: string | null) => {
+        // If request has origin, use it; otherwise use wildcard (for non-credential requests)
+        const allowOrigin = origin || '*'
+        const headers: Record<string, string> = {
+          'Access-Control-Allow-Origin': allowOrigin,
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400',
+        }
+        // Only add credentials header if we're using a specific origin (not wildcard)
+        if (origin) {
+          headers['Access-Control-Allow-Credentials'] = 'true'
+        }
+        return headers
+      }
+
+      // Handle CORS preflight for router API endpoints
+      if ((path === '/api/router/get-version' || path === '/api/router/set-version') && request.method === 'OPTIONS') {
+        const origin = request.headers.get('Origin')
+        return new Response(null, {
+          status: 204,
+          headers: getCorsHeaders(origin)
+        })
+      }
+
       // Handle API endpoint for getting user version
       if (path === '/api/router/get-version' && request.method === 'GET') {
         const userId = extractUserIdFromCookie(request)
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+
         if (!userId) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), {
             status: 401,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
           })
         }
 
@@ -382,24 +414,36 @@ export default {
           const version = await getUserVersion(userId, env)
           return new Response(JSON.stringify({ version }), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
           })
         } catch (error) {
           console.error('[Router] Error getting user version:', error)
           return new Response(JSON.stringify({ error: 'Failed to get version' }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
           })
         }
       }
 
       // Handle API endpoint for setting user version
       if (path === '/api/router/set-version' && request.method === 'POST') {
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+        
         const userId = extractUserIdFromCookie(request)
         if (!userId) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), {
             status: 401,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
           })
         }
 
@@ -410,7 +454,10 @@ export default {
           if (!version || (version !== 'stable' && version !== 'v2')) {
             return new Response(JSON.stringify({ error: 'Invalid version' }), {
               status: 400,
-              headers: { 'Content-Type': 'application/json' }
+              headers: { 
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
             })
           }
 
@@ -418,18 +465,27 @@ export default {
           if (success) {
             return new Response(JSON.stringify({ success: true, version }), {
               status: 200,
-              headers: { 'Content-Type': 'application/json' }
+              headers: { 
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
             })
           } else {
             return new Response(JSON.stringify({ error: 'Failed to set version' }), {
               status: 500,
-              headers: { 'Content-Type': 'application/json' }
+              headers: { 
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
             })
           }
         } catch (error) {
           return new Response(JSON.stringify({ error: 'Invalid request body' }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
           })
         }
       }
