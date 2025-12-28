@@ -75,7 +75,6 @@ const planSlug = computed(() => {
 })
 const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2, premium_pro: 3 }
 const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
-const totalTries = computed(() => subscriptionInfo.value?.totalTries ?? 0)
 const nextResetDate = computed(() => {
   const dateStr = subscriptionInfo.value?.nextResetDate
   if (!dateStr) return ''
@@ -451,7 +450,7 @@ onMounted(async () => {
               </div>
               <div class="flex justify-between text-sm text-green-700">
                 <span>Remaining tries</span>
-                <span class="font-semibold text-green-900">{{ remainingTries }} / {{ totalTries }}</span>
+                <span class="font-semibold text-green-900">{{ remainingTries }}</span>
               </div>
               <div class="flex justify-between text-sm text-green-700" v-if="nextResetDate">
                 <span>Next reset</span>
