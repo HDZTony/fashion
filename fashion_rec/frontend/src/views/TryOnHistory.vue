@@ -39,10 +39,12 @@ const error = ref('')
 const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
+const currentPage = ref(1)
+const pageSize = ref(20)
+const totalItems = ref(0)
+const totalPages = ref(0)
 
-
-
-const loadHistory = async () => {
+const loadHistory = async (page: number = 1) => {
   // Prevent duplicate concurrent calls
   if (isLoading.value) {
     return
@@ -52,8 +54,22 @@ const loadHistory = async () => {
   error.value = ''
   try {
     // Interceptor automatically adds Authorization header from Supabase session or cookie
-    const response = await apiClient.get<{ history: TryOnHistoryItem[] }>('/tryon-history')
+    const response = await apiClient.get<{ 
+      history: TryOnHistoryItem[]
+      total: number
+      page: number
+      limit: number
+      total_pages: number
+    }>('/tryon-history', {
+      params: {
+        page: page,
+        limit: pageSize.value
+      }
+    })
     historyItems.value = response.data.history || []
+    totalItems.value = response.data.total || 0
+    currentPage.value = response.data.page || page
+    totalPages.value = response.data.total_pages || 0
 
   } catch (e: any) {
     console.error('Failed to load try-on history:', e)
@@ -72,14 +88,19 @@ const loadHistory = async () => {
 }
 
 const deleteHistoryItem = async (historyId: string) => {
-if (!confirm('Delete this try-on history item?')) {
+  if (!confirm('Delete this try-on history item?')) {
     return
   }
   
   try {
     // Interceptor automatically adds Authorization header from Supabase session
     await apiClient.delete(`/tryon-history/${historyId}`)
-    await loadHistory()
+    // Reload current page, or go to previous page if current page becomes empty
+    await loadHistory(currentPage.value)
+    // If current page is empty and not first page, go to previous page
+    if (historyItems.value.length === 0 && currentPage.value > 1) {
+      await loadHistory(currentPage.value - 1)
+    }
   } catch (e: any) {
     console.error('Failed to delete history item:', e)
     alert(e?.response?.data?.detail || e?.message || 'Delete failed')
@@ -241,12 +262,19 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
         <p class="text-green-600 text-xs">After you try on looks, results will be saved here automatically.</p>
       </div>
 
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div
-          v-for="(item, index) in historyItems"
-          :key="item.id"
-          class="bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
-        >
+      <div v-else>
+        <!-- Statistics -->
+        <div v-if="totalItems > 0" class="mb-4 text-sm text-green-700">
+          Showing {{ historyItems.length }} of {{ totalItems }} item(s)
+        </div>
+        
+        <!-- History Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div
+            v-for="(item, index) in historyItems"
+            :key="item.id"
+            class="bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+          >
           <!-- Image -->
           <div
             @click="openImageViewer(index)"
@@ -296,6 +324,28 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
               </div>
             </div>
           </div>
+          </div>
+        </div>
+        
+        <!-- Pagination -->
+        <div v-if="totalPages > 1" class="mt-8 flex justify-center items-center gap-4">
+          <button
+            @click="loadHistory(currentPage - 1)"
+            :disabled="currentPage === 1 || isLoading"
+            class="px-4 py-2 border border-green-300 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed text-green-700 transition-colors"
+          >
+            Previous
+          </button>
+          <span class="px-4 py-2 text-green-700 text-sm">
+            Page {{ currentPage }} of {{ totalPages }}
+          </span>
+          <button
+            @click="loadHistory(currentPage + 1)"
+            :disabled="currentPage === totalPages || isLoading"
+            class="px-4 py-2 border border-green-300 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed text-green-700 transition-colors"
+          >
+            Next
+          </button>
         </div>
       </div>
     </main>

@@ -281,51 +281,110 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
         raise
 
 
-def list_tryon_history(user_id: str, user_token: Optional[str] = None) -> List[Dict[str, Any]]:
+def count_tryon_history(user_id: str, user_token: Optional[str] = None) -> int:
     """
-    List try-on history for a user.
-    Returns all records without filtering. Expired records are cleaned up by periodic cleanup task.
+    Count total try-on history records for a user.
     
     Args:
         user_id: The user ID to query
         user_token: JWT token for authenticated requests. Required for RLS policies to work correctly.
                    If provided, creates an authenticated client that respects RLS policies.
                    If None, uses service role key (if available) or anon key (may be blocked by RLS).
+    
+    Returns:
+        Total count of records
+    """
+    try:
+        # For read operations, use global client if it uses service role key
+        # Service role key bypasses RLS, and we already filter by user_id in the query
+        if SUPABASE_SERVICE_ROLE_KEY:
+            table = _table
+        elif user_token:
+            try:
+                client = create_authenticated_client(user_token, timeout=3.0)
+                table = client.table(TABLE_NAME)
+            except Exception as auth_error:
+                logger.warning(f"[Try-On History] Failed to create authenticated client for count, falling back to global client: {auth_error}")
+                table = _table
+        else:
+            table = _table
+        
+        _ensure_table_exists()
+        query_user_id = str(user_id).strip()
+        
+        # Count records using select with count (use head=True to avoid fetching data)
+        response = table.select("id", count="exact").eq("user_id", query_user_id).limit(0).execute()
+        count = response.count if hasattr(response, 'count') and response.count is not None else (len(response.data) if response.data else 0)
+        
+        logger.info(f"[Try-On History] Count query returned {count} record(s) for user {user_id}")
+        return count
+    except Exception as e:
+        logger.error(f"[Try-On History] Error counting history: {e}")
+        return 0
+
+
+def list_tryon_history(user_id: str, user_token: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> List[Dict[str, Any]]:
+    """
+    List try-on history for a user with pagination support.
+    Expired records are cleaned up by periodic cleanup task.
+    
+    Args:
+        user_id: The user ID to query
+        user_token: JWT token for authenticated requests. Required for RLS policies to work correctly.
+                   If provided, creates an authenticated client that respects RLS policies.
+                   If None, uses service role key (if available) or anon key (may be blocked by RLS).
+        limit: Maximum number of records to return (None for no limit, but recommended to use pagination)
+        offset: Number of records to skip (for pagination)
+    
+    Returns:
+        List of history records
     """
     try:
         # Log incoming user_id
-        logger.info(f"[Try-On History] Listing history for user_id: {user_id}")
+        logger.info(f"[Try-On History] Listing history for user_id: {user_id}, limit: {limit}, offset: {offset}")
         logger.info(f"[Try-On History] Table name: {TABLE_NAME}")
         
-        # Create authenticated client if user_token is provided
-        # This is required for RLS policies to work correctly with auth.uid()
-        if user_token:
+        # For read operations, use global client if it uses service role key
+        # Service role key bypasses RLS, and we already filter by user_id in the query
+        # This avoids timeout issues with set_session
+        # Only use authenticated client if we don't have service role key (using anon key)
+        if SUPABASE_SERVICE_ROLE_KEY:
+            # Use global client with service role key (bypasses RLS, but we filter by user_id)
+            table = _table
+            logger.info(f"[Try-On History] Using global client with service role key (read operation)")
+        elif user_token:
+            # Only use authenticated client if we're using anon key (RLS is enforced)
             try:
-                client = create_authenticated_client(user_token)
+                client = create_authenticated_client(user_token, timeout=3.0)  # Shorter timeout for faster fallback
                 table = client.table(TABLE_NAME)
                 logger.info(f"[Try-On History] Using authenticated client with user token")
             except Exception as auth_error:
-                # If setting session fails (e.g., token invalid/expired), fall back to global client
-                # This allows the query to proceed, but RLS may block it if using anon key
+                # If setting session fails (e.g., token invalid/expired or timeout), fall back to global client
                 logger.warning(f"[Try-On History] Failed to create authenticated client, falling back to global client: {auth_error}")
                 table = _table
         else:
-            # Use global client (service role key or anon key)
-            # Note: If using anon key without user token, RLS policies may block the query
+            # Use global client (anon key, but no user token - may be blocked by RLS)
             table = _table
             logger.info(f"[Try-On History] Using global client (no user token)")
         
         # Ensure table exists
         _ensure_table_exists()
         
-        # Query user's history, return all records without filtering
+        # Query user's history with pagination
         # RLS policy will automatically filter to only return records where auth.uid() = user_id
         query_user_id = str(user_id).strip()
         
-        # Log query building process
-        logger.info(f"[Try-On History] Building query: SELECT * FROM {TABLE_NAME} WHERE user_id = '{query_user_id}' ORDER BY created_at DESC")
+        # Build query
+        query = table.select("*").eq("user_id", query_user_id).order("created_at", desc=True)
         
-        response = table.select("*").eq("user_id", query_user_id).order("created_at", desc=True).execute()
+        # Apply pagination if limit is provided
+        if limit is not None:
+            query = query.range(offset, offset + limit - 1)
+            logger.info(f"[Try-On History] Building paginated query: SELECT * FROM {TABLE_NAME} WHERE user_id = '{query_user_id}' ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}")
+        else:
+            logger.info(f"[Try-On History] Building query: SELECT * FROM {TABLE_NAME} WHERE user_id = '{query_user_id}' ORDER BY created_at DESC")
+        
+        response = query.execute()
         
         # Log query execution result
         logger.info(f"[Try-On History] Query executed successfully")

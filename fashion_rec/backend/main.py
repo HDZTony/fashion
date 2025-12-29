@@ -1805,29 +1805,45 @@ async def delete_favorite(
 
 @app.get("/tryon-history")
 async def get_tryon_history(
+    page: int = 1,
+    limit: int = 20,
     user_id: str = Depends(get_current_user),
     user_token: str = Depends(get_current_user_token),
 ):
     """
-    Get all try-on history for the current user.
-    Returns all records without filtering. Expired records are cleaned up by periodic cleanup task.
+    Get try-on history for the current user with pagination.
+    Expired records are cleaned up by periodic cleanup task.
+    
+    Args:
+        page: Page number (1-indexed)
+        limit: Number of records per page (default: 20, max: 100)
     """
-    from services.tryon_history import list_tryon_history
+    from services.tryon_history import list_tryon_history, count_tryon_history
 
     try:
-        # Log received user_id
-        logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}")
+        # Validate and clamp parameters
+        page = max(1, page)
+        limit = max(1, min(100, limit))  # Limit between 1 and 100
+        offset = (page - 1) * limit
         
-        history = list_tryon_history(user_id, user_token)
+        # Log received user_id
+        logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}, page: {page}, limit: {limit}")
+        
+        # Get total count and paginated history
+        total = count_tryon_history(user_id, user_token)
+        history = list_tryon_history(user_id, user_token, limit=limit, offset=offset)
         
         # Log query result count
-        logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id}")
+        logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id} (total: {total})")
         
-        # Sort by created_at descending (newest first)
-        history.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        
-        logger.info(f"[API] /tryon-history returning {len(history)} sorted record(s)")
-        return {"history": history}
+        logger.info(f"[API] /tryon-history returning {len(history)} record(s) for page {page}")
+        return {
+            "history": history,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total + limit - 1) // limit if limit > 0 else 0
+        }
     except Exception as e:
         import traceback
         # Log any exceptions with full details
