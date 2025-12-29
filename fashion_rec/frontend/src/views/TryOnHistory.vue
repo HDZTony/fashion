@@ -29,6 +29,7 @@ interface TryOnHistoryItem {
   garment_urls?: string[]
   scene_image_url?: string
   prompt?: string
+  model_image_url?: string
   created_at: string
   expires_at: string
 }
@@ -215,6 +216,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
       garment_urls: item.garment_urls || [],
       scene_image_url: item.scene_image_url,
       prompt: item.prompt,
+      model_image_url: item.model_image_url,
       created_at: item.created_at,
     }
     

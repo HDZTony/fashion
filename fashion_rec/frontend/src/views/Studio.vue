@@ -711,7 +711,7 @@ const handleModelImageChange = async (event: Event) => {
       }
     }, 200)
     
-    await uploadApiClient.post<{ url: string }>('/model-image', formData, {
+    const resp = await uploadApiClient.post<{ url: string }>('/model-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -729,6 +729,15 @@ const handleModelImageChange = async (event: Event) => {
     clearInterval(progressInterval)
     modelImageUploadProgress.value = 100
     
+    // Save the server-returned URL and clear the file
+    // This ensures that when calling /try-on, we use the URL instead of the file
+    // which allows the backend to save model_image_url to history
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+    }
+    modelImagePreviewUrl.value = resp.data.url
+    modelImageFile.value = null  // Clear file so /try-on uses URL instead
+    
     // Reload historical images
     await loadHistoricalImages()
     
@@ -745,13 +754,6 @@ const handleModelImageChange = async (event: Event) => {
     return
   }
 
-  if (modelImagePreviewUrl.value) {
-    URL.revokeObjectURL(modelImagePreviewUrl.value)
-    modelImagePreviewUrl.value = null
-  }
-  if (file) {
-    modelImagePreviewUrl.value = URL.createObjectURL(file)
-  }
   showModelImageHistory.value = false
 }
 
@@ -1500,7 +1502,7 @@ const searchOnGoogle = (description: string) => {
               <textarea
                 v-model="customPrompt"
                 rows="3"
-                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0"
+                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-green-600"
                 placeholder="e.g., Minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
               ></textarea>
               
@@ -1764,7 +1766,7 @@ const searchOnGoogle = (description: string) => {
           
           <!-- Empty state -->
           <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
-            <Shirt class="w-12 h-12 mx-auto mb-3 text-green-300" />
+            <Shirt class="w-12 h-12 mx-auto mb-3 text-green-600" />
             <p class="text-sm text-green-700 mb-2">No items selected yet</p>
             <p class="text-xs text-green-600 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
             <button
@@ -1889,13 +1891,13 @@ const searchOnGoogle = (description: string) => {
             <div class="text-center">
               <!-- Show empty state message only when no results generated -->
               <template v-if="!recommendations.length && !agentOutfits.length && !isGenerating">
-                <Wand2 class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <Wand2 class="w-12 h-12 mx-auto mb-3 text-green-600" />
               </template>
               <div class="flex flex-col items-center gap-3">
                 <div class="flex items-center gap-3">
                   <label
                     for="modelImageInput"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-green-700 border border-green-200 hover:border-green-600 hover:text-green-900 cursor-pointer transition-colors"
                   >
                     <Upload class="w-4 h-4" />
                     <span>Upload new photo</span>
@@ -1910,13 +1912,13 @@ const searchOnGoogle = (description: string) => {
                   <button
                     v-if="historicalModelImages.length > 0"
                     @click="showModelImageHistory = !showModelImageHistory"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-green-700 border border-green-200 hover:border-green-600 hover:text-green-900 cursor-pointer transition-colors"
                   >
                     <Clock class="w-4 h-4" />
                     <span>History</span>
                   </button>
                 </div>
-                <p class="text-xs text-gray-400">
+                <p class="text-xs text-green-600">
                   Upload a half-body or full-body photo; all try-ons will use this model photo.
                 </p>
               </div>
@@ -1928,7 +1930,7 @@ const searchOnGoogle = (description: string) => {
             <div class="flex items-center gap-2">
               <label
                 for="modelImageInputReplace"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-green-600 hover:text-green-900 hover:bg-green-50 cursor-pointer transition-colors"
               >
                 <Upload class="w-4 h-4" />
                 <span>Replace photo</span>

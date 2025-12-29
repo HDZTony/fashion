@@ -262,6 +262,7 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
             "garment_urls": garment_urls,  # Selected items from Applied Outfit Items (JSONB array)
             "scene_image_url": history.get("scene_image_url"),
             "prompt": history.get("prompt"),  # User's custom prompt (optional)
+            "model_image_url": history.get("model_image_url"),  # Model image URL for restoration
             "created_at": created_at.isoformat() + "Z",
             "expires_at": expires_at.isoformat() + "Z",
         }

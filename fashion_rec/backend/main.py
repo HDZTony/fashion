@@ -1475,6 +1475,7 @@ async def try_on(
             "garment_urls": garment_list,  # Use parsed list, not JSON string (selected items from Applied Outfit Items)
             "scene_image_url": scene_image_url,
             "prompt": user_custom_prompt,  # User's original custom prompt (from Form parameter), not the system-generated prompt
+            "model_image_url": person_image_url,  # Model image URL for restoration (always exists)
         }, user_token)
     except Exception as e:
         # Log error but don't fail the request
