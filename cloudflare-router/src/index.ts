@@ -575,43 +575,80 @@ export default {
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:556',message:'Backend URL selected',data:{version:version,backendUrl:backendUrl,path:path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
-        console.log(`[Router] Routing API request to backend: ${backendUrl}`)
+        console.log(`[Router] Routing API request ${request.method} ${path} to backend: ${backendUrl} (version: ${version})`)
         const backendRequest = routeToBackend(request, backendUrl)
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:523',message:'Backend request created',data:{backendUrl:backendRequest.url,hasAuth:!!backendRequest.headers.get('Authorization')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
-        console.log(`[Router] Backend request URL: ${backendRequest.url}`)
+        console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:526',message:'Backend fetch start',data:{url:backendRequest.url,method:backendRequest.method},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:526',message:'Backend fetch start',data:{url:backendRequest.url,method:backendRequest.method,backendHost:new URL(backendRequest.url).hostname},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
         const fetchStartTime = Date.now()
         
-        // Add timeout to backend fetch (25 seconds to be under frontend's 30s timeout)
+        // Add timeout to backend fetch using AbortController (25 seconds to be under frontend's 30s timeout)
         const timeoutMs = 25000
-        const timeoutPromise = new Promise<Response>((_, reject) => {
-          setTimeout(() => reject(new Error(`Backend fetch timeout after ${timeoutMs}ms`)), timeoutMs)
-        })
+        const abortController = new AbortController()
+        const timeoutId = setTimeout(() => {
+          abortController.abort()
+        }, timeoutMs)
         
         let response: Response
         try {
-          response = await Promise.race([
-            fetch(backendRequest),
-            timeoutPromise
-          ]) as Response
+          // Create a new request with abort signal
+          const requestWithSignal = new Request(backendRequest, {
+            signal: abortController.signal
+          })
+          
+          response = await fetch(requestWithSignal)
+          
+          // Clear timeout if request completed successfully
+          clearTimeout(timeoutId)
         } catch (fetchError: any) {
+          // Clear timeout in case of error
+          clearTimeout(timeoutId)
+          
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:570',message:'Backend fetch error',data:{error:String(fetchError),url:backendRequest.url,duration:Date.now()-fetchStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:602',message:'Backend fetch error',data:{error:String(fetchError),errorName:fetchError?.name,url:backendRequest.url,backendHost:new URL(backendRequest.url).hostname,duration:Date.now()-fetchStartTime,isAborted:fetchError?.name==='AbortError'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
           // #endregion
-          console.error(`[Router] Backend fetch failed for ${backendRequest.url}:`, fetchError)
+          
+          const errorDuration = Date.now() - fetchStartTime
+          console.error(`[Router] Backend fetch failed for ${backendRequest.url} after ${errorDuration}ms:`, fetchError)
+          console.error(`[Router] Error details - name: ${fetchError?.name}, message: ${fetchError?.message}, stack: ${fetchError?.stack}`)
+          
+          // Determine error type and status code
+          let errorDetail = fetchError.message || 'Request timeout or connection error'
+          let statusCode = 504
+          let statusText = 'Gateway Timeout'
+          const backendHost = new URL(backendRequest.url).hostname
+          
+          if (fetchError.name === 'AbortError') {
+            errorDetail = `Backend fetch timeout after ${timeoutMs}ms. The backend at ${backendHost} did not respond in time. This could indicate: 1) The backend is slow or overloaded, 2) Network connectivity issues, 3) The backend URL might be incorrect.`
+            statusCode = 504
+            statusText = 'Gateway Timeout'
+            console.error(`[Router] Timeout waiting for backend ${backendHost} to respond to ${path}`)
+          } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+            errorDetail = `Cannot connect to backend at ${backendHost}. Please check: 1) The backend URL is correct, 2) The backend service is running, 3) Network connectivity is available.`
+            statusCode = 502
+            statusText = 'Bad Gateway'
+            console.error(`[Router] Network error connecting to backend ${backendHost}`)
+          } else if (fetchError.message?.includes('DNS')) {
+            errorDetail = `DNS resolution failed for ${backendHost}. Please check if the backend URL is correct.`
+            statusCode = 502
+            statusText = 'Bad Gateway'
+            console.error(`[Router] DNS resolution failed for backend ${backendHost}`)
+          }
+          
           // Return error response instead of letting it propagate
           return new Response(JSON.stringify({ 
             error: 'Backend request failed', 
-            detail: fetchError.message || 'Request timeout or connection error',
-            path: path
+            detail: errorDetail,
+            path: path,
+            backend_host: new URL(backendRequest.url).hostname
           }), {
-            status: 504,
-            statusText: 'Gateway Timeout',
+            status: statusCode,
+            statusText: statusText,
             headers: {
               'Content-Type': 'application/json',
             }
@@ -622,7 +659,7 @@ export default {
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:527',message:'Backend fetch complete',data:{status:response.status,duration:fetchDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
-        console.log(`[Router] Backend response status: ${response.status}`)
+        console.log(`[Router] Backend response received: status ${response.status} in ${fetchDuration}ms for ${path}`)
         
         return new Response(response.body, {
           status: response.status,
