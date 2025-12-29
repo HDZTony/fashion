@@ -624,10 +624,24 @@ export default {
           const backendHost = new URL(backendRequest.url).hostname
           
           if (fetchError.name === 'AbortError') {
-            errorDetail = `Backend fetch timeout after ${timeoutMs}ms. The backend at ${backendHost} did not respond in time. This could indicate: 1) The backend is slow or overloaded, 2) Network connectivity issues, 3) The backend URL might be incorrect.`
+            errorDetail = `Backend fetch timeout after ${timeoutMs}ms. The backend at ${backendHost} did not respond in time. 
+
+Possible causes:
+1. Backend service is not running - Check Fly.io dashboard to verify the service is active
+2. Backend is slow or overloaded - Check Fly.io logs for performance issues
+3. Network connectivity issues - Verify Cloudflare Worker can reach Fly.io
+4. Backend URL might be incorrect - Current URL: ${backendUrl}
+
+Troubleshooting steps:
+- Check Fly.io app status: flyctl status (for ${backendHost})
+- Check Fly.io logs: flyctl logs (for ${backendHost})
+- Test backend directly: curl https://${backendHost}/health
+- Verify backend URL in Cloudflare Worker secrets`
             statusCode = 504
             statusText = 'Gateway Timeout'
-            console.error(`[Router] Timeout waiting for backend ${backendHost} to respond to ${path}`)
+            console.error(`[Router] Timeout waiting for backend ${backendHost} to respond to ${path} after ${errorDuration}ms`)
+            console.error(`[Router] Backend URL used: ${backendUrl}`)
+            console.error(`[Router] Full request URL: ${backendRequest.url}`)
           } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
             errorDetail = `Cannot connect to backend at ${backendHost}. Please check: 1) The backend URL is correct, 2) The backend service is running, 3) Network connectivity is available.`
             statusCode = 502
