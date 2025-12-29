@@ -168,14 +168,30 @@ async function getUserFrontendVersionFromDB(userId: string, env: Env): Promise<s
  * Get user version with KV cache
  */
 async function getUserVersion(userId: string, env: Env): Promise<string> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:170',message:'getUserVersion start',data:{userId:userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   // 1. Try KV cache first
+  const kvStartTime = Date.now()
   const cached = await getUserVersionFromCache(userId, env)
+  const kvDuration = Date.now() - kvStartTime
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:172',message:'KV cache lookup complete',data:{userId:userId,cached:cached||'null',duration:kvDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   if (cached) {
     return cached
   }
 
   // 2. Cache miss, query database
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:178',message:'DB query start',data:{userId:userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  const dbStartTime = Date.now()
   const version = await getUserFrontendVersionFromDB(userId, env)
+  const dbDuration = Date.now() - dbStartTime
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:178',message:'DB query complete',data:{userId:userId,version:version,duration:dbDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   
   // 3. Cache the result
   await cacheUserVersion(userId, version, env)
@@ -368,6 +384,9 @@ function requiresVersionRouting(path: string, userId: string | null): boolean {
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:370',message:'Request received',data:{path:new URL(request.url).pathname,method:request.method},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     try {
       const url = new URL(request.url)
       const path = url.pathname
@@ -496,6 +515,9 @@ export default {
 
       // Extract user ID from cookie
       const userId = extractUserIdFromCookie(request)
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:498',message:'User ID extracted',data:{userId:userId||'null',path:path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       
       // Determine user's version
       let version = 'stable' // Default to stable
@@ -503,10 +525,22 @@ export default {
       // If user is authenticated, check their version (from KV cache or database)
       // This ensures all pages use the version determined when they first accessed /studio
       if (userId && requiresVersionRouting(path, userId)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:505',message:'Version lookup start',data:{userId:userId,path:path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         version = await getUserVersion(userId, env)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:506',message:'Version lookup complete',data:{userId:userId,version:version},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
       } else if (userId && isApiRequest(url, request)) {
         // API requests also use user's version
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:509',message:'Version lookup start (API)',data:{userId:userId,path:path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         version = await getUserVersion(userId, env)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:510',message:'Version lookup complete (API)',data:{userId:userId,version:version},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
       }
 
       // Check if this is an API request
@@ -519,11 +553,75 @@ export default {
           ? env.V2_BACKEND_URL 
           : env.STABLE_BACKEND_URL
         
+        // Validate backend URL
+        if (!backendUrl || !backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:555',message:'Invalid backend URL',data:{backendUrl:backendUrl||'null',version:version},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          console.error(`[Router] Invalid backend URL: ${backendUrl}`)
+          return new Response(JSON.stringify({ 
+            error: 'Backend configuration error', 
+            detail: 'Backend URL is not configured correctly',
+            path: path
+          }), {
+            status: 500,
+            statusText: 'Internal Server Error',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          })
+        }
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:556',message:'Backend URL selected',data:{version:version,backendUrl:backendUrl,path:path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         console.log(`[Router] Routing API request to backend: ${backendUrl}`)
         const backendRequest = routeToBackend(request, backendUrl)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:523',message:'Backend request created',data:{backendUrl:backendRequest.url,hasAuth:!!backendRequest.headers.get('Authorization')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         console.log(`[Router] Backend request URL: ${backendRequest.url}`)
         
-        const response = await fetch(backendRequest)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:526',message:'Backend fetch start',data:{url:backendRequest.url,method:backendRequest.method},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        const fetchStartTime = Date.now()
+        
+        // Add timeout to backend fetch (25 seconds to be under frontend's 30s timeout)
+        const timeoutMs = 25000
+        const timeoutPromise = new Promise<Response>((_, reject) => {
+          setTimeout(() => reject(new Error(`Backend fetch timeout after ${timeoutMs}ms`)), timeoutMs)
+        })
+        
+        let response: Response
+        try {
+          response = await Promise.race([
+            fetch(backendRequest),
+            timeoutPromise
+          ]) as Response
+        } catch (fetchError: any) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:570',message:'Backend fetch error',data:{error:String(fetchError),url:backendRequest.url,duration:Date.now()-fetchStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          console.error(`[Router] Backend fetch failed for ${backendRequest.url}:`, fetchError)
+          // Return error response instead of letting it propagate
+          return new Response(JSON.stringify({ 
+            error: 'Backend request failed', 
+            detail: fetchError.message || 'Request timeout or connection error',
+            path: path
+          }), {
+            status: 504,
+            statusText: 'Gateway Timeout',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          })
+        }
+        
+        const fetchDuration = Date.now() - fetchStartTime
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:527',message:'Backend fetch complete',data:{status:response.status,duration:fetchDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         console.log(`[Router] Backend response status: ${response.status}`)
         
         return new Response(response.body, {
@@ -548,6 +646,9 @@ export default {
         })
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:550',message:'Router error caught',data:{error:String(error),path:new URL(request.url).pathname},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'ALL'})}).catch(()=>{});
+      // #endregion
       console.error('[Router] Unexpected error:', error)
       
       // On any error, route to stable version as fallback
@@ -561,6 +662,9 @@ export default {
           return fetch(stableRequest)
         }
       } catch (fallbackError) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:564',message:'Fallback routing failed',data:{error:String(fallbackError)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'ALL'})}).catch(()=>{});
+        // #endregion
         console.error('[Router] Fallback routing failed:', fallbackError)
         return new Response('Internal Server Error', { status: 500 })
       }
