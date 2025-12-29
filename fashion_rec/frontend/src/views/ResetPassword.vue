@@ -91,7 +91,7 @@ const handleResetPassword = async () => {
   <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
       <h1 class="text-3xl font-bold mb-2 text-center">Reset Password</h1>
-      <p class="text-gray-500 mb-8 text-center">Enter your new password</p>
+      <p class="text-green-500 mb-8 text-center">Enter your new password</p>
       
       <div v-if="isValidToken" class="space-y-4">
         <input
@@ -126,7 +126,7 @@ const handleResetPassword = async () => {
       <div v-else class="text-center">
         <div class="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
         <p class="text-red-600 mb-2">{{ message || 'Validating reset link...' }}</p>
-        <p class="text-sm text-gray-500">Redirecting to sign-in page</p>
+        <p class="text-sm text-green-500">Redirecting to sign-in page</p>
       </div>
     </div>
   </div>

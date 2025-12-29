@@ -2,32 +2,7 @@
 defineOptions({ name: 'LVProducts' })
 import { ref, onMounted, computed } from 'vue'
 import { Search, ExternalLink, Download, Loader2, ShoppingBag } from 'lucide-vue-next'
-import axios from 'axios'
-import { supabase } from '../lib/supabase'
-import { API_URL } from '@/config/api'
-
-// Axios client with auth headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add interceptor to inject auth token
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-  } catch (e) {
-    console.warn('Failed to get Supabase session for request:', e)
-  }
-  return config
-})
+import { apiClient } from '../lib/api-client'
 
 // 商品接口定义
 interface LVProduct {
@@ -195,7 +170,7 @@ onMounted(() => {
       <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <ShoppingBag class="w-8 h-8 text-purple-600" />
-          <h1 class="text-3xl font-bold text-gray-900">LV Product Index</h1>
+          <h1 class="text-3xl font-bold text-green-900">LV Product Index</h1>
         </div>
         <button
           @click="showScrapeDialog = true"
@@ -209,7 +184,7 @@ onMounted(() => {
       <!-- 搜索栏 -->
       <div class="mb-6 flex gap-3">
         <div class="flex-1 relative">
-          <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-400" />
           <input
             v-model="searchKeyword"
             @keyup.enter="searchProducts"
@@ -227,21 +202,21 @@ onMounted(() => {
         <button
           v-if="searchKeyword"
           @click="searchKeyword = ''; loadProducts()"
-          class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+          class="px-6 py-2 bg-gray-200 text-green-700 rounded-lg hover:bg-gray-300 transition-colors"
         >
           清除
         </button>
       </div>
 
       <!-- 商品统计 -->
-      <div class="mb-4 text-sm text-gray-600">
+      <div class="mb-4 text-sm text-green-600">
         Found {{ totalProducts }} product(s)
       </div>
 
       <!-- 加载状态 -->
       <div v-if="isLoading" class="flex justify-center items-center py-12">
         <Loader2 class="w-8 h-8 text-purple-600 animate-spin" />
-        <span class="ml-3 text-gray-600">加载中...</span>
+        <span class="ml-3 text-green-600">加载中...</span>
       </div>
 
       <!-- 商品网格 -->
@@ -274,7 +249,7 @@ onMounted(() => {
           
           <!-- 商品信息 -->
           <div class="p-4">
-            <h3 class="font-semibold text-gray-900 mb-2 line-clamp-2 min-h-[3rem]">
+            <h3 class="font-semibold text-green-900 mb-2 line-clamp-2 min-h-[3rem]">
               {{ product.product_name }}
             </h3>
             <p class="text-purple-600 font-bold mb-3">
@@ -295,7 +270,7 @@ onMounted(() => {
             </div>
             
             <!-- 时间信息 -->
-            <div class="mt-2 text-xs text-gray-500">
+            <div class="mt-2 text-xs text-green-500">
               {{ new Date(product.created_at).toLocaleDateString('zh-CN') }}
             </div>
           </div>
@@ -304,8 +279,8 @@ onMounted(() => {
 
       <!-- 空状态 -->
       <div v-else class="text-center py-12">
-        <ShoppingBag class="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <p class="text-gray-600">暂无商品</p>
+        <ShoppingBag class="w-16 h-16 text-green-400 mx-auto mb-4" />
+        <p class="text-green-600">暂无商品</p>
         <button
           @click="showScrapeDialog = true"
           class="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -323,7 +298,7 @@ onMounted(() => {
         >
           上一页
         </button>
-        <span class="px-4 py-2 text-gray-700">
+        <span class="px-4 py-2 text-green-700">
           第 {{ currentPage }} / {{ totalPages }} 页
         </span>
         <button
@@ -342,11 +317,11 @@ onMounted(() => {
         @click.self="showScrapeDialog = false"
       >
         <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-          <h2 class="text-2xl font-bold text-gray-900 mb-4">抓取LV商品</h2>
+          <h2 class="text-2xl font-bold text-green-900 mb-4">抓取LV商品</h2>
           
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">
+              <label class="block text-sm font-medium text-green-700 mb-1">
                 商品分类页面URL *
               </label>
               <input
@@ -355,14 +330,14 @@ onMounted(() => {
                 placeholder="例如: https://www.louisvuitton.com/zhs-cn/catalog/women/handbags"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
-              <p class="mt-1 text-xs text-gray-500">
+              <p class="mt-1 text-xs text-green-500">
                 输入LV官网的商品分类页面URL（需要根据实际网站结构调整）
               </p>
             </div>
             
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+                <label class="block text-sm font-medium text-green-700 mb-1">
                   最大抓取页数
                 </label>
                 <input
@@ -375,7 +350,7 @@ onMounted(() => {
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+                <label class="block text-sm font-medium text-green-700 mb-1">
                   最大商品数量（可选）
                 </label>
                 <input
@@ -395,12 +370,12 @@ onMounted(() => {
                   type="checkbox"
                   class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                 />
-                <span class="text-sm font-medium text-gray-700">自动生成缩略图</span>
+                <span class="text-sm font-medium text-green-700">自动生成缩略图</span>
               </label>
             </div>
             
             <div v-if="generateThumbnails">
-              <label class="block text-sm font-medium text-gray-700 mb-1">
+              <label class="block text-sm font-medium text-green-700 mb-1">
                 水印文字
               </label>
               <input

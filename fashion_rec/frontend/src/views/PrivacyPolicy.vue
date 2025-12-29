@@ -13,17 +13,17 @@ const router = useRouter()
       <div class="mb-6">
         <button
           @click="router.back()"
-          class="flex items-center gap-2 text-gray-600 hover:text-black transition-colors mb-4"
+          class="flex items-center gap-2 text-green-600 hover:text-black transition-colors mb-4"
         >
           <ArrowLeft class="w-5 h-5" />
           <span>Back</span>
         </button>
         <h1 class="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p class="text-gray-500 text-sm">Last updated: Dec 16, 2025</p>
+        <p class="text-green-500 text-sm">Last updated: Dec 16, 2025</p>
       </div>
 
       <!-- Content -->
-      <div class="prose prose-sm max-w-none space-y-6 text-gray-700">
+      <div class="prose prose-sm max-w-none space-y-6 text-green-700">
         <section>
           <h2 class="text-xl font-semibold mb-3 text-black">1. Information We Collect</h2>
           <p class="mb-3">We collect information to provide and improve our services:</p>
@@ -125,7 +125,7 @@ const router = useRouter()
       </div>
 
       <!-- Footer -->
-      <div class="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500">
+      <div class="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-green-500">
         <p>© 2025 Fashion Rec. All rights reserved.</p>
       </div>
     </div>

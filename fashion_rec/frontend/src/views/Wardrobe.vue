@@ -707,14 +707,14 @@ onUnmounted(() => {
           />
           <div v-if="isUploading && uploadProgress" class="flex flex-col items-center gap-2 pointer-events-none">
             <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-            <span class="text-sm text-gray-500">
+            <span class="text-sm text-green-500">
               Uploading {{ uploadProgress.current }}/{{ uploadProgress.total }}
             </span>
-            <span class="text-xs text-gray-400">{{ uploadProgress.currentFile }}</span>
+            <span class="text-xs text-green-400">{{ uploadProgress.currentFile }}</span>
           </div>
           <div v-else-if="isUploading" class="flex flex-col items-center gap-2 pointer-events-none">
             <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-            <span class="text-sm text-gray-500">Analyzing...</span>
+            <span class="text-sm text-green-500">Analyzing...</span>
           </div>
           <div v-else class="pointer-events-none">
             <p class="font-medium text-green-700">Click or drag to upload</p>
@@ -761,7 +761,7 @@ onUnmounted(() => {
             <button
               @click="loadUserItems"
               :disabled="isLoadingItems"
-              class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:border-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-green-600 hover:border-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
               title="Refresh data"
             >
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoadingItems }" />
@@ -788,11 +788,11 @@ onUnmounted(() => {
         <div v-if="isSelectionMode" class="mb-4 flex items-center gap-2">
           <button
             @click="toggleSelectAll"
-            class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-gray-600 hover:border-black transition-colors"
+            class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-green-600 hover:border-black transition-colors"
           >
             {{ isAllSelected ? 'Unselect all' : 'Select all' }}
           </button>
-          <span class="text-sm text-gray-500">Selected {{ selectedCount }} / {{ filteredItems.length }} items</span>
+          <span class="text-sm text-green-500">Selected {{ selectedCount }} / {{ filteredItems.length }} items</span>
         </div>
         <div class="flex flex-wrap gap-2 mb-4">
           <button
@@ -800,7 +800,7 @@ onUnmounted(() => {
             :key="filter"
             @click="selectedFilter = filter"
             class="px-3 py-1 text-sm rounded-full border transition-colors"
-            :class="selectedFilter === filter ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'"
+            :class="selectedFilter === filter ? 'bg-black text-white border-black' : 'border-gray-200 text-green-600 hover:border-black'"
           >
             {{ filter }}
           </button>
@@ -842,7 +842,7 @@ onUnmounted(() => {
               :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'opacity-75' : ''"
               alt="Clothing item"
             />
-            <div v-else class="absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-400">
+            <div v-else class="absolute inset-0 bg-gray-100 flex items-center justify-center text-green-400">
               <span class="text-xs">{{ item.features.type }}</span>
             </div>
 
@@ -883,7 +883,7 @@ onUnmounted(() => {
         <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
           <div class="p-6 border-b border-gray-200">
             <h3 class="text-xl font-bold">Multiple Items Detected</h3>
-            <p class="text-sm text-gray-500 mt-1">Please review and select the items you want to add to your wardrobe.</p>
+            <p class="text-sm text-green-500 mt-1">Please review and select the items you want to add to your wardrobe.</p>
           </div>
 
           <div class="flex-1 overflow-y-auto p-6">
@@ -903,9 +903,9 @@ onUnmounted(() => {
                   <div class="flex-1">
                     <div class="flex items-center gap-2 mb-2">
                       <h4 class="font-semibold">{{ formatFeatureValue(item.features.type) }}</h4>
-                      <span class="text-sm text-gray-500">{{ formatFeatureValue(item.features.color) }}</span>
+                      <span class="text-sm text-green-500">{{ formatFeatureValue(item.features.color) }}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <div class="grid grid-cols-2 gap-2 text-xs text-green-600">
                       <div><span class="font-medium">Style:</span> {{ formatFeatureValue(item.features.style) }}</div>
                       <div><span class="font-medium">Occasion:</span> {{ formatFeatureValue(item.features.occasion) }}</div>
                       <div><span class="font-medium">Pattern:</span> {{ formatFeatureValue(item.features.pattern) }}</div>
@@ -926,7 +926,7 @@ onUnmounted(() => {
           <div class="p-6 border-t border-gray-200 flex justify-end gap-3">
             <button
               @click="cancelAddItems"
-              class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              class="px-4 py-2 text-green-700 hover:bg-gray-100 rounded-lg transition-colors"
             >
               Cancel
             </button>
@@ -939,7 +939,7 @@ onUnmounted(() => {
               <span v-if="isConfirming" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             </button>
           </div>
-          <p v-if="isConfirming" class="text-sm text-gray-500 text-center pb-4">
+          <p v-if="isConfirming" class="text-sm text-green-500 text-center pb-4">
             Uploading items… hang tight, this may take a few seconds.
           </p>
         </div>

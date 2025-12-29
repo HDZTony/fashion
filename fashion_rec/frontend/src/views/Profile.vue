@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
+import { subscriptionClient } from '../lib/api-client'
 
 defineOptions({ name: 'Profile' })
 
 const router = useRouter()
-
-const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
 
 const isLoading = ref(false)
 const error = ref<string | null>(null)
@@ -50,13 +48,6 @@ const loadConfig = async () => {
     }
   }
 }
-
-const subscriptionClient = axios.create({
-  baseURL: SUBSCRIPTION_API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
 
 const planNameRaw = computed(() => subscriptionInfo.value?.planName || 'Free')
 const planDisplay = computed(() => {
@@ -112,12 +103,8 @@ const loadSubscriptionInfo = async () => {
     if (!user) throw new Error('Please sign in first')
     userEmail.value = user.email || '—'
 
-    const session = await supabase.auth.getSession()
     const response = await subscriptionClient.get('/subscription/status', {
       params: { user_id: user.id },
-      headers: {
-        Authorization: `Bearer ${session.data.session?.access_token || user.id}`,
-      },
     })
     subscriptionInfo.value = response.data
     

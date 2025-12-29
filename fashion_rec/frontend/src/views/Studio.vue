@@ -67,12 +67,8 @@ const loadSubscriptionInfo = async () => {
       throw new Error('Please sign in first')
     }
 
-    const session = await supabase.auth.getSession()
     const response = await subscriptionClient.get('/subscription/status', {
       params: { user_id: user.id },
-      headers: {
-        Authorization: `Bearer ${session.data.session?.access_token || user.id}`,
-      },
     })
     subscriptionInfo.value = response.data
   } catch (error: any) {
@@ -641,7 +637,8 @@ const getRecommendations = async () => {
     console.log('Selected items roles:', selectedItemsRoles)
     console.log('==========================================')
     
-    const response = await apiClient.post<{
+    // Use uploadApiClient for outfit generation as it requires LLM processing (may take several minutes)
+    const response = await uploadApiClient.post<{
       mode: 'agent'
       weather_summary: string
       wardrobe_count: number
@@ -651,7 +648,7 @@ const getRecommendations = async () => {
 
     console.log('Agent raw outfit text:', response.data.raw_text)
     agentOutfits.value = response.data.outfits || []
-  } catch (error) {
+  } catch (error: any) {
     console.error('Recommendation failed:', error)
     alert('Failed to get recommendations')
   } finally {
@@ -1590,17 +1587,17 @@ const searchOnGoogle = (description: string) => {
             >
               <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-6 border-b border-gray-200">
-                  <h3 class="text-lg font-semibold text-gray-900">Choose a historical scene image</h3>
+                  <h3 class="text-lg font-semibold text-green-900">Choose a historical scene image</h3>
                   <button
                     @click="showSceneImageHistory = false"
                     class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                   >
-                    <X class="w-5 h-5 text-gray-500" />
+                    <X class="w-5 h-5 text-green-500" />
                   </button>
                 </div>
                 <div class="flex-1 overflow-y-auto p-6">
-                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-gray-400">
-                    <Clock class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-green-400">
+                    <Clock class="w-12 h-12 mx-auto mb-3 text-green-300" />
                     <p>No historical scene images</p>
                   </div>
                   <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -1625,7 +1622,7 @@ const searchOnGoogle = (description: string) => {
                         <Trash2 class="w-4 h-4" />
                       </button>
                       <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-green-700">
                           {{ new Date(image.created_at).toLocaleDateString('en-US') }}
                         </div>
                       </div>
@@ -1660,13 +1657,7 @@ const searchOnGoogle = (description: string) => {
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-lg font-semibold">AI Outfit Plans</h3>
                 <!-- AI branding and transparency note -->
-                <div class="flex items-center gap-2 text-xs text-gray-500">
-                  <span class="font-medium text-gray-700">fashion</span>
-                  <span class="text-gray-400">|</span>
-                  <span>Powered by Qwen</span>
-                  <span class="text-gray-400">|</span>
-                  <span class="text-gray-400">Independent service</span>
-                </div>
+                
               </div>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div
@@ -1676,7 +1667,7 @@ const searchOnGoogle = (description: string) => {
                 >
                   <div>
                     <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
-                    <ul class="text-xs text-gray-700 space-y-1 mb-2">
+                    <ul class="text-xs text-green-700 space-y-1 mb-2">
                       <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
                         <div class="flex-1">
                           <span class="font-medium capitalize">{{ it.role }}:</span>
@@ -1690,14 +1681,14 @@ const searchOnGoogle = (description: string) => {
                           class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
                           :title="`Search for ${it.description} on Google`"
                         >
-                          <Search class="w-3.5 h-3.5 text-gray-600" />
+                          <Search class="w-3.5 h-3.5 text-green-600" />
                         </button>
                       </li>
                     </ul>
-                    <p class="text-xs text-gray-500 mb-2">
+                    <p class="text-xs text-green-500 mb-2">
                       {{ outfit.reason }}
                     </p>
-                    <p class="text-xs text-gray-500 whitespace-pre-line">
+                    <p class="text-xs text-green-500 whitespace-pre-line">
                       {{ outfit.long_text }}
                     </p>
                   </div>
@@ -1717,7 +1708,7 @@ const searchOnGoogle = (description: string) => {
                         v-for="(missingItem, idx) in getMissingItems(outfit)"
                         :key="idx"
                         @click.stop="searchOnGoogle(missingItem.description)"
-                        class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                        class="text-xs px-2 py-1 rounded-full border border-gray-300 text-green-700 hover:border-gray-400 hover:text-green-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
                       >
                         <Search class="w-3 h-3" />
                         <span>Search {{ missingItem.role }}</span>
@@ -1732,15 +1723,8 @@ const searchOnGoogle = (description: string) => {
           <!-- Loading State (only show when actively generating) -->
           <div v-else-if="isGenerating" class="mt-6 py-12 flex flex-col items-center justify-center">
              <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p class="text-gray-500 animate-pulse mb-2">Consulting fashion knowledge base...</p>
-             <!-- AI branding and transparency note (loading) -->
-             <div class="flex items-center gap-2 text-xs text-gray-400">
-               <span class="font-medium text-gray-600">fashion</span>
-               <span>|</span>
-               <span>Powered by Qwen</span>
-               <span>|</span>
-               <span>Independent service</span>
-             </div>
+             <p class="text-green-600 animate-pulse mb-2">Consulting fashion knowledge base...</p>
+             
           </div>
         </div>
       </section>
@@ -1844,8 +1828,8 @@ const searchOnGoogle = (description: string) => {
           <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
             <div class="flex items-center justify-between mb-3">
               <div>
-                <p class="text-sm font-medium text-gray-700 mb-1">Model photo</p>
-                <p class="text-xs text-gray-500">
+                <p class="text-sm font-medium text-green-700 mb-1">Model photo</p>
+                <p class="text-xs text-green-500">
                   Upload a half-body or full-body photo of you. All try-ons will use this model photo.
                 </p>
               </div>
@@ -1945,7 +1929,7 @@ const searchOnGoogle = (description: string) => {
               <button
                 v-if="historicalModelImages.length > 0"
                 @click="showModelImageHistory = !showModelImageHistory"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-green-600 hover:text-green-900 hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <Clock class="w-4 h-4" />
                 <span>History</span>
@@ -1962,17 +1946,17 @@ const searchOnGoogle = (description: string) => {
         >
           <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
             <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
+              <h3 class="text-lg font-semibold text-green-900">Choose a historical model image</h3>
               <button
                 @click="showModelImageHistory = false"
                 class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
               >
-                <X class="w-5 h-5 text-gray-500" />
+                <X class="w-5 h-5 text-green-500" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-gray-400">
-                <Clock class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-green-400">
+                <Clock class="w-12 h-12 mx-auto mb-3 text-green-300" />
                 <p>No historical model images</p>
               </div>
               <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -1997,7 +1981,7 @@ const searchOnGoogle = (description: string) => {
                     <Trash2 class="w-4 h-4" />
                   </button>
                   <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-green-700">
                       {{ new Date(image.created_at).toLocaleDateString('en-US') }}
                     </div>
                   </div>
@@ -2011,8 +1995,8 @@ const searchOnGoogle = (description: string) => {
         <div v-if="activeWardrobeItems.length" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
           <div class="flex items-center justify-between mb-3">
             <div>
-              <p class="text-sm font-medium text-gray-700 mb-1">Ready to try on</p>
-              <p class="text-xs text-gray-500">
+              <p class="text-sm font-medium text-green-700 mb-1">Ready to try on</p>
+              <p class="text-xs text-green-500">
                 {{ activeWardrobeItems.length }} items selected. Click below to generate a virtual try-on.
               </p>
             </div>
@@ -2027,14 +2011,7 @@ const searchOnGoogle = (description: string) => {
               <div v-else class="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
               <span>{{ isTryingOn ? 'Generating try-on...' : 'Try on this outfit' }}</span>
             </button>
-            <!-- AI branding and transparency note (try-on) -->
-            <div class="flex items-center gap-2 text-xs text-green-600">
-              <span class="font-medium text-green-700">fashion</span>
-              <span class="text-green-400">|</span>
-              <span>Powered by Qwen</span>
-              <span class="text-green-400">|</span>
-              <span class="text-green-400">Independent service</span>
-            </div>
+           
           </div>
         </div>
 
@@ -2043,13 +2020,6 @@ const searchOnGoogle = (description: string) => {
           <div class="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mb-4"></div>
           <p class="text-green-700 animate-pulse mb-2">Generating virtual try-on...</p>
           <!-- AI branding and transparency note (loading) -->
-          <div class="flex items-center gap-2 text-xs text-green-600">
-            <span class="font-medium text-green-700">fashion</span>
-            <span>|</span>
-            <span>Powered by Qwen</span>
-            <span>|</span>
-            <span>Independent service</span>
-          </div>
         </div>
 
         <!-- Recommendations -->
@@ -2057,7 +2027,7 @@ const searchOnGoogle = (description: string) => {
           <h3 class="text-lg font-semibold mb-4">AI Suggestions</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div v-for="rec in recommendations" :key="rec.id" class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
-              <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-gray-400 overflow-hidden">
+              <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-green-400 overflow-hidden">
                 <img 
                   v-if="rec.path && rec.path.startsWith('http')" 
                   :src="rec.path" 
@@ -2066,7 +2036,7 @@ const searchOnGoogle = (description: string) => {
                 <span v-else>{{ rec.type }}</span>
               </div>
               <p class="font-medium text-sm">{{ rec.color }} {{ rec.type }}</p>
-              <p class="text-xs text-gray-500 mt-1">{{ rec.reason }}</p>
+              <p class="text-xs text-green-500 mt-1">{{ rec.reason }}</p>
               <p class="text-xs text-green-600 mt-1 font-medium">Match: {{ Math.round(rec.score * 100) }}%</p>
             </div>
           </div>
@@ -2083,7 +2053,7 @@ const searchOnGoogle = (description: string) => {
                 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                 favoriteSaved
                   ? 'bg-green-50 text-green-600 border border-green-200'
-                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 hover:border-gray-300',
+                  : 'bg-gray-50 text-green-700 hover:bg-gray-100 border border-gray-200 hover:border-gray-300',
                 isSavingFavorite && 'opacity-50 cursor-not-allowed'
               ]"
             >

@@ -24,13 +24,16 @@ R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
 R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL") # Optional, if different from endpoint
 
-def get_r2_client():
+def get_r2_client(verify_ssl: bool = True):
     """
     Create and return a boto3 S3 client configured for Cloudflare R2.
     Uses URLLib3Session with socket options to avoid SSL EOF issues.
     
+    Args:
+        verify_ssl: If False, disable SSL certificate verification (use only as fallback for SSL errors)
+    
     Note: The configuration uses URLLib3Session with socket options (SO_KEEPALIVE, TCP_NODELAY)
-    which fixes SSL EOF issues while maintaining SSL verification enabled.
+    which fixes SSL EOF issues. SSL verification is enabled by default for security.
     """
     # Configure boto3 with retry strategy and SSL handling
     config = Config(
@@ -53,11 +56,12 @@ def get_r2_client():
         (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1),
     ]
     
-    # 使用URLLib3Session + socket_options，保持SSL验证启用
+    # 使用URLLib3Session + socket_options
+    # verify_ssl参数允许在SSL错误时禁用验证（作为最后手段）
     # 注意：如果使用VPN/代理，可能需要配置代理设置
     # 但为了稳定性，我们优先尝试直连（不通过系统代理）
     http_client = URLLib3Session(
-        verify=True,
+        verify=verify_ssl,
         socket_options=socket_options,
         max_pool_connections=10,
         proxies=None  # 明确设置为None，避免使用系统代理
@@ -112,8 +116,6 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
     except Exception as e:
         raise Exception(f"Failed to cache file content for upload: {str(e)}")
     
-    s3 = get_r2_client()
-    
     # Generate a unique filename to prevent collisions
     ext = filename.split('.')[-1]
     unique_filename = f"{uuid.uuid4()}.{ext}"
@@ -133,13 +135,16 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
         max_retries = 5
         last_error = None
         
+        ssl_verification_disabled = False
         for attempt in range(max_retries):
             try:
                 # Get a fresh client for each attempt to avoid connection reuse issues
                 if attempt > 0:
-                    s3 = get_r2_client()  # Use default configuration (SSL enabled)
-                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} for {unique_filename}")
+                    # If we detected SSL error in previous attempt, disable SSL verification
+                    s3 = get_r2_client(verify_ssl=not ssl_verification_disabled)
+                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} for {unique_filename} (SSL verify: {not ssl_verification_disabled})")
                 else:
+                    s3 = get_r2_client(verify_ssl=True)  # First attempt always with SSL verification
                     print(f"[R2] Starting upload attempt {attempt + 1}/{max_retries} for {unique_filename}")
                 
                 # Reset cached file object to beginning for each attempt
@@ -177,8 +182,9 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
                 # Log detailed error information
                 print(f"[R2] Upload error on attempt {attempt + 1}/{max_retries} (type: {error_type}): {str(e)[:300]}")
                 
-                # If it's an SSL error and not the last attempt, retry
+                # If it's an SSL error and not the last attempt, disable SSL verification for next retry
                 if is_ssl_error and attempt < max_retries - 1:
+                    ssl_verification_disabled = True
                     print(f"[R2] Detected SSL-related error, will retry with SSL verification disabled")
                     # Wait a bit before retry (exponential backoff)
                     import time

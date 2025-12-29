@@ -212,9 +212,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { supabase } from '../lib/supabase'
-import { API_URL, SUBSCRIPTION_API_URL } from '@/config/api'
+import { subscriptionClient } from '../lib/api-client'
 
 defineOptions({ name: 'Pricing' })
 
@@ -259,37 +258,6 @@ const loadConfig = async () => {
   }
 }
 
-// Create axios client with auth headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add request interceptor
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-  } catch (e) {
-    console.warn('Failed to get Supabase session:', e)
-  }
-  return config
-})
-
-// Subscription service client
-const subscriptionClient = axios.create({
-  baseURL: SUBSCRIPTION_API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
 // Load subscription info
 const loadSubscriptionInfo = async () => {
   try {
@@ -300,12 +268,8 @@ const loadSubscriptionInfo = async () => {
     }
 
     // Call subscription-service directly
-    const session = await supabase.auth.getSession()
     const response = await subscriptionClient.get('/subscription/status', {
       params: { user_id: user.id },
-      headers: {
-        Authorization: `Bearer ${session.data.session?.access_token || user.id}`,
-      },
     })
     subscriptionInfo.value = response.data
   } catch (error: any) {
@@ -421,12 +385,8 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const session = await supabase.auth.getSession()
       const response = await subscriptionClient.get('/subscription/status', {
         params: { user_id: user.id },
-        headers: {
-          Authorization: `Bearer ${session.data.session?.access_token || user.id}`,
-        },
       })
       
       const info = response.data

@@ -265,7 +265,7 @@ const handleGoogleLogin = async () => {
   <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
       <h1 class="text-3xl font-bold mb-2 text-center">Welcome</h1>
-      <p class="text-gray-500 mb-8 text-center">
+      <p class="text-green-500 mb-8 text-center">
         {{ isForgotPassword ? 'Reset password' : isSignUp ? 'Create account' : 'Sign in to access your AI wardrobe' }}
       </p>
       
@@ -294,7 +294,7 @@ const handleGoogleLogin = async () => {
         <div class="pt-4 border-t border-gray-200">
           <button
             @click="backToLogin"
-            class="w-full text-sm text-gray-600 hover:text-black transition-colors"
+            class="w-full text-sm text-green-600 hover:text-black transition-colors"
           >
             ← 返回登录
           </button>
@@ -322,7 +322,7 @@ const handleGoogleLogin = async () => {
         <div class="flex justify-end">
           <button
             @click="showForgotPassword"
-            class="text-sm text-gray-600 hover:text-black transition-colors"
+            class="text-sm text-green-600 hover:text-black transition-colors"
           >
             Forgot password?
           </button>
@@ -342,7 +342,7 @@ const handleGoogleLogin = async () => {
             <div class="w-full border-t border-gray-200"></div>
           </div>
           <div class="relative flex justify-center text-sm">
-            <span class="px-2 bg-white text-gray-500">Or continue with</span>
+            <span class="px-2 bg-white text-green-500">Or continue with</span>
           </div>
         </div>
 
@@ -350,7 +350,7 @@ const handleGoogleLogin = async () => {
         <button 
           @click="handleGoogleLogin"
           :disabled="isLoading"
-          class="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 text-green-700 py-3 rounded-xl font-medium hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg class="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -370,7 +370,7 @@ const handleGoogleLogin = async () => {
           <button
             @click="handleResendConfirmation"
             :disabled="isLoading || resendCooldown > 0"
-            class="w-full text-sm text-gray-600 hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed underline"
+            class="w-full text-sm text-green-600 hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed underline"
           >
             {{ resendCooldown > 0 
               ? `Resend confirmation email (wait ${resendCooldown}s)` 
@@ -381,7 +381,7 @@ const handleGoogleLogin = async () => {
         <div class="pt-4 border-t border-gray-200">
           <button
             @click="toggleMode"
-            class="w-full text-sm text-gray-600 hover:text-black transition-colors"
+            class="w-full text-sm text-green-600 hover:text-black transition-colors"
           >
             {{ isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up' }}
           </button>
@@ -389,11 +389,11 @@ const handleGoogleLogin = async () => {
       </div>
       
       <!-- Footer Links -->
-      <div class="mt-6 pt-4 border-t border-gray-200 flex justify-center gap-4 text-xs text-gray-500">
+      <div class="mt-6 pt-4 border-t border-gray-200 flex justify-center gap-4 text-xs text-green-500">
         <router-link to="/privacy-policy" class="hover:text-black transition-colors">
           Privacy Policy
         </router-link>
-        <span class="text-gray-300">|</span>
+        <span class="text-green-300">|</span>
         <router-link to="/terms-of-service" class="hover:text-black transition-colors">
           Terms of Service
         </router-link>

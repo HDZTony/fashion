@@ -75,12 +75,12 @@ onMounted(async () => {
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
       <div v-if="!error">
         <div class="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p class="text-gray-600">Completing sign-in...</p>
+        <p class="text-green-600">Completing sign-in...</p>
       </div>
       <div v-else class="text-red-600">
         <p class="font-medium mb-2">{{ error }}</p>
-        <p class="text-sm text-gray-500 mt-2">If you just confirmed your email, please try signing in.</p>
-        <p class="text-sm text-gray-500 mt-1">Redirecting to login...</p>
+        <p class="text-sm text-green-500 mt-2">If you just confirmed your email, please try signing in.</p>
+        <p class="text-sm text-green-500 mt-1">Redirecting to login...</p>
       </div>
     </div>
   </div>

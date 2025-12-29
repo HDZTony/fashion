@@ -1,7 +1,5 @@
 import { ref, computed } from 'vue'
-import axios from 'axios'
-import { useAuthStore } from '@/stores/auth'
-import { API_URL } from '@/config/api'
+import { apiClient } from '@/lib/api-client'
 
 /**
  * Composable for managing user frontend version (stable/v2)
@@ -20,27 +18,8 @@ export function useVersion() {
     error.value = null
 
     try {
-      // Get auth token from Pinia auth store (priority: session -> localStorage -> cookie)
-      const authStore = useAuthStore()
-      
-      // Ensure session is loaded
-      if (authStore.isLoading) {
-        await authStore.loadSession()
-      }
-      
-      const token = authStore.accessToken
-
-      if (!token) {
-        // If not authenticated, default to stable
-        currentVersion.value = 'stable'
-        return 'stable'
-      }
-
-      // Call API to get version
-      const response = await axios.get(`${API_URL}/api/router/get-version`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      // Call API to get version (apiClient handles authentication automatically)
+      const response = await apiClient.get('/api/router/get-version', {
         withCredentials: true,
       })
 
@@ -50,7 +29,7 @@ export function useVersion() {
     } catch (e: any) {
       console.error('Failed to get version:', e)
       error.value = e?.response?.data?.error || e?.message || 'Failed to get version'
-      // Default to stable on error
+      // Default to stable on error (including auth errors)
       currentVersion.value = 'stable'
       return 'stable'
     } finally {
@@ -66,30 +45,11 @@ export function useVersion() {
     error.value = null
 
     try {
-      // Get auth token from Pinia auth store
-      const authStore = useAuthStore()
-      
-      // Ensure session is loaded
-      if (authStore.isLoading) {
-        await authStore.loadSession()
-      }
-      
-      const token = authStore.accessToken
-
-      if (!token) {
-        error.value = 'Not authenticated'
-        return false
-      }
-
-      // Call API to set version
-      const response = await axios.post(
-        `${API_URL}/api/router/set-version`,
+      // Call API to set version (apiClient handles authentication automatically)
+      const response = await apiClient.post(
+        '/api/router/set-version',
         { version },
         {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
           withCredentials: true,
         }
       )

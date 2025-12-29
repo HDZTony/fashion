@@ -293,10 +293,10 @@ onUnmounted(() => {
           <div class="p-4">
             <div class="flex items-start justify-between gap-2 mb-2">
               <div class="flex-1">
-                <p class="text-xs text-gray-400 mb-1">
+                <p class="text-xs text-green-400 mb-1">
                   {{ formatDate(favorite.created_at) }}
                 </p>
-                <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-gray-500">
+                <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-green-500">
                   {{ favorite.garment_urls.length }} item(s)
                 </p>
                 <p v-if="favorite.scene_image_url" class="text-xs text-green-600 mt-1">
@@ -316,7 +316,7 @@ onUnmounted(() => {
                   class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
                   title="删除收藏"
                 >
-                  <X class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" />
+                  <X class="w-4 h-4 text-green-400 group-hover:text-red-500 transition-colors" />
                 </button>
               </div>
             </div>

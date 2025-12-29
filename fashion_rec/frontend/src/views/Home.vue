@@ -7,9 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useHead } from '@vueuse/head'
 import { useSEO } from '@/composables/useSEO'
 import { siteBaseUrl } from '@/config/seo'
-import axios from 'axios'
-import { supabase } from '@/lib/supabase'
-import { API_URL } from '@/config/api'
+import { apiClient } from '@/lib/api-client'
 
 defineOptions({ name: 'Home' })
 
@@ -22,32 +20,11 @@ const isSettingVersion = ref(false)
 // Set user version when entering studio
 const setUserVersion = async (version: 'stable' | 'v2' = 'v2') => {
   try {
-    // First, try to get session from Supabase (primary source)
-    const { data: { session } } = await supabase.auth.getSession()
-    let token = session?.access_token
-    
-    // Fallback: if Supabase session is not available, try localStorage
-    if (!token) {
-      const backupToken = localStorage.getItem('auth_token')
-      if (backupToken) {
-        token = backupToken
-        console.log('[Home] Using backup token from localStorage for setUserVersion')
-      }
-    }
-    
-    if (!token) {
-      console.warn('[Home] No auth token available for setUserVersion')
-      return false
-    }
-
-    const response = await axios.post(
-      `${API_URL}/api/router/set-version`,
+    // Call API to set version (apiClient handles authentication automatically)
+    const response = await apiClient.post(
+      '/api/router/set-version',
       { version },
       {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         withCredentials: true, // Include cookies
       }
     )
