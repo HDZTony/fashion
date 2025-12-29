@@ -150,7 +150,7 @@ export class SubscriptionService {
               
               return {
                 planName: planConfig.name,
-                remainingTries: sub.remaining_tries || planConfig.monthlyTries,
+                remainingTries: sub.remaining_tries ?? planConfig.monthlyTries,
                 totalTries: planConfig.monthlyTries,
                 period: planConfig.resetPeriodDays === 1 ? 'daily' : 'monthly',
                 nextResetDate: actualNextReset.toISOString(),
@@ -187,7 +187,7 @@ export class SubscriptionService {
         // 订阅是 active 状态，正常处理
         if (daysSinceReset >= planConfig.resetPeriodDays) {
           // 保存当前剩余次数，用于累加
-          const currentRemaining = sub.remaining_tries || 0;
+          const currentRemaining = sub.remaining_tries ?? 0;
           await this.resetTries(userId, plan);
           
           // 累加后的次数
@@ -212,7 +212,7 @@ export class SubscriptionService {
           
           return {
             planName: planConfig.name,
-            remainingTries: sub.remaining_tries || planConfig.monthlyTries,
+            remainingTries: sub.remaining_tries ?? planConfig.monthlyTries,
             totalTries: planConfig.monthlyTries,
             period: planConfig.resetPeriodDays === 1 ? 'daily' : 'monthly',
             nextResetDate: nextReset.toISOString(),
@@ -311,7 +311,7 @@ export class SubscriptionService {
       }
 
       // 消耗付费次数
-      const newRemaining = (record.remaining_tries || 0) - 1;
+      const newRemaining = (record.remaining_tries ?? 0) - 1;
       await this.table
         .update({
           remaining_tries: newRemaining,
@@ -494,7 +494,7 @@ export class SubscriptionService {
 
       // 获取当前剩余次数
       const { data } = await this.table.select('remaining_tries').eq('user_id', userId).single();
-      const currentRemaining = data?.remaining_tries || 0;
+      const currentRemaining = data?.remaining_tries ?? 0;
 
       // 累加新的次数（保留未用完的次数）
       const newRemaining = currentRemaining + planConfig.monthlyTries;

@@ -66,6 +66,11 @@ const planSlug = computed(() => {
 })
 const planRank: Record<string, number> = { free: 0, premium: 1, premium_plus: 2, premium_pro: 3 }
 const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
+const freeRemainingTries = computed(() => {
+  // 使用后端返回的 dailyFreeTriesRemaining 字段（所有计划都有每天3次免费机会）
+  // 如果后端没有返回，默认显示3（如果还没有使用过）
+  return subscriptionInfo.value?.dailyFreeTriesRemaining ?? 0
+})
 const nextResetDate = computed(() => {
   const dateStr = subscriptionInfo.value?.nextResetDate
   if (!dateStr) return ''
@@ -436,6 +441,16 @@ onMounted(async () => {
                 <span class="font-semibold text-green-900">{{ status }}</span>
               </div>
               <div class="flex justify-between text-sm text-green-700">
+                <span>Remaining free tries</span>
+                <span class="font-semibold text-green-900">
+                  {{ freeRemainingTries }}/3 (Daily limit)
+                </span>
+              </div>
+              <div class="flex justify-between text-sm text-green-700" v-if="planSlug !== 'free'">
+                <span>Remaining paid tries</span>
+                <span class="font-semibold text-green-900">{{ remainingTries }}</span>
+              </div>
+              <div class="flex justify-between text-sm text-green-700" v-else>
                 <span>Remaining tries</span>
                 <span class="font-semibold text-green-900">{{ remainingTries }}</span>
               </div>
@@ -465,7 +480,6 @@ onMounted(async () => {
             <div class="space-y-3 text-sm text-green-700">
               <p>Sign-in email: <span class="font-semibold">{{ userEmail }}</span></p>
               <p>Billing period: <span class="font-semibold">{{ subscriptionInfo?.period || 'daily' }}</span></p>
-              <p>Tip: upgrade to get more try-ons and priority processing.</p>
             </div>
             <div class="mt-6 space-y-3">
               <Button variant="outline" class="w-full" @click="openPortal">Customer Portal</Button>

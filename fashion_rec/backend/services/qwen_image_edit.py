@@ -46,7 +46,7 @@ BEIJING_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimod
 SINGAPORE_ENDPOINT = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
 DEFAULT_ENV_PREFIX = "QWEN_IMAGE_EDIT_"
-DEFAULT_MODEL = "qwen-image-edit-plus"
+DEFAULT_MODEL = "qwen-image-edit-plus-2025-12-15"
 DEFAULT_REGION = "singapore"  # Default to Singapore region
 
 
@@ -465,7 +465,7 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        choices=["qwen-image-edit-plus", "qwen-image-edit-plus-2025-10-30", "qwen-image-edit"],
+        choices=["qwen-image-edit-plus", "qwen-image-edit-plus-2025-12-15", "qwen-image-edit"],
         help="Model name to use (default: qwen-image-edit-plus).",
     )
     parser.add_argument(

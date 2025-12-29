@@ -492,14 +492,10 @@ const deleteSelectedItems = async () => {
     return
   }
 
-  if (!confirm(`Delete ${selectedItemIds.value.size} selected item(s)? This cannot be undone.`)) {
-    return
-  }
-
   isDeleting.value = true
   try {
     const itemIdsArray = Array.from(selectedItemIds.value)
-    const response = await apiClient.post<{ deleted_count: number; message: string }>('/items/delete', {
+    await apiClient.post<{ deleted_count: number; message: string }>('/items/delete', {
       item_ids: itemIdsArray
     })
 
@@ -509,8 +505,6 @@ const deleteSelectedItems = async () => {
 
     // Reload items from server to ensure data consistency
     await loadUserItems()
-
-    alert(`Deleted ${response.data.deleted_count} item(s)`)
   } catch (error: any) {
     console.error('Failed to delete items:', error)
     const errorMessage = error?.response?.data?.detail || error?.message || 'Delete failed'

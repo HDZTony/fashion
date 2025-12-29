@@ -41,7 +41,7 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     type: 'premium',
     name: 'Premium',
     price: 5,
-    monthlyTries: 30,
+    monthlyTries: 50,
     resetPeriodDays: 30, // 每月重置
     dailyFreeTries: 3, // 每天前3次不计入次数
   },
@@ -49,7 +49,7 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     type: 'premium_plus',
     name: 'Premium Plus',
     price: 15,
-    monthlyTries: 100,
+    monthlyTries: 200,
     resetPeriodDays: 30, // 每月重置
     dailyFreeTries: 3, // 每天前3次不计入次数
   },
@@ -57,7 +57,7 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     type: 'premium_pro',
     name: 'Premium Pro',
     price: 29.9,
-    monthlyTries: 250,
+    monthlyTries: 500,
     resetPeriodDays: 30, // 每月重置
     dailyFreeTries: 3, // 每天前3次不计入次数
   },
