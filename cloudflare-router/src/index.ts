@@ -325,13 +325,14 @@ function isApiRequest(url: URL, request: Request): boolean {
   // If it's an HTML request (browser page navigation), route to frontend
   // Exception: /api/* paths are always API requests
   if (isHtmlRequest && !path.startsWith('/api/')) {
+    console.log(`[Router] isApiRequest: false (HTML request for ${path})`)
     return false
   }
   
   // List of all API endpoints from backend (main.py)
   // This ensures all API requests are routed to backend, not frontend
   // NOTE: Root path '/' should route to frontend, not backend
-  return path.startsWith('/api/') || 
+  const isApi = path.startsWith('/api/') || 
          path.startsWith('/health') ||
          path.startsWith('/outfit') ||
          path.startsWith('/try-on') ||
@@ -346,6 +347,9 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||
          path.startsWith('/cleanup-expired-files')
+  
+  console.log(`[Router] isApiRequest: ${isApi} for path ${path}, Accept: ${acceptHeader}`)
+  return isApi
 }
 
 /**
@@ -506,15 +510,21 @@ export default {
       }
 
       // Check if this is an API request
-      if (isApiRequest(url, request)) {
+      const isApi = isApiRequest(url, request)
+      console.log(`[Router] Request ${request.method} ${path} - isApiRequest: ${isApi}, version: ${version}`)
+      
+      if (isApi) {
         // Route API request to appropriate backend
         const backendUrl = version === 'v2' 
           ? env.V2_BACKEND_URL 
           : env.STABLE_BACKEND_URL
         
+        console.log(`[Router] Routing API request to backend: ${backendUrl}`)
         const backendRequest = routeToBackend(request, backendUrl)
+        console.log(`[Router] Backend request URL: ${backendRequest.url}`)
         
         const response = await fetch(backendRequest)
+        console.log(`[Router] Backend response status: ${response.status}`)
         
         return new Response(response.body, {
           status: response.status,
@@ -527,6 +537,7 @@ export default {
           ? env.V2_FRONTEND_HOST 
           : env.STABLE_FRONTEND_HOST
         
+        console.log(`[Router] Routing frontend request to: ${frontendHost}`)
         const frontendRequest = routeToFrontend(request, frontendHost)
         const response = await fetch(frontendRequest)
         
