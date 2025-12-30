@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Disable SSL warnings for requests with verify=False
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from services.recognition import analyze_image
-from services.vector_db import add_to_wardrobe, search_similar, get_user_items
+from services.vector_db import add_to_wardrobe, search_similar, get_user_items, get_items_by_urls
 from services.try_on import generate_try_on
 from auth import get_current_user, get_current_user_token, get_current_user_and_token
 from fastapi import Depends
@@ -1069,23 +1069,46 @@ class DeleteItemsRequest(BaseModel):
 @app.post("/items/delete")
 async def delete_items(
     request: DeleteItemsRequest,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
     """
     Delete items from the user's wardrobe.
     Accepts a list of item IDs to delete.
+    
+    This endpoint uses background tasks to delete items asynchronously,
+    allowing the frontend to immediately update the UI while deletion
+    happens in the background.
     """
     from services.vector_db import delete_user_items
     
-    try:
-        deleted_count = delete_user_items(request.item_ids, user_id)
+    if not request.item_ids:
         return {
-            "deleted_count": deleted_count,
-            "message": f"Successfully deleted {deleted_count} item(s)"
+            "deleted_count": 0,
+            "message": "No items to delete"
         }
-    except Exception as e:
-        print(f"Failed to delete items: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    
+    logger.info(f"[Delete Items] User {user_id} requesting to delete {len(request.item_ids)} items")
+    
+    # Add deletion task to background tasks
+    # This allows the endpoint to return immediately while deletion happens in background
+    async def delete_task():
+        try:
+            deleted_count = await delete_user_items(request.item_ids, user_id)
+            logger.info(f"[Delete Items] Successfully deleted {deleted_count} items for user {user_id}")
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"[Delete Items] Background deletion failed for user {user_id}: {error_msg}")
+    
+    background_tasks.add_task(delete_task)
+    
+    # Return immediately with accepted status
+    # Frontend has already optimistically updated the UI
+    return {
+        "deleted_count": len(request.item_ids),  # Expected count (actual may differ)
+        "message": f"Deletion started for {len(request.item_ids)} item(s)",
+        "status": "accepted"
+    }
 
 
 @app.post("/outfit")
@@ -1476,6 +1499,20 @@ async def try_on(
         garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{user_id}_collage.png"
         garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
 
+        # Query garment items details from database
+        garment_items = get_items_by_urls(garment_list, user_id)
+        
+        # Build garment descriptions text for prompt using description field
+        garment_descriptions = []
+        for item in garment_items:
+            if item.get("id") and item.get("description"):  # Only include items found in database with description
+                garment_descriptions.append(item["description"])
+        
+        # Build base prompt with garment descriptions
+        garment_desc_text = ""
+        if garment_descriptions:
+            garment_desc_text = f"\n图1中的单品详情：\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
+        
         image_inputs: List[Any] = [garments_collage_path, person_input]
         # If scene image URL is provided, use it as 图3 (background)
         if scene_image_url:
@@ -1491,6 +1528,7 @@ async def try_on(
                 "包背在肩上或拎在手中。"
                 "禁止任何物品悬浮在空中或散落在地上。"
                 "整体画面自然、光影一致、所有物品都贴合人体。"
+                + garment_desc_text
             )
             negative_prompt = "禁止出现图1中的人物，禁止出现图3中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。"  # 禁止出现衣服拼图和场景图中的人物，禁止物品散落或悬浮
         else:
@@ -1504,6 +1542,7 @@ async def try_on(
                 "包背在肩上或拎在手中。"
                 "禁止任何物品悬浮在空中或散落在地上。"
                 "所有物品都必须贴合人体，位置准确自然。"
+                + garment_desc_text
             )
             negative_prompt = "禁止出现图1中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。"  # 禁止出现衣服拼图中的人物，禁止物品散落或悬浮
     except Exception as e:

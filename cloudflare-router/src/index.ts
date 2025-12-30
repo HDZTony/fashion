@@ -542,10 +542,11 @@ export default {
         const fetchStartTime = Date.now()
         
         // Add timeout to backend fetch using AbortController
-        // For try-on operations, use longer timeout (4 minutes to be under frontend's 5min timeout)
+        // For try-on and upload operations, use longer timeout (4 minutes to be under frontend's 5min timeout)
         // For other operations, use 25 seconds (to be under frontend's 30s timeout)
         const isTryOnRequest = path === '/try-on'
-        const timeoutMs = isTryOnRequest ? 240000 : 25000 // 4 minutes for try-on, 25 seconds for others
+        const isUploadRequest = path === '/upload'
+        const timeoutMs = (isTryOnRequest || isUploadRequest) ? 240000 : 25000 // 4 minutes for try-on/upload, 25 seconds for others
         const abortController = new AbortController()
         const timeoutId = setTimeout(() => {
           abortController.abort()

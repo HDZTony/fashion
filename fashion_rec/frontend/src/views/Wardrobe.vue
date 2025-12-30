@@ -492,29 +492,46 @@ const deleteSelectedItems = async () => {
     return
   }
 
+  const itemIdsArray = Array.from(selectedItemIds.value)
+  
+  // 乐观更新：先保存要删除的物品，用于可能的回滚
+  const itemsToDelete = uploadedItems.value.filter(item => 
+    itemIdsArray.includes(String(item.id))
+  )
+  
+  // 立即从UI中删除（乐观更新）
+  uploadedItems.value = uploadedItems.value.filter(item => 
+    !itemIdsArray.includes(String(item.id))
+  )
+  
+  // 更新缓存
+  saveItemsToCache()
+  
+  // 清除选择状态并退出选择模式
+  selectedItemIds.value.clear()
+  isSelectionMode.value = false
+  
+  // 异步调用后端删除（不阻塞UI）
   isDeleting.value = true
-  try {
-    const itemIdsArray = Array.from(selectedItemIds.value)
-    await apiClient.post<{ deleted_count: number; message: string }>('/items/delete', {
-      item_ids: itemIdsArray
-    })
-
-    // Clear selection and exit selection mode
-    selectedItemIds.value.clear()
-    isSelectionMode.value = false
-
-    // Reload items from server to ensure data consistency
-    await loadUserItems()
-  } catch (error: any) {
+  apiClient.post<{ deleted_count: number; message: string }>('/items/delete', {
+    item_ids: itemIdsArray
+  }).then(() => {
+    // 删除成功，无需额外操作（UI已经更新）
+    console.log(`Successfully deleted ${itemIdsArray.length} items`)
+  }).catch((error: any) => {
+    // 删除失败，回滚UI
     console.error('Failed to delete items:', error)
     const errorMessage = error?.response?.data?.detail || error?.message || 'Delete failed'
-    alert(`Delete failed: ${errorMessage}`)
     
-    // Reload items even on error to ensure UI is in sync
-    await loadUserItems()
-  } finally {
+    // 恢复被删除的物品
+    uploadedItems.value = [...uploadedItems.value, ...itemsToDelete]
+    saveItemsToCache()
+    
+    // 显示错误提示
+    alert(`删除失败: ${errorMessage}\n\n物品已恢复。`)
+  }).finally(() => {
     isDeleting.value = false
-  }
+  })
 }
 
 // Image viewer for wardrobe items

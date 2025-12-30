@@ -47,12 +47,14 @@ The image may contain one or multiple clothing items. For each clothing item vis
 - Style (e.g., Casual, Formal, Streetwear, Vintage)
 - Occasion: Suitable occasions. If the item can be worn for multiple occasions, provide an array.
 - Material: Inferred material (e.g., Cotton, Denim, Silk). If uncertain, provide multiple possibilities as an array.
+- Description: A detailed, fluent, and complete natural language description in English that comprehensively describes the clothing item. This description should be suitable for use in image generation prompts. Include all relevant details: type, color, material, pattern/style details, and characteristics. Write it as a complete, flowing English sentence or sentences that would help an image generation model understand and visualize the item accurately. Be descriptive and specific.
 
 IMPORTANT RULES:
 1. Output the result as a JSON array. Each element represents one clothing item.
 2. If the image contains only one item, return an array with one element.
 3. For attributes where you are uncertain or the item has multiple valid values, use an array of strings instead of a single string.
-4. Always include all attributes (type, color, pattern, style, occasion, material) for each item.
+4. Always include all attributes (type, color, pattern, style, occasion, material, description) for each item.
+5. The description field must be a single string in English, not an array. It should be a complete, fluent description suitable for image generation prompts.
 
 Example for single item with certain attributes:
 [
@@ -62,7 +64,8 @@ Example for single item with certain attributes:
         "pattern": "Logo print",
         "style": "Casual",
         "occasion": "Daily",
-        "material": "Cotton"
+        "material": "Cotton",
+        "description": "A white cotton T-shirt with a logo print design, casual style suitable for daily wear."
     }
 ]
 
@@ -74,7 +77,8 @@ Example for shoes (be specific):
         "pattern": "Solid",
         "style": "Formal",
         "occasion": ["Work", "Formal"],
-        "material": "Leather"
+        "material": "Leather",
+        "description": "Black leather dress shoes with a solid color finish, formal style suitable for work and formal occasions."
     }
 ]
 or
@@ -85,7 +89,8 @@ or
         "pattern": "Solid",
         "style": "Casual",
         "occasion": ["Daily", "Beach"],
-        "material": ["Leather", "Rubber"]
+        "material": ["Leather", "Rubber"],
+        "description": "Brown sandals made of leather and rubber materials, solid color design, casual style perfect for daily wear and beach occasions."
     }
 ]
 
@@ -97,7 +102,8 @@ Example for single item with uncertain/multiple values:
         "pattern": "Solid",
         "style": "Casual",
         "occasion": ["Daily", "Work"],
-        "material": ["Cotton", "Polyester blend"]
+        "material": ["Cotton", "Polyester blend"],
+        "description": "A navy blue or dark blue jacket made from cotton and polyester blend fabric, solid color pattern, casual style suitable for daily wear and work settings."
     }
 ]
 
@@ -109,7 +115,8 @@ Example for multiple items:
         "pattern": "Solid",
         "style": "Casual",
         "occasion": ["Daily", "Work"],
-        "material": "Cotton"
+        "material": "Cotton",
+        "description": "A navy blue cardigan made of cotton material, solid color pattern, casual style perfect for daily wear and work occasions."
     },
     {
         "type": "White dress shirt",
@@ -117,7 +124,8 @@ Example for multiple items:
         "pattern": "Solid",
         "style": "Formal",
         "occasion": "Work",
-        "material": "Cotton"
+        "material": "Cotton",
+        "description": "A white dress shirt made of cotton fabric, solid color design, formal style suitable for work and professional settings."
     },
     {
         "type": "Beige chinos",
@@ -125,7 +133,8 @@ Example for multiple items:
         "pattern": "Solid",
         "style": "Casual",
         "occasion": ["Daily", "Work"],
-        "material": "Cotton twill"
+        "material": "Cotton twill",
+        "description": "Beige or khaki colored chinos made from cotton twill fabric, solid color pattern, casual style appropriate for daily wear and work environments."
     },
     {
         "type": "White canvas sneakers",
@@ -133,7 +142,8 @@ Example for multiple items:
         "pattern": "Solid",
         "style": "Casual",
         "occasion": ["Daily", "Sport"],
-        "material": ["Canvas", "Rubber"]
+        "material": ["Canvas", "Rubber"],
+        "description": "White canvas sneakers made of canvas and rubber materials, solid color design, casual style ideal for daily activities and sports."
     }
 ]
 
