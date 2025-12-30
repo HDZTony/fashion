@@ -1000,9 +1000,33 @@ const performTryOn = async () => {
     tryOnImageUrl.value = response.data.url
     // Check if this result is already in favorites (in case user regenerates same result)
     await checkFavoriteStatus()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Try-on failed:', error)
-    alert('Failed to generate try-on result. Please try again later.')
+    
+    // Extract error message from response
+    let errorMessage = 'Failed to generate try-on result. Please try again later.'
+    
+    // Check if it's a 403 error (subscription limit reached)
+    if (error.response?.status === 403) {
+      // Try to get detailed error message from response
+      const detail = error.response?.data?.detail || error.response?.data?.error
+      if (detail) {
+        errorMessage = detail
+      } else {
+        errorMessage = 'Your try-on limit has been reached. Please wait for the next reset period or upgrade your plan.'
+      }
+    } else if (error.response?.data?.detail) {
+      // For other errors, try to get detail message
+      errorMessage = error.response.data.detail
+    } else if (error.response?.data?.error) {
+      // Fallback to error field
+      errorMessage = error.response.data.error
+    } else if (error.message) {
+      // Use error message if available
+      errorMessage = error.message
+    }
+    
+    alert(errorMessage)
   } finally {
     isTryingOn.value = false
   }

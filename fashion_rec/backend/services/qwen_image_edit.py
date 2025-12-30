@@ -132,6 +132,7 @@ async def _prepare_payload(
     prompt_extend: Optional[bool] = None,
     watermark: Optional[bool] = None,
     garment_collage_index: Optional[int] = None,
+    size: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Build the JSON payload accepted by the Qwen Image Edit API.
@@ -145,6 +146,7 @@ async def _prepare_payload(
         prompt_extend: Whether to extend the prompt automatically.
         watermark: Whether to add watermark.
         garment_collage_index: Optional index of the garment collage image (will be set to expire in 7 days).
+        size: Optional output image size (e.g., "2048x2048" for 2K resolution).
     """
     # Prepare content array with images and text
     content: List[Dict[str, str]] = []
@@ -181,6 +183,8 @@ async def _prepare_payload(
         payload["parameters"]["prompt_extend"] = prompt_extend
     if watermark is not None:
         payload["parameters"]["watermark"] = watermark
+    if size is not None:
+        payload["parameters"]["size"] = size
     
     return payload
 
@@ -206,6 +210,7 @@ class QwenImageEditClient:
         output_path: Optional[Path] = None,
         debug: bool = False,
         garment_collage_index: Optional[int] = None,
+        size: Optional[str] = None,
     ) -> Union[Path, List[Path]]:
         """
         Submit an editing request and return the path(s) to the edited image(s).
@@ -220,6 +225,7 @@ class QwenImageEditClient:
             output_path: Optional explicit path where the edited image(s) should be saved.
                          If n > 1, this will be used as a prefix with index suffix.
             debug: Whether to print debug information.
+            size: Optional output image size (e.g., "2048x2048" for 2K resolution).
 
         Returns:
             Path to the saved edited image, or list of paths if n > 1.
@@ -248,6 +254,7 @@ class QwenImageEditClient:
             prompt_extend=prompt_extend,
             watermark=watermark,
             garment_collage_index=garment_collage_index,
+            size=size,
         )
 
         headers = {

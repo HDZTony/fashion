@@ -1161,10 +1161,31 @@ async def try_on(
     # Extract user_id and user_token from auth tuple
     user_id, user_token = auth
     
-    # 检查并消耗试穿次数（调用 subscription-service）
+    # 检查并消耗试穿次数（调用 subscription-service），同时获取订阅状态以确定分辨率
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
+    user_plan = "free"  # Default to free plan
     try:
         async with httpx.AsyncClient() as client:
+            # First, get subscription status to determine resolution
+            status_response = await client.get(
+                f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+                params={"user_id": user_id},
+                timeout=5.0
+            )
+            if status_response.is_success:
+                status_data = status_response.json()
+                plan_name = status_data.get("planName", "Free").lower()
+                # Map plan names to plan identifiers
+                if "premium plus" in plan_name or "premium_plus" in plan_name:
+                    user_plan = "premium_plus"
+                elif "premium pro" in plan_name or "premium_pro" in plan_name:
+                    user_plan = "premium_pro"
+                elif "premium" in plan_name:
+                    user_plan = "premium"
+                else:
+                    user_plan = "free"
+            
+            # Then check and consume try count
             response = await client.post(
                 f"{SUBSCRIPTION_SERVICE_URL}/subscription/check-try",
                 json={"user_id": user_id},
@@ -1434,6 +1455,13 @@ async def try_on(
         print(f"Failed to build garment collage: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
 
+    # Determine output resolution based on subscription plan
+    # Premium Plus and Premium Pro get 2K resolution (2048x2048)
+    output_size = None
+    if user_plan in ["premium_plus", "premium_pro"]:
+        output_size = "2048x2048"  # 2K resolution
+        logger.info(f"[Try-On] Using 2K resolution for {user_plan} plan")
+    
     try:
         # Index 0 is the garment collage (图1), set it to expire in 7 days
         edited_path = await client.edit_image(
@@ -1443,6 +1471,7 @@ async def try_on(
             negative_prompt=negative_prompt,
             output_path=output_path,
             garment_collage_index=0,  # 图1 (garment collage) will expire in 7 days
+            size=output_size,  # Set resolution based on subscription plan
         )
     except Exception as e:
         import traceback
