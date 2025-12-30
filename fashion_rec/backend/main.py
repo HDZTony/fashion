@@ -1243,12 +1243,67 @@ async def try_on(
 
         person_input = str(person_path)
         output_path = person_path.with_name(person_path.stem + "_tryon.png")
+        person_img_path = person_path  # Store for resolution calculation
     else:
         # Use URL directly for person image
         person_input = person_image_url  # type: ignore[assignment]
         # Ensure output directory exists
         output_path = UPLOAD_DIR / "tryon" / f"tryon_{user_id}.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        person_img_path = None  # Will use URL for resolution calculation
+
+    # Determine output resolution based on subscription plan
+    # Premium Plus and Premium Pro get 2K resolution while maintaining aspect ratio
+    output_size = None
+    if user_plan in ["premium_plus", "premium_pro"]:
+        # Get person image dimensions to maintain aspect ratio
+        try:
+            person_width, person_height = None, None
+            
+            if person_img_path and Path(person_img_path).exists():
+                # Get dimensions from local file
+                with Image.open(person_img_path) as img:
+                    person_width, person_height = img.size
+            elif person_image_url:
+                # Get dimensions from URL
+                try:
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(person_image_url, timeout=10.0)
+                        if resp.status_code == 200:
+                            img = Image.open(BytesIO(resp.content))
+                            person_width, person_height = img.size
+                except Exception as e:
+                    logger.warning(f"Failed to get image dimensions from URL: {e}, using default aspect ratio")
+            
+            # Calculate 2K resolution maintaining aspect ratio
+            # Target: max dimension = 2048, maintain aspect ratio
+            if person_width and person_height:
+                aspect_ratio = person_width / person_height
+                max_dimension = 2048
+                
+                if aspect_ratio >= 1:  # Landscape or square
+                    # Width is larger or equal
+                    width = min(max_dimension, int(max_dimension * aspect_ratio))
+                    height = min(max_dimension, int(max_dimension / aspect_ratio))
+                else:  # Portrait
+                    # Height is larger
+                    height = min(max_dimension, int(max_dimension / aspect_ratio))
+                    width = min(max_dimension, int(max_dimension * aspect_ratio))
+                
+                # Ensure dimensions are within API limits [512, 2048]
+                width = max(512, min(2048, width))
+                height = max(512, min(2048, height))
+                
+                output_size = f"{width}*{height}"
+                logger.info(f"[Try-On] Using 2K resolution {output_size} (maintaining aspect ratio {aspect_ratio:.2f}) for {user_plan} plan")
+            else:
+                # Fallback to square 2K if dimensions unavailable
+                output_size = "2048*2048"
+                logger.info(f"[Try-On] Using default 2K resolution {output_size} for {user_plan} plan (could not determine input aspect ratio)")
+        except Exception as e:
+            # Fallback to square 2K on error
+            output_size = "2048*2048"
+            logger.warning(f"[Try-On] Failed to calculate aspect-ratio-preserving resolution: {e}, using default {output_size}")
 
     # Prepare Qwen Image Edit client
     try:
@@ -1455,13 +1510,6 @@ async def try_on(
         print(f"Failed to build garment collage: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
 
-    # Determine output resolution based on subscription plan
-    # Premium Plus and Premium Pro get 2K resolution (2048x2048)
-    output_size = None
-    if user_plan in ["premium_plus", "premium_pro"]:
-        output_size = "2048x2048"  # 2K resolution
-        logger.info(f"[Try-On] Using 2K resolution for {user_plan} plan")
-    
     try:
         # Index 0 is the garment collage (图1), set it to expire in 7 days
         edited_path = await client.edit_image(

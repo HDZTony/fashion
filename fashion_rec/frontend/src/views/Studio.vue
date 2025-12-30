@@ -6,30 +6,80 @@ import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shir
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
+import { useStudioStore } from '../stores/studio'
 
 const route = useRoute()
 const router = useRouter()
 
+// Initialize Pinia store
+const studioStore = useStudioStore()
+
+// Local state (not persisted)
 const uploadedItems = ref<Item[]>([])
 const selectedItem = ref<Item | null>(null)
 const selectedItemIds = ref<string[]>([])
 const recommendations = ref<Recommendation[]>([])
-const agentOutfits = ref<AgentOutfit[]>([])
-const activeWardrobeIds = ref<string[]>([])
-// Store the mapping of wardrobe_id to role for applied outfit items
-const activeWardrobeRoleMap = ref<Map<string, string>>(new Map())
-// Store the original applied outfit to track all roles that should exist
-const originalAppliedOutfit = ref<AgentOutfit | null>(null)
 const modelImageFile = ref<File | null>(null)
-const tryOnImageUrl = ref<string | null>(null)
 const isGenerating = ref(false)
 const isTryingOn = ref(false)
-const customPrompt = ref('')
 
-// Scene image for prompt context
+// Scene image file (not persisted, only URL is persisted)
 const sceneImageFile = ref<File | null>(null)
-const sceneImagePreviewUrl = ref<string | null>(null)
-const sceneImageUrl = ref<string | null>(null)
+
+// Use store state (automatically persisted)
+const customPrompt = computed({
+  get: () => studioStore.customPrompt,
+  set: (value) => studioStore.setCustomPrompt(value)
+})
+const sceneImageUrl = computed({
+  get: () => studioStore.sceneImageUrl,
+  set: (value) => studioStore.setSceneImage(value, value)
+})
+const sceneImagePreviewUrl = computed({
+  get: () => studioStore.sceneImagePreviewUrl,
+  set: (value) => studioStore.setSceneImage(studioStore.sceneImageUrl, value)
+})
+const modelImagePreviewUrl = computed({
+  get: () => studioStore.modelImagePreviewUrl,
+  set: (value) => studioStore.setModelImage(value)
+})
+const tryOnImageUrl = computed({
+  get: () => studioStore.tryOnImageUrl,
+  set: (value) => studioStore.setTryOnImage(value)
+})
+const agentOutfits = computed({
+  get: () => studioStore.agentOutfits,
+  set: (value) => studioStore.setAgentOutfits(value)
+})
+const activeWardrobeIds = computed({
+  get: () => studioStore.activeWardrobeIds,
+  set: (value) => studioStore.setActiveWardrobeIds(value)
+})
+// Active wardrobe role map (computed from store entries)
+const activeWardrobeRoleMap = computed({
+  get: () => studioStore.getActiveWardrobeRoleMap(),
+  set: (value) => studioStore.setActiveWardrobeRoleMap(value)
+})
+
+// Helper functions to update role map (since computed doesn't support Map methods directly)
+const updateRoleMap = (fn: (map: Map<string, string>) => void) => {
+  const map = studioStore.getActiveWardrobeRoleMap()
+  fn(map)
+  studioStore.setActiveWardrobeRoleMap(map)
+}
+
+const originalAppliedOutfit = computed({
+  get: () => studioStore.originalAppliedOutfit,
+  set: (value) => studioStore.setOriginalAppliedOutfit(value)
+})
+const favoriteSaved = computed({
+  get: () => studioStore.favoriteSaved,
+  set: (value) => studioStore.setFavoriteStatus(value, studioStore.currentFavoriteId)
+})
+const currentFavoriteId = computed({
+  get: () => studioStore.currentFavoriteId,
+  set: (value) => studioStore.setFavoriteStatus(studioStore.favoriteSaved, value)
+})
 
 // Historical images
 interface HistoricalImage {
@@ -117,6 +167,8 @@ const restoreItemsFromCache = () => {
   return false
 }
 
+// State is automatically persisted by Pinia store, no need for manual save/restore
+
 // Load user's items from backend
 const loadUserItems = async () => {
   try {
@@ -197,6 +249,16 @@ onMounted(async () => {
   // Studio page doesn't need to load all items from backend - only items selected in Wardrobe are needed
   restoreItemsFromCache()
   
+  // Studio state is automatically restored by Pinia store (no manual restore needed)
+  // But we need to check favorite status if try-on image exists
+  const lookId = route.query.lookId as string | undefined
+  const tryonHistoryId = route.query.tryonHistoryId as string | undefined
+  
+  if (!lookId && !tryonHistoryId && tryOnImageUrl.value) {
+    // If not restoring from history and try-on image exists, check favorite status
+    checkFavoriteStatus()
+  }
+  
   // Wait for authentication to be ready before loading other data
   // Note: We don't load items from backend here because Applied outfit items only show
   // items selected from Wardrobe page, which are already in sessionStorage cache
@@ -224,7 +286,6 @@ onMounted(async () => {
   }
   
   // Check if we need to restore a look from history
-  const lookId = route.query.lookId as string | undefined
   if (lookId) {
     console.log('[onMounted] Found lookId in query, restoring look:', lookId)
     // Items should be in cache from Wardrobe page, but if not, restoreLookFromHistory will handle it
@@ -232,7 +293,6 @@ onMounted(async () => {
   }
   
   // Check if we need to restore try-on history
-  const tryonHistoryId = route.query.tryonHistoryId as string | undefined
   if (tryonHistoryId) {
     console.log('[onMounted] Found tryonHistoryId in query, restoring try-on history:', tryonHistoryId)
     await restoreTryOnHistory(tryonHistoryId)
@@ -281,6 +341,12 @@ onActivated(() => {
     }
   } else {
     console.log('[Studio onActivated] Using cached data, items count:', uploadedItems.value.length)
+  }
+  
+  // Studio state is automatically restored by Pinia store (no manual restore needed)
+  // Check favorite status if try-on image exists
+  if (tryOnImageUrl.value) {
+    checkFavoriteStatus()
   }
 })
 
@@ -511,11 +577,13 @@ const restoreLookFromHistory = async (lookId: string) => {
       activeWardrobeIds.value = existingIds
       
       // Restore role mapping
-      activeWardrobeRoleMap.value.clear()
-      look.items.forEach((item: any) => {
-        if (item.wardrobe_id && existingIds.includes(String(item.wardrobe_id))) {
-          activeWardrobeRoleMap.value.set(String(item.wardrobe_id), item.role)
-        }
+      updateRoleMap((map) => {
+        map.clear()
+        look.items.forEach((item: any) => {
+          if (item.wardrobe_id && existingIds.includes(String(item.wardrobe_id))) {
+            map.set(String(item.wardrobe_id), item.role)
+          }
+        })
       })
       
       // Restore original applied outfit for tracking missing roles
@@ -554,6 +622,7 @@ const restoreLookFromHistory = async (lookId: string) => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
+  // State is automatically persisted by Pinia store
 })
 
 // Upload and direct selection are handled on the Wardrobe page now.
@@ -648,6 +717,7 @@ const getRecommendations = async () => {
 
     console.log('Agent raw outfit text:', response.data.raw_text)
     agentOutfits.value = response.data.outfits || []
+    // State is automatically persisted by Pinia store
   } catch (error: any) {
     console.error('Recommendation failed:', error)
     alert('Failed to get recommendations')
@@ -677,7 +747,7 @@ const activeWardrobeItems = computed(() =>
     .filter((it): it is Item => it !== null),
 )
 
-const modelImagePreviewUrl = ref<string | null>(null)
+// State is automatically persisted by Pinia store, no need for watch
 
 const selectedBaseItems = computed(() =>
   selectedItemIds.value
@@ -958,8 +1028,7 @@ const performTryOn = async () => {
   tryOnImageUrl.value = null
   isTryingOn.value = true
   // Reset favorite state when starting a new try-on
-  favoriteSaved.value = false
-  currentFavoriteId.value = null
+  studioStore.setFavoriteStatus(false, null)
 
   const tryOnRequestData = {
     person_image: modelImageFile.value?.name || 'file',
@@ -1000,6 +1069,7 @@ const performTryOn = async () => {
     tryOnImageUrl.value = response.data.url
     // Check if this result is already in favorites (in case user regenerates same result)
     await checkFavoriteStatus()
+    // State is automatically persisted by Pinia store
   } catch (error: any) {
     console.error('Try-on failed:', error)
     
@@ -1082,7 +1152,9 @@ const applyOutfit = async (outfit: AgentOutfit) => {
       if (roleFromOutfit) {
         currentSelectedRoles.add(roleFromOutfit)
         // Update role mapping
-        activeWardrobeRoleMap.value.set(id, roleFromOutfit)
+        updateRoleMap((map) => {
+          map.set(id, roleFromOutfit)
+        })
       } else {
         // Fallback to existing mapping if available
         const role = activeWardrobeRoleMap.value.get(id)
@@ -1120,7 +1192,9 @@ const applyOutfit = async (outfit: AgentOutfit) => {
         // Double check: don't add if already in activeWardrobeIds or currentSelectedIds
         if (!currentSelectedIds.has(id) && !activeWardrobeIds.value.includes(id)) {
           activeWardrobeIds.value.push(id)
-          activeWardrobeRoleMap.value.set(id, item.role)
+          updateRoleMap((map) => {
+            map.set(id, item.role)
+          })
         }
       }
     })
@@ -1210,11 +1284,13 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     originalAppliedOutfit.value = outfit
 
     // Store the role mapping for each wardrobe item
-    activeWardrobeRoleMap.value.clear()
-    outfit.items.forEach(item => {
-      if (item.wardrobe_id) {
-        activeWardrobeRoleMap.value.set(String(item.wardrobe_id), item.role)
-      }
+    updateRoleMap((map) => {
+      map.clear()
+      outfit.items.forEach(item => {
+        if (item.wardrobe_id) {
+          map.set(String(item.wardrobe_id), item.role)
+        }
+      })
     })
     
     // Check if items can be found
@@ -1247,6 +1323,8 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     console.error('Failed to auto-save applied outfit:', error)
       // Don't throw - saving to history is optional
     }
+  
+  // State is automatically persisted by Pinia store
   } catch (error) {
     console.error('[Apply Outfit] Error:', error)
     alert(`Apply outfit failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -1300,7 +1378,9 @@ const removeActiveItem = (itemId: string) => {
   const itemIdStr = String(itemId)
   activeWardrobeIds.value = activeWardrobeIds.value.filter(id => String(id) !== itemIdStr)
   // Also remove from role map to keep data consistent
-  activeWardrobeRoleMap.value.delete(itemIdStr)
+  updateRoleMap((map) => {
+    map.delete(itemIdStr)
+  })
   
   // Sync to localStorage so Wardrobe page can reflect the change
   selectedItemIds.value = selectedItemIds.value.filter(id => String(id) !== itemIdStr)
@@ -1317,7 +1397,9 @@ const removeActiveItem = (itemId: string) => {
   // If all items are removed, clear the original outfit
   if (activeWardrobeIds.value.length === 0) {
     originalAppliedOutfit.value = null
-    activeWardrobeRoleMap.value.clear()
+    updateRoleMap((map) => {
+      map.clear()
+    })
   }
 }
 
@@ -1379,8 +1461,7 @@ const openTryOnImageViewer = () => {
 
 // Favorite functionality
 const isSavingFavorite = ref(false)
-const favoriteSaved = ref(false)
-const currentFavoriteId = ref<string | null>(null)
+// favoriteSaved and currentFavoriteId are now managed by Pinia store (computed above)
 
 // Check if current try-on result is already in favorites
 const checkFavoriteStatus = async () => {
@@ -1394,12 +1475,10 @@ const checkFavoriteStatus = async () => {
     const response = await apiClient.get<{ favorites: Array<{ id: string; image_url: string }> }>('/favorites')
     const favorite = response.data.favorites.find(f => f.image_url === tryOnImageUrl.value)
     if (favorite) {
-      favoriteSaved.value = true
-      currentFavoriteId.value = favorite.id
+      studioStore.setFavoriteStatus(true, favorite.id)
       console.log('[checkFavoriteStatus] Found existing favorite:', favorite.id)
     } else {
-      favoriteSaved.value = false
-      currentFavoriteId.value = null
+      studioStore.setFavoriteStatus(false, null)
     }
   } catch (error: any) {
     console.error('[checkFavoriteStatus] Failed to check favorite status:', error)
@@ -1420,8 +1499,7 @@ const saveFavorite = async () => {
     isSavingFavorite.value = true
     try {
       await apiClient.delete(`/favorites/${currentFavoriteId.value}`)
-      favoriteSaved.value = false
-      currentFavoriteId.value = null
+      studioStore.setFavoriteStatus(false, null)
       console.log('[saveFavorite] Favorite removed')
     } catch (error: any) {
       console.error('Failed to remove favorite:', error)
@@ -1434,7 +1512,7 @@ const saveFavorite = async () => {
 
   // Otherwise, save as favorite
   isSavingFavorite.value = true
-  favoriteSaved.value = false
+  studioStore.setFavoriteStatus(false, null)
 
   try {
     // Get garment URLs from active wardrobe items
@@ -1465,8 +1543,7 @@ const saveFavorite = async () => {
       model_image_id: modelImageId,
     })
     
-    favoriteSaved.value = true
-    currentFavoriteId.value = response.data.id
+    studioStore.setFavoriteStatus(true, response.data.id)
     console.log('Favorite saved:', response.data)
   } catch (error: any) {
     console.error('Failed to save favorite:', error)
