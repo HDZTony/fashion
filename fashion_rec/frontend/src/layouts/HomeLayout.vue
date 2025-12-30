@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { Mail } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -39,6 +40,13 @@ const buttonText = computed(() => {
           >
             Pricing
           </router-link>
+          <a
+            href="mailto:support@hdz73.com"
+            class="text-sm text-green-600 hover:text-green-700 font-semibold flex items-center gap-1 mr-4"
+          >
+            <Mail class="w-4 h-4" />
+            Contact Us
+          </a>
           <Button @click="handleGetStarted" variant="default" size="lg" class="font-bold text-base px-6 py-3 shadow-lg hover:shadow-xl transition-shadow">
             {{ buttonText }}
           </Button>

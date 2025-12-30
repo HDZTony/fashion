@@ -25,6 +25,10 @@
           <router-link to="/favorites" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
             <Heart class="w-4 h-4" /> Favorites
           </router-link>
+          <a href="mailto:support@hdz73.com" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
+            <Mail class="w-4 h-4" />
+            Contact Us
+          </a>
           <router-link to="/profile" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
             <User class="w-4 h-4" />
             Profile
@@ -40,7 +44,7 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { Heart, User } from 'lucide-vue-next'
+import { Heart, User, Mail } from 'lucide-vue-next'
 import { useVersion } from '@/composables/useVersion'
 
 const { currentVersion, getVersion, isV2, isLoading: isLoadingVersion } = useVersion()
