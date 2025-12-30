@@ -541,8 +541,11 @@ export default {
         
         const fetchStartTime = Date.now()
         
-        // Add timeout to backend fetch using AbortController (25 seconds to be under frontend's 30s timeout)
-        const timeoutMs = 25000
+        // Add timeout to backend fetch using AbortController
+        // For try-on operations, use longer timeout (4 minutes to be under frontend's 5min timeout)
+        // For other operations, use 25 seconds (to be under frontend's 30s timeout)
+        const isTryOnRequest = path === '/try-on'
+        const timeoutMs = isTryOnRequest ? 240000 : 25000 // 4 minutes for try-on, 25 seconds for others
         const abortController = new AbortController()
         const timeoutId = setTimeout(() => {
           abortController.abort()
@@ -604,7 +607,10 @@ Troubleshooting steps:
             console.error(`[Router] DNS resolution failed for backend ${backendHost}`)
           }
           
-          // Return error response instead of letting it propagate
+          // Return error response with CORS headers
+          const origin = request.headers.get('Origin')
+          const corsHeaders = getCorsHeaders(origin)
+          
           return new Response(JSON.stringify({ 
             error: 'Backend request failed', 
             detail: errorDetail,
@@ -615,6 +621,7 @@ Troubleshooting steps:
             statusText: statusText,
             headers: {
               'Content-Type': 'application/json',
+              ...corsHeaders
             }
           })
         }
@@ -622,10 +629,21 @@ Troubleshooting steps:
         const fetchDuration = Date.now() - fetchStartTime
         console.log(`[Router] Backend response received: status ${response.status} in ${fetchDuration}ms for ${path}`)
         
+        // Add CORS headers to backend response
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+        
+        // Merge backend headers with CORS headers
+        // CORS headers take precedence to ensure proper CORS handling
+        const responseHeaders = new Headers(response.headers)
+        for (const [key, value] of Object.entries(corsHeaders)) {
+          responseHeaders.set(key, value)
+        }
+        
         return new Response(response.body, {
           status: response.status,
           statusText: response.statusText,
-          headers: response.headers,
+          headers: responseHeaders,
         })
       } else {
         // Route frontend request to appropriate frontend
