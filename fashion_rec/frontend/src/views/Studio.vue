@@ -1586,22 +1586,16 @@ const searchOnGoogle = (description: string) => {
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-4">
         <div>
           <h2 class="text-2xl font-bold mb-2 text-green-800">Tell AI about your day</h2>
-          <p class="text-sm text-green-700">
-        Describe today’s weather, city, scene, and style preferences; AI will use your wardrobe to create outfits.
-          </p>
         </div>
         <div class="flex flex-col gap-4">
           <div class="w-full space-y-3">
-            <label class="block text-sm font-medium text-green-700 mb-1">
-              Describe today and your style
-            </label>
             <!-- Rich input wrapper with integrated image upload -->
             <div class="relative border border-green-200 rounded-xl bg-white transition-all focus-within:border-green-400 focus-within:shadow-md">
               <textarea
                 v-model="customPrompt"
                 rows="3"
                 class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-green-600"
-                placeholder="e.g., Minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
+                placeholder="Describe your desired clothing style; artificial intelligence will create outfits based on your wardrobe.e.g.Minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
               ></textarea>
               
               <!-- Scene image preview area -->

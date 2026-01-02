@@ -10,7 +10,8 @@
     "deploy": "wrangler deploy",
     "type-check": "tsc --noEmit",
     "migrate": "tsx src/migrate-period-end.ts",
-    "migrate:fill": "tsx src/migrate-fill-period-end.ts"
+    "migrate:fill": "tsx src/migrate-fill-period-end.ts",
+    "test:customers": "tsx test-customers.ts"
   },
   "dependencies": {
     "creem_io": "^0.4.0",

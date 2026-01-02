@@ -242,31 +242,26 @@ const productIds = ref<{
   premiumPro: { test: string; prod: string }
 } | null>(null)
 
-// 从后端加载环境配置
+// 从后端加载环境配置（完全依赖后端，无环境变量后备）
 const loadConfig = async () => {
   try {
     const response = await subscriptionClient.get('/config')
     isTestMode.value = response.data.isTestMode
     productIds.value = response.data.productIds
-    console.log('Environment config loaded:', { isTestMode: isTestMode.value, productIds: productIds.value })
-  } catch (error: any) {
-    console.error('Failed to load config from backend, using fallback:', error)
-    // 如果后端配置加载失败，使用环境变量作为后备
-    isTestMode.value = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
-    productIds.value = {
-      premium: {
-        test: import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || '',
-        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || '',
-      },
-      premiumPlus: {
-        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || '',
-        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || '',
-      },
-      premiumPro: {
-        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST || '',
-        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD || '',
-      },
+    
+    // 验证配置是否完整
+    if (!productIds.value || !productIds.value.premium || !productIds.value.premiumPlus || !productIds.value.premiumPro) {
+      throw new Error('Backend configuration is incomplete. Missing product IDs.')
     }
+    
+    console.log('Environment config loaded from backend:', { 
+      isTestMode: isTestMode.value, 
+      productIds: productIds.value 
+    })
+  } catch (error: any) {
+    console.error('Failed to load config from backend:', error)
+    error.value = `无法加载订阅配置: ${error?.response?.data?.error || error?.message || 'Unknown error'}. 请确保后端服务正常运行。`
+    throw error // 抛出错误，让调用者知道配置加载失败
   }
 }
 
@@ -296,6 +291,26 @@ const loadSubscriptionInfo = async () => {
   }
 }
 
+// 检查用户是否已订阅非免费计划且状态为 active/trialing
+const hasActivePaidSubscription = (): boolean => {
+  if (!subscriptionInfo.value) return false
+  
+  const planName = (subscriptionInfo.value.planName || '').toString().toLowerCase()
+  const status = (subscriptionInfo.value.status || '').toString().toLowerCase()
+  
+  // 检查是否为付费计划（premium/premium_plus/premium_pro）
+  const isPaidPlan = planName === 'premium' || 
+                     planName === 'premium_plus' || 
+                     planName === 'premium plus' ||
+                     planName === 'premium_pro' || 
+                     planName === 'premium pro'
+  
+  // 检查状态是否为 active 或 trialing
+  const isActiveStatus = status === 'active' || status === 'trialing'
+  
+  return isPaidPlan && isActiveStatus
+}
+
 // Choose plan
 const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus' | 'premium_pro') => {
   if (plan === 'free') {
@@ -305,6 +320,12 @@ const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus' | 'premium_p
   }
 
   if (plan === 'premium' || plan === 'premium_plus' || plan === 'premium_pro') {
+    // 如果用户已订阅非免费计划，重定向到 Profile 页面
+    if (hasActivePaidSubscription()) {
+      router.push('/profile')
+      return
+    }
+
     isLoading.value = true
     error.value = null
 
@@ -322,38 +343,43 @@ const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus' | 'premium_p
 
       // Create checkout session
       // 根据后端返回的环境配置选择产品ID
-      let productId: string
+      let productId: string | undefined
       if (plan === 'premium_pro') {
         productId = isTestMode.value 
-          ? (productIds.value?.premiumPro.test || '')
-          : (productIds.value?.premiumPro.prod || '')
+          ? productIds.value?.premiumPro.test
+          : productIds.value?.premiumPro.prod
+        if (!productId) {
+          throw new Error(`Product ID for premium_pro (${isTestMode.value ? 'test' : 'prod'} mode) is not configured`)
+        }
       } else if (plan === 'premium_plus') {
         productId = isTestMode.value
-          ? (productIds.value?.premiumPlus.test || '')
-          : (productIds.value?.premiumPlus.prod || '')
+          ? productIds.value?.premiumPlus.test
+          : productIds.value?.premiumPlus.prod
+        if (!productId) {
+          throw new Error(`Product ID for premium_plus (${isTestMode.value ? 'test' : 'prod'} mode) is not configured`)
+        }
       } else {
         productId = isTestMode.value
-          ? (productIds.value?.premium.test || '')
-          : (productIds.value?.premium.prod || '')
-      }
-
-      if (!productId) {
-        throw new Error('Product ID not configured')
+          ? productIds.value?.premium.test
+          : productIds.value?.premium.prod
+        if (!productId) {
+          throw new Error(`Product ID for premium (${isTestMode.value ? 'test' : 'prod'} mode) is not configured`)
+        }
       }
 
       const response = await subscriptionClient.post('/checkouts', {
         productId: productId,
         successUrl: `${window.location.origin}/pricing?success=true`,
         cancelUrl: `${window.location.origin}/pricing?canceled=true`,
-        metadata: {
-          userId: user.id,
-        },
       })
 
       // Save checkout ID to localStorage (for post-payment sync)
       if (response.data.checkoutId) {
         localStorage.setItem('pending_checkout_id', response.data.checkoutId)
-        localStorage.setItem('pending_checkout_user_id', user.id)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          localStorage.setItem('pending_checkout_user_id', user.id)
+        }
       }
 
       // Redirect to checkout page
@@ -391,7 +417,7 @@ const syncSubscriptionFromCheckout = async (checkoutId: string, userId: string) 
 }
 
 // 轮询订阅状态直到更新成功
-const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
+const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000, checkoutId?: string) => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 
@@ -408,6 +434,27 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
           info.planName === 'Premium Pro' || info.planName === 'premium_pro') {
         subscriptionInfo.value = info
         return true
+      }
+      
+      // 如果状态还是旧的，且还有 checkoutId，在中间尝试再次同步
+      if (checkoutId && attempt === Math.floor(maxAttempts / 2)) {
+        console.log('🔄 Mid-polling: Attempting to sync subscription again...')
+        await syncSubscriptionFromCheckout(checkoutId, user.id)
+        // 同步后立即检查一次状态
+        try {
+          const syncResponse = await subscriptionClient.get('/subscription/status', {
+            params: { user_id: user.id },
+          })
+          const syncInfo = syncResponse.data
+          if (syncInfo.planName === 'Premium' || syncInfo.planName === 'premium' || 
+              syncInfo.planName === 'Premium Plus' || syncInfo.planName === 'premium_plus' ||
+              syncInfo.planName === 'Premium Pro' || syncInfo.planName === 'premium_pro') {
+            subscriptionInfo.value = syncInfo
+            return true
+          }
+        } catch (syncErr) {
+          console.warn('Sync check failed:', syncErr)
+        }
       }
       
       // 如果还没更新，等待后重试
@@ -428,8 +475,14 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000) => {
 onMounted(async () => {
   if (typeof window === 'undefined') return
 
-  // 首先加载后端配置
-  await loadConfig()
+  // 首先加载后端配置（必需，无后备方案）
+  try {
+    await loadConfig()
+  } catch (err: any) {
+    // 配置加载失败，显示错误但继续加载订阅信息（可能仍能显示当前状态）
+    console.error('Failed to load config, subscription features may be unavailable:', err)
+    isLoading.value = false
+  }
 
   const urlParams = new URLSearchParams(window.location.search)
   if (urlParams.get('success') === 'true') {
@@ -462,7 +515,7 @@ onMounted(async () => {
     
     // If sync failed, poll for status (up to ~20s)
     alert('Payment successful. Confirming subscription status...')
-    const updated = await pollSubscriptionStatus(10, 2000)
+    const updated = await pollSubscriptionStatus(10, 2000, checkoutId || undefined)
     
     if (updated) {
     alert('Subscription activated! Premium features are now available.')
@@ -484,6 +537,7 @@ onMounted(async () => {
     window.history.replaceState({}, '', '/pricing')
   }
 
+  // 加载订阅信息
   await loadSubscriptionInfo()
 })
 </script>

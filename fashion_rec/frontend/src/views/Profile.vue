@@ -4,10 +4,12 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
 import { subscriptionClient } from '../lib/api-client'
+import { useAuthStore } from '../stores/auth'
 
 defineOptions({ name: 'Profile' })
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const isLoading = ref(false)
 const error = ref<string | null>(null)
@@ -20,36 +22,63 @@ const productIds = ref<{
   premiumPlus: { test: string; prod: string }
   premiumPro: { test: string; prod: string }
 } | null>(null)
+// 从后端获取的计划数据
+const plansData = ref<Array<{
+  slug: string
+  name: string
+  price: string
+  tries: string
+  desc: string
+}>>([])
 
-// 从后端加载环境配置
+
+// 从后端加载环境配置（完全依赖后端，无环境变量后备）
 const loadConfig = async () => {
   try {
     const response = await subscriptionClient.get('/config')
     isTestMode.value = response.data.isTestMode
     productIds.value = response.data.productIds
-    console.log('Environment config loaded:', { isTestMode: isTestMode.value, productIds: productIds.value })
-  } catch (error: any) {
-    console.error('Failed to load config from backend, using fallback:', error)
-    // 如果后端配置加载失败，使用环境变量作为后备
-    isTestMode.value = import.meta.env.VITE_CREEM_TEST_MODE === 'true'
-    productIds.value = {
-      premium: {
-        test: import.meta.env.VITE_CREEM_PRODUCT_ID_TEST || '',
-        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PROD || '',
-      },
-      premiumPlus: {
-        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST || '',
-        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD || '',
-      },
-      premiumPro: {
-        test: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST || '',
-        prod: import.meta.env.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD || '',
-      },
+    
+    console.log('Raw config response from backend:', response.data)
+    
+    // 验证配置是否完整
+    if (!productIds.value) {
+      throw new Error('Backend returned empty productIds configuration.')
     }
+    
+    // 验证每个套餐的产品 ID 是否都存在
+    const missingIds: string[] = []
+    
+    if (!productIds.value.premium?.test) missingIds.push('premium.test (CREEM_TEST_PRODUCT_ID)')
+    if (!productIds.value.premium?.prod) missingIds.push('premium.prod (CREEM_PROD_PRODUCT_ID)')
+    if (!productIds.value.premiumPlus?.test) missingIds.push('premiumPlus.test (CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS)')
+    if (!productIds.value.premiumPlus?.prod) missingIds.push('premiumPlus.prod (CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS)')
+    if (!productIds.value.premiumPro?.test) missingIds.push('premiumPro.test (CREEM_TEST_PRODUCT_ID_PREMIUM_PRO)')
+    if (!productIds.value.premiumPro?.prod) missingIds.push('premiumPro.prod (CREEM_PROD_PRODUCT_ID_PREMIUM_PRO)')
+    
+    if (missingIds.length > 0) {
+      const errorMsg = `Backend configuration is incomplete. Missing product IDs: ${missingIds.join(', ')}. ` +
+        `Please set these environment variables in the subscription-service Worker.`
+      console.error('Configuration validation failed:', {
+        missingIds,
+        currentConfig: productIds.value,
+        isTestMode: isTestMode.value,
+      })
+      throw new Error(errorMsg)
+    }
+    
+    console.log('Environment config loaded from backend:', { 
+      isTestMode: isTestMode.value, 
+      productIds: productIds.value 
+    })
+  } catch (error: any) {
+    console.error('Failed to load config from backend:', error)
+    error.value = `无法加载订阅配置: ${error?.response?.data?.error || error?.message || 'Unknown error'}. 请确保后端服务正常运行。`
+    throw error // 抛出错误，让调用者知道配置加载失败
   }
 }
 
-const planNameRaw = computed(() => subscriptionInfo.value?.planName || 'Free')
+const planNameRaw = computed(() => subscriptionInfo.value?.planName)
 const planDisplay = computed(() => {
   const name = (planNameRaw.value || '').toString().toLowerCase()
   if (name === 'premium_pro' || name === 'premium pro') return 'Premium Pro ($29.9)'
@@ -100,11 +129,27 @@ const getStatusText = (status: string | null | undefined): string => {
   return statusMap[status] || status
 }
 
+// 防止重复调用的标志
+let isLoadingSubscriptionInfo = false
 const loadSubscriptionInfo = async () => {
+  // 防止重复调用（特别是在开发环境的热重载场景下）
+  if (isLoadingSubscriptionInfo) {
+    console.log('🔄 Subscription info already loading, skipping...')
+    return
+  }
+  
+  isLoadingSubscriptionInfo = true
   isLoading.value = true
   error.value = null
   try {
-    const { data: { user } } = await supabase.auth.getUser()
+    // 优先使用 auth store 中的 user，避免重复调用 getUser()
+    let user = authStore.user
+    if (!user) {
+      // 如果 store 中没有 user，才调用 getUser()
+      const { data: { user: fetchedUser } } = await supabase.auth.getUser()
+      user = fetchedUser
+    }
+    
     if (!user) throw new Error('Please sign in first')
     userEmail.value = user.email || '—'
 
@@ -112,21 +157,6 @@ const loadSubscriptionInfo = async () => {
       params: { user_id: user.id },
     })
     subscriptionInfo.value = response.data
-    
-    // 如果有订阅 ID 且状态是 active，但可能已经在 Creem 端被取消
-    // 自动同步一次以确保状态准确（仅在首次加载时，避免频繁调用）
-    const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
-    if (subscriptionId && subscriptionInfo.value?.status === 'active') {
-      // 延迟同步，避免阻塞页面加载
-      setTimeout(async () => {
-        try {
-          await syncFromSubscription()
-        } catch (e) {
-          // 静默失败，不影响用户体验
-          console.log('Background sync failed (this is ok):', e)
-        }
-      }, 2000)
-    }
   } catch (e: any) {
     console.error('Failed to load subscription info:', e)
     error.value = e?.response?.data?.error || e?.message || 'Failed to load subscription info'
@@ -139,6 +169,7 @@ const loadSubscriptionInfo = async () => {
     }
   } finally {
     isLoading.value = false
+    isLoadingSubscriptionInfo = false
   }
 }
 
@@ -188,54 +219,72 @@ const openPortal = async () => {
   }
 }
 
-// 从订阅同步状态（用于客户门户返回后同步）
-const syncFromSubscription = async () => {
-  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
-  if (!subscriptionId) {
-    return
-  }
-  try {
-    console.log('🔄 Syncing subscription from subscription ID:', subscriptionId)
-    await subscriptionClient.post('/subscription/sync-from-subscription', {
-      subscriptionId,
-    })
-    // 同步成功后重新加载订阅信息
-    await loadSubscriptionInfo()
-  } catch (e: any) {
-    console.error('Failed to sync subscription:', e)
-    // 即使同步失败，也尝试重新加载订阅信息
-    await loadSubscriptionInfo()
-  }
-}
 
-const getProductIdForPlan = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
+const getProductIdForPlan = async (target: 'premium' | 'premium_plus' | 'premium_pro'): Promise<string> => {
   // 确保配置已加载
   if (!productIds.value) {
     await loadConfig()
   }
 
+  // 如果配置加载后仍然为空，抛出错误
+  if (!productIds.value) {
+    throw new Error('Failed to load product configuration. Please refresh the page and try again.')
+  }
+
+  // 添加调试信息
+  console.log('Getting product ID for plan:', {
+    target,
+    isTestMode: isTestMode.value,
+    availableConfig: productIds.value,
+  })
+
+  let productId: string = ''
+  
   if (target === 'premium_pro') {
-    return isTestMode.value
-      ? (productIds.value?.premiumPro.test || '')
-      : (productIds.value?.premiumPro.prod || '')
+    productId = isTestMode.value
+      ? (productIds.value.premiumPro?.test || '')
+      : (productIds.value.premiumPro?.prod || '')
+  } else if (target === 'premium_plus') {
+    productId = isTestMode.value
+      ? (productIds.value.premiumPlus?.test || '')
+      : (productIds.value.premiumPlus?.prod || '')
+  } else {
+    productId = isTestMode.value
+      ? (productIds.value.premium?.test || '')
+      : (productIds.value.premium?.prod || '')
   }
-  if (target === 'premium_plus') {
-    return isTestMode.value
-      ? (productIds.value?.premiumPlus.test || '')
-      : (productIds.value?.premiumPlus.prod || '')
+
+  // 如果 productId 为空，抛出明确的错误，包含调试信息
+  if (!productId || productId.trim() === '') {
+    const env = isTestMode.value ? 'test' : 'production'
+    const configKey = isTestMode.value 
+      ? (target === 'premium_pro' ? 'premiumPro.test' : target === 'premium_plus' ? 'premiumPlus.test' : 'premium.test')
+      : (target === 'premium_pro' ? 'premiumPro.prod' : target === 'premium_plus' ? 'premiumPlus.prod' : 'premium.prod')
+    
+    console.error('Product ID not found:', {
+      target,
+      env,
+      configKey,
+      availableConfig: productIds.value,
+      requestedPath: target === 'premium_pro' 
+        ? productIds.value.premiumPro 
+        : target === 'premium_plus' 
+        ? productIds.value.premiumPlus 
+        : productIds.value.premium,
+    })
+    
+    throw new Error(
+      `Product ID for ${target} plan is not configured in ${env} mode. ` +
+      `Please ensure the backend environment variable CREEM_${env.toUpperCase()}_PRODUCT_ID${target === 'premium_pro' ? '_PREMIUM_PRO' : target === 'premium_plus' ? '_PREMIUM_PLUS' : ''} is set.`
+    )
   }
-  return isTestMode.value
-    ? (productIds.value?.premium.test || '')
-    : (productIds.value?.premium.prod || '')
+
+  return productId
 }
 
 // Upgrade/downgrade existing subscription
 const upgradeSubscription = async (target: 'premium' | 'premium_plus' | 'premium_pro') => {
   const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
-  if (!subscriptionId) {
-    // No existing subscription, use checkout instead
-    return startCheckout(target)
-  }
   try {
     isLoading.value = true
     error.value = null
@@ -245,14 +294,20 @@ const upgradeSubscription = async (target: 'premium' | 'premium_plus' | 'premium
     const targetRank = planRank[target] ?? 0
     const isUpgrade = targetRank > currentRank
     
-    // Use different updateBehavior based on upgrade/downgrade
-    // For downgrades, use proration-charge (credit to next invoice) instead of immediate charge
-    // For upgrades, use proration-charge-immediately (charge immediately)
-    const updateBehavior = isUpgrade 
-      ? 'proration-charge-immediately' 
-      : 'proration-charge'
+    // Use proration-none for all subscription updates (no immediate charge or credit)
+    const updateBehavior = 'proration-none'
     
+    // 获取 productId（函数内部会验证并抛出错误如果为空）
     const productId = await getProductIdForPlan(target)
+    
+    console.log('Upgrading subscription:', {
+      subscriptionId,
+      productId: productId ? `${productId.substring(0, 10)}...` : 'MISSING',
+      target,
+      updateBehavior,
+      isTestMode: isTestMode.value,
+    })
+    
     await subscriptionClient.post(`/subscriptions/${subscriptionId}/upgrade`, {
       productId,
       updateBehavior,
@@ -263,10 +318,34 @@ const upgradeSubscription = async (target: 'premium' | 'premium_plus' | 'premium
   } catch (e: any) {
     console.error('Failed to upgrade/downgrade subscription', e)
     const errorMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to update subscription'
-    error.value = errorMsg
+    const errorDetails = e?.response?.data?.details
     
-    // If Forbidden error, suggest using customer portal
-    if (errorMsg.includes('Forbidden') || e?.response?.status === 403) {
+    // 构建更详细的错误信息
+    let fullErrorMsg = errorMsg
+    if (errorDetails) {
+      if (errorDetails.currentEnvironment) {
+        fullErrorMsg += `\n\nCurrent environment: ${errorDetails.currentEnvironment}`
+      }
+      if (errorDetails.suggestion) {
+        fullErrorMsg += `\n\n${errorDetails.suggestion}`
+      }
+    }
+    
+    error.value = fullErrorMsg
+    
+    // If subscription not found, check if it's an environment mismatch
+    if (errorMsg.includes('not found') || errorMsg.includes('does not exist') || e?.response?.status === 404) {
+      const currentEnv = isTestMode.value ? 'test' : 'production'
+      const oppositeEnv = isTestMode.value ? 'production' : 'test'
+      const envMismatchMsg = `The subscription may have been created in the ${oppositeEnv} environment, but you're currently using the ${currentEnv} environment. Please check your CREEM_TEST_MODE setting.`
+      
+      alert(`${errorMsg}\n\n${envMismatchMsg}\n\nWould you like to open the customer portal to manage your subscription?`)
+      const usePortal = confirm('Open customer portal?')
+      if (usePortal) {
+        openPortal()
+      }
+    } else if (errorMsg.includes('Forbidden') || e?.response?.status === 403) {
+      // If Forbidden error, suggest using customer portal
       const usePortal = confirm('Direct upgrade/downgrade is not available. Would you like to manage your subscription through the customer portal?')
       if (usePortal) {
         openPortal()
@@ -282,7 +361,12 @@ const startCheckout = async (target: 'premium' | 'premium_plus' | 'premium_pro')
   try {
     isLoading.value = true
     error.value = null
-    const { data: { user } } = await supabase.auth.getUser()
+    // 优先使用 auth store 中的 user
+    let user = authStore.user
+    if (!user) {
+      const { data: { user: fetchedUser } } = await supabase.auth.getUser()
+      user = fetchedUser
+    }
     if (!user) throw new Error('Please sign in first')
 
     const productId = await getProductIdForPlan(target)
@@ -290,7 +374,6 @@ const startCheckout = async (target: 'premium' | 'premium_plus' | 'premium_pro')
       productId,
       successUrl: `${window.location.origin}/pricing?success=true`,
       cancelUrl: `${window.location.origin}/pricing?canceled=true`,
-      metadata: { userId: user.id },
     })
     if (response.data.checkoutUrl) {
       window.location.href = response.data.checkoutUrl
@@ -307,10 +390,6 @@ const startCheckout = async (target: 'premium' | 'premium_plus' | 'premium_pro')
 
 const cancelSubscription = async () => {
   const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
-  if (!subscriptionId) {
-    goPricing()
-    return
-  }
   try {
     isLoading.value = true
     await subscriptionClient.post(`/subscriptions/${subscriptionId}/cancel`)
@@ -322,97 +401,109 @@ const cancelSubscription = async () => {
   }
 }
 
-const plans = computed(() => ([
-  {
-    slug: 'free',
-    name: 'Free',
-    price: '$0',
-    tries: '3/day',
-    desc: 'Core features and saved history',
-    action: () => cancelSubscription(), // downgrade to free via cancel
-  },
-  {
-    slug: 'premium',
-    name: 'Premium',
-    price: '$5 / mo',
-    tries: '50 / month',
-    desc: 'More try-ons and priority',
-    action: () => upgradeSubscription('premium'),
-  },
-  {
-    slug: 'premium_plus',
-    name: 'Premium Plus',
-    price: '$15 / mo',
-    tries: '200 / month',
-    desc: 'Higher limits and priority',
-    action: () => upgradeSubscription('premium_plus'),
-  },
-  {
-    slug: 'premium_pro',
-    name: 'Premium Pro',
-    price: '$29.9 / mo',
-    tries: '500 / month',
-    desc: 'Highest limits and priority',
-    action: () => upgradeSubscription('premium_pro'),
-  },
-]))
+// 从后端加载计划数据
+const loadPlans = async () => {
+  try {
+    const response = await subscriptionClient.get('/plans')
+    plansData.value = response.data.plans || []
+  } catch (e: any) {
+    console.error('Failed to load plans:', e)
+  }
+}
+
+// 初始化所有数据（合并配置和计划数据的加载）
+const initializeData = async () => {
+  await Promise.all([
+    loadConfig().catch((err) => {
+      // 配置加载失败，显示错误但继续加载其他数据
+      console.error('Failed to load config, subscription management features may be unavailable:', err)
+      isLoading.value = false
+    }),
+    loadPlans(),
+    loadSubscriptionInfo()
+  ])
+}
+
+// 根据计划 slug 和用户状态生成 action 函数
+const getPlanAction = (targetSlug: string): () => void => {
+  const currentSlug = planSlug.value
+  const currentStatus = status.value
+  const isCurrentPlanActive = currentSlug !== 'free' && (currentStatus === 'Active' || currentStatus === 'Trialing')
+  const isCanceledOrExpired = currentStatus === 'Canceled' || currentStatus === 'Expired'
+  
+  // Free 计划：始终执行取消订阅（降级到免费）
+  if (targetSlug === 'free') {
+    return () => cancelSubscription()
+  }
+  
+  // 付费计划：根据当前状态决定操作
+  if (targetSlug === currentSlug && isCurrentPlanActive) {
+    // 当前计划且激活：取消订阅
+    return () => cancelSubscription()
+  } else if (isCanceledOrExpired || currentSlug === 'free') {
+    // 已取消/过期或当前是免费：开始新订阅
+    return () => startCheckout(targetSlug as 'premium' | 'premium_plus' | 'premium_pro')
+  } else {
+    // 其他情况：升级/降级订阅
+    return () => upgradeSubscription(targetSlug as 'premium' | 'premium_plus' | 'premium_pro')
+  }
+}
+
+const plans = computed(() => {
+  // 如果计划数据还未加载，返回空数组
+  if (plansData.value.length === 0) {
+    return []
+  }
+  
+  // 为每个计划添加 action 函数
+  return plansData.value.map((plan) => ({
+    ...plan,
+    action: getPlanAction(plan.slug),
+  }))
+})
 
 const actionLabel = (slug: string) => {
-  if (slug === planSlug.value) return 'Current plan'
+  if (slug === planSlug.value) {
+    // 当前计划：如果是付费计划且状态为 active/trialing，显示取消订阅
+    if (planSlug.value !== 'free' && (status.value === 'Active' || status.value === 'Trialing')) {
+      return 'Cancel Subscription'
+    }
+    return 'Current plan'
+  }
+  // 如果当前订阅状态是 Canceled 或 Expired，其他套餐显示 "Subscribe"
+  if (status.value === 'Canceled' || status.value === 'Expired') {
+    return 'Subscribe'
+  }
   const currentRank = planRank[planSlug.value] ?? 0
   const targetRank = planRank[slug] ?? 0
   return targetRank > currentRank ? 'Upgrade' : 'Downgrade'
 }
 
-const isActionDisabled = (slug: string) => slug === planSlug.value || isLoading.value
+const isActionDisabled = (slug: string) => {
+  // 如果是当前计划，且是付费计划且状态为 active/trialing，不禁用（允许取消订阅）
+  if (slug === planSlug.value) {
+    if (planSlug.value !== 'free' && (status.value === 'Active' || status.value === 'Trialing')) {
+      return isLoading.value // 只在加载时禁用
+    }
+    return true // 其他情况禁用
+  }
+  return isLoading.value
+}
 
 onMounted(async () => {
-  // 首先加载后端配置
-  await loadConfig()
-  // 然后加载订阅信息
-  await loadSubscriptionInfo()
+  // 初始化所有数据（配置、计划、订阅信息）
+  await initializeData()
   
   // 检查是否从客户门户返回（通过 URL 参数）
+  // 注意：不再自动同步，用户需要手动刷新或点击按钮来更新状态
   const urlParams = new URLSearchParams(window.location.search)
   if (urlParams.get('from') === 'portal') {
-    // 从门户返回，同步订阅状态
+    // 从门户返回，清理 URL 参数
     console.log('🔄 Detected return from portal via URL parameter')
-    setTimeout(() => {
-      syncFromSubscription()
-    }, 1000) // 延迟1秒，确保页面已完全加载
-    
-    // 清理 URL 参数
     window.history.replaceState({}, '', '/profile')
+    // 不再自动同步，避免轮询
   }
   
-  // 监听页面可见性变化，当用户从门户返回时自动刷新状态
-  // 如果在打开门户后10分钟内页面变为可见，很可能是从门户返回
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      const now = Date.now()
-      // 如果门户是在10分钟内打开的，可能是从门户返回，同步状态
-      if (portalOpenedTime > 0 && (now - portalOpenedTime) < 10 * 60 * 1000) {
-        const minutesSincePortal = Math.floor((now - portalOpenedTime) / 60000)
-        console.log(`🔄 Page became visible ${minutesSincePortal} minutes after portal visit, syncing subscription status`)
-        syncFromSubscription()
-        portalOpenedTime = 0 // 重置时间戳，避免重复同步
-      } else {
-        // 普通可见性变化，只刷新不同步（避免频繁 API 调用）
-        loadSubscriptionInfo()
-      }
-    }
-  })
-  
-  // 监听页面焦点变化（用户切换回标签页）
-  window.addEventListener('focus', () => {
-    const now = Date.now()
-    if (portalOpenedTime > 0 && (now - portalOpenedTime) < 10 * 60 * 1000) {
-      const minutesSincePortal = Math.floor((now - portalOpenedTime) / 60000)
-      console.log(`🔄 Window focused ${minutesSincePortal} minutes after portal visit, syncing subscription status`)
-      syncFromSubscription()
-      portalOpenedTime = 0 // 重置时间戳
-    }
-  })
 })
 </script>
 
@@ -515,6 +606,9 @@ onMounted(async () => {
               <p class="text-sm text-green-600">{{ plan.desc }}</p>
               <Button
                 class="w-full"
+                :class="plan.slug === planSlug && planSlug !== 'free' && (status === 'Active' || status === 'Trialing') 
+                  ? 'text-red-600 hover:text-red-700 hover:bg-red-50' 
+                  : ''"
                 :variant="plan.slug === planSlug ? 'outline' : 'default'"
                 :disabled="isActionDisabled(plan.slug)"
                 @click="plan.action()"
