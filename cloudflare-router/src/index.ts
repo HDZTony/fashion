@@ -346,7 +346,9 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/tryon-history') ||
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||
-         path.startsWith('/cleanup-expired-files')
+         path.startsWith('/cleanup-expired-files') ||
+         path === '/webhook' ||
+         path === '/test-webhook'
   
   console.log(`[Router] isApiRequest: ${isApi} for path ${path}, Accept: ${acceptHeader}`)
   return isApi
@@ -379,7 +381,7 @@ export default {
         const headers: Record<string, string> = {
           'Access-Control-Allow-Origin': allowOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, creem-signature',
           'Access-Control-Max-Age': '86400',
         }
         // Only add credentials header if we're using a specific origin (not wildcard)
@@ -389,8 +391,8 @@ export default {
         return headers
       }
 
-      // Handle CORS preflight for router API endpoints
-      if ((path === '/api/router/get-version' || path === '/api/router/set-version') && request.method === 'OPTIONS') {
+      // Handle CORS preflight for router API endpoints and webhooks
+      if ((path === '/api/router/get-version' || path === '/api/router/set-version' || path === '/webhook' || path === '/test-webhook') && request.method === 'OPTIONS') {
         const origin = request.headers.get('Origin')
         return new Response(null, {
           status: 204,

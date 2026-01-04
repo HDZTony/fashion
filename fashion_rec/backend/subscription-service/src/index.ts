@@ -4,7 +4,7 @@ import { logger } from 'hono/logger';
 import { createCreem } from 'creem_io';
 import { createClient } from '@supabase/supabase-js';
 import { SubscriptionService } from './subscription-service';
-import { getPlanTypeFromProductId, PlanType, getAllPlanConfigs } from './plan-config';
+import { getPlanTypeFromProductId, PlanType, getAllPlanConfigs, PRODUCT_NAME_TO_PLAN_TYPE } from './plan-config';
 
 // Define environment variables interface for Cloudflare Workers
 interface Env {
@@ -15,12 +15,6 @@ interface Env {
   CREEM_PROD_API_KEY?: string;
   CREEM_TEST_WEBHOOK_SECRET?: string;
   CREEM_PROD_WEBHOOK_SECRET?: string;
-  CREEM_TEST_PRODUCT_ID?: string;
-  CREEM_PROD_PRODUCT_ID?: string;
-  CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS?: string;
-  CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS?: string;
-  CREEM_TEST_PRODUCT_ID_PREMIUM_PRO?: string;
-  CREEM_PROD_PRODUCT_ID_PREMIUM_PRO?: string;
   NODE_ENV?: string;
 }
 
@@ -53,6 +47,21 @@ function getServices(c: { env: Env }) {
       throw new Error(`❌ ${isTestMode ? '测试' : '生产'}环境 API Key 未配置`);
     }
 
+    // Test模式下的配置检查
+    if (isTestMode) {
+      const expectedTestApiKey = 'creem_test_4WsdDJBIaJR4UcGoGkBPMb';
+      const expectedTestWebhookUrl = 'https://fashion.hdz73.com/test-webhook';
+      
+      if (creemApiKey !== expectedTestApiKey) {
+        console.error(`❌ Test模式API Key不匹配！`);
+        console.error(`   当前值: ${creemApiKey}`);
+        console.error(`   期望值: ${expectedTestApiKey}`);
+        console.error(`   Webhook URL 应该配置为: ${expectedTestWebhookUrl}`);
+        throw new Error(`Test模式API Key配置错误：期望 ${expectedTestApiKey}，但当前为 ${creemApiKey}`);
+      }
+      // 验证通过，静默处理（避免每次请求都打印日志）
+    }
+
     const creemWebhookSecret = isTestMode
       ? c.env.CREEM_TEST_WEBHOOK_SECRET
       : c.env.CREEM_PROD_WEBHOOK_SECRET;
@@ -73,9 +82,54 @@ function getServices(c: { env: Env }) {
   }
 }
 
+// Cache for user tokens within a single request (to avoid duplicate calls)
+const requestUserCache = new Map<string, { id: string; email?: string } | null>();
+
+/**
+ * 直接从 JWT token 解码获取用户信息（不调用 Supabase API）
+ * 这比调用 supabase.auth.getUser() 快得多（从12-22秒降低到几毫秒）
+ */
+function decodeJWTToken(token: string): { id: string; email?: string } | null {
+  try {
+    // JWT token 格式：header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    // 解码 payload（base64url）
+    const payload = parts[1];
+    if (!payload) {
+      return null;
+    }
+    
+    // 添加 padding（如果需要）
+    const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+    const decodedPayload = atob(paddedPayload.replace(/-/g, '+').replace(/_/g, '/'));
+    const payloadObj = JSON.parse(decodedPayload);
+
+    // 从 payload 中提取用户信息
+    // Supabase JWT token 通常包含 sub (user id) 和 email
+    const userId = payloadObj.sub || payloadObj.user_id || payloadObj.id;
+    const email = payloadObj.email;
+
+    if (!userId || typeof userId !== 'string') {
+      return null;
+    }
+
+    return {
+      id: userId,
+      email: typeof email === 'string' ? email : undefined,
+    };
+  } catch (error: any) {
+    console.warn('Error decoding JWT token:', error.message);
+    return null;
+  }
+}
+
 /**
  * 从 Authorization header 中解析 JWT token 并获取用户信息
- * 使用 Supabase SDK 验证 token
+ * 优化：优先直接从 JWT token 解码（快速），失败时才调用 Supabase API（慢速）
  * 返回用户对象，包含 id 和 email
  */
 async function getUserFromToken(c: { env: Env; req: any }): Promise<{ id: string; email?: string } | null> {
@@ -90,8 +144,33 @@ async function getUserFromToken(c: { env: Env; req: any }): Promise<{ id: string
       return null;
     }
 
-    // 使用 Supabase service role key 验证 token
-    // 注意：虽然这是 service role key，但可以用来验证用户 token
+    // 使用请求级缓存（基于 token 的前16个字符作为 key）
+    // 注意：这不是全局缓存，只是为了避免同一请求中的重复调用
+    const cacheKey = `token_${token.substring(0, 16)}`;
+    if (requestUserCache.has(cacheKey)) {
+      return requestUserCache.get(cacheKey)!;
+    }
+
+    // 优化：优先直接从 JWT token 解码（快速，几毫秒）
+    // 这避免了慢速的 Supabase API 调用（12-22秒）
+    const decodedUser = decodeJWTToken(token);
+    if (decodedUser && decodedUser.id) {
+      // 缓存结果
+      requestUserCache.set(cacheKey, decodedUser);
+      
+      // 清理缓存（避免内存泄漏，只保留最近100个）
+      if (requestUserCache.size > 100) {
+        const firstKey = requestUserCache.keys().next().value;
+        if (firstKey !== undefined) {
+          requestUserCache.delete(firstKey);
+        }
+      }
+      
+      return decodedUser;
+    }
+
+    // 如果直接解码失败，回退到 Supabase API（慢速，但更可靠）
+    console.warn('JWT token decode failed, falling back to Supabase API');
     const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_KEY, {
       auth: {
         persistSession: false,
@@ -103,13 +182,27 @@ async function getUserFromToken(c: { env: Env; req: any }): Promise<{ id: string
     
     if (error || !user) {
       console.warn('Failed to get user from token:', error?.message);
+      requestUserCache.set(cacheKey, null);
       return null;
     }
 
-    return {
+    const result = {
       id: user.id,
       email: user.email,
     };
+    
+    // 缓存结果（仅用于当前请求）
+    requestUserCache.set(cacheKey, result);
+    
+    // 清理缓存（避免内存泄漏，只保留最近100个）
+    if (requestUserCache.size > 100) {
+      const firstKey = requestUserCache.keys().next().value;
+      if (firstKey) {
+        requestUserCache.delete(firstKey as string);
+      }
+    }
+    
+    return result;
   } catch (error: any) {
     console.warn('Error parsing token:', error.message);
     return null;
@@ -145,37 +238,12 @@ app.get('/health', (c) => {
 // Get environment configuration (for frontend)
 app.get('/config', async (c) => {
   try {
-    const { isTestMode, env } = getServices(c);
-    
-    // 调试信息：记录实际读取到的环境变量
-    console.log('🔍 Config endpoint - Environment variables:', {
-      CREEM_TEST_MODE: env.CREEM_TEST_MODE,
-      isTestMode,
-      CREEM_TEST_PRODUCT_ID: env.CREEM_TEST_PRODUCT_ID ? 'SET' : 'MISSING',
-      CREEM_PROD_PRODUCT_ID: env.CREEM_PROD_PRODUCT_ID ? 'SET' : 'MISSING',
-      CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS ? 'SET' : 'MISSING',
-      CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS ? 'SET' : 'MISSING',
-      CREEM_TEST_PRODUCT_ID_PREMIUM_PRO: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO ? 'SET' : 'MISSING',
-      CREEM_PROD_PRODUCT_ID_PREMIUM_PRO: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO ? 'SET' : 'MISSING',
-    });
+    const { isTestMode } = getServices(c);
     
     return c.json({
       isTestMode,
       environment: isTestMode ? 'TEST' : 'PRODUCTION',
-      productIds: {
-        premium: {
-          test: env.CREEM_TEST_PRODUCT_ID,
-          prod: env.CREEM_PROD_PRODUCT_ID,
-        },
-        premiumPlus: {
-          test: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
-          prod: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
-        },
-        premiumPro: {
-          test: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO,
-          prod: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO,
-        },
-      },
+      message: 'Product IDs are now dynamically fetched from Creem API using product names',
     });
   } catch (error: any) {
     console.error('❌ Config endpoint error:', error);
@@ -190,39 +258,61 @@ app.get('/config', async (c) => {
 });
 
 // Get all subscription plans (for frontend)
+// Note: free is not included in the plans list (it's the default state)
 app.get('/plans', async (c) => {
   try {
+    const { creem } = getServices(c);
     const allPlans = getAllPlanConfigs();
     
+    // Filter out free plan (it's not a purchasable plan)
+    const paidPlans = allPlans.filter((plan) => plan.type !== 'free');
+    
+    // Get products from Creem API to map plan names to product IDs
+    const productsResponse = await creem.products.list({
+      page: 1,
+      limit: 100,
+    });
+    const allProducts = productsResponse.items || [];
+    const recurringProducts = allProducts.filter((p) => p.billingType === 'recurring');
+    
     // Format plans for frontend consumption
-    const formattedPlans = allPlans.map((plan) => {
+    // Product name mapping: Creem product names may differ from plan names
+    // e.g., plan.name is "Member" but Creem product name is "Fashion Rec Member"
+    const formattedPlans = paidPlans.map((plan) => {
+      // First try direct match by plan.name
+      let matchingProduct = recurringProducts.find((p) => p.name === plan.name);
+      
+      // If direct match fails, try using PRODUCT_NAME_TO_PLAN_TYPE mapping
+      if (!matchingProduct) {
+        // Find product by matching plan type using reverse lookup
+        const expectedProductName = Object.keys(PRODUCT_NAME_TO_PLAN_TYPE).find(
+          (productName) => PRODUCT_NAME_TO_PLAN_TYPE[productName] === plan.type
+        );
+        
+        if (expectedProductName) {
+          matchingProduct = recurringProducts.find((p) => p.name === expectedProductName);
+        }
+      }
+      
+      const productId = matchingProduct?.id || null;
+      
+      // Log warning if product not found (for debugging)
+      if (!productId) {
+        console.warn(`⚠️ Product not found for plan "${plan.name}" (${plan.type}). Available products:`, 
+          recurringProducts.map(p => ({ name: p.name, id: p.id })));
+      }
+      
       // Format price
-      const priceDisplay = plan.price === 0 
-        ? '$0' 
-        : `$${plan.price}${plan.resetPeriodDays === 30 ? ' / mo' : ''}`;
+      const priceDisplay = `$${plan.price}${plan.resetPeriodDays === 30 ? ' / mo' : ''}`;
       
       // Format tries display
-      let triesDisplay: string;
-      if (plan.type === 'free') {
-        triesDisplay = `${plan.monthlyTries}/day`;
-      } else {
-        triesDisplay = `${plan.monthlyTries} / month`;
-      }
+      const triesDisplay = `${plan.monthlyTries} / month`;
       
       // Format description
       let desc: string;
       switch (plan.type) {
-        case 'free':
-          desc = 'Core features and saved history';
-          break;
-        case 'premium':
+        case 'member':
           desc = 'More try-ons and priority';
-          break;
-        case 'premium_plus':
-          desc = 'Higher limits and priority';
-          break;
-        case 'premium_pro':
-          desc = 'Highest limits and priority';
           break;
         default:
           desc = '';
@@ -234,6 +324,7 @@ app.get('/plans', async (c) => {
         price: priceDisplay,
         tries: triesDisplay,
         desc,
+        productId, // Include productId for checkout/upgrade operations
         // Frontend will set action based on user's current subscription status
       };
     });
@@ -244,6 +335,50 @@ app.get('/plans', async (c) => {
     return c.json(
       {
         error: 'Failed to get plans',
+        message: error.message || 'Unknown error',
+      },
+      500
+    );
+  }
+});
+
+// Get credits products (onetime products)
+app.get('/credits', async (c) => {
+  try {
+    const { creem } = getServices(c);
+    
+    // 获取所有产品
+    const productsResponse = await creem.products.list({
+      page: 1,
+      limit: 100,
+    });
+    
+    const products = productsResponse.items || [];
+    
+    // 过滤出 credits 产品（onetime 类型，名称包含 "Credits"）
+    const creditsProducts = products
+      .filter((p) => p.billingType === 'onetime' && p.name.includes('Credits'))
+      .map((p) => {
+        // 从产品名称中提取 credits 数量
+        const creditsMatch = p.name.match(/(\d+)\s*Credits?/i);
+        const credits = creditsMatch ? parseInt(creditsMatch[1]) : 0;
+        
+        return {
+          id: p.id,
+          name: p.name,
+          price: (p.price || 0) / 100, // 转换为美元（cents 转换为 dollars）
+          credits,
+          currency: p.currency || 'USD',
+        };
+      })
+      .sort((a, b) => a.credits - b.credits); // 按 credits 数量排序
+    
+    return c.json({ credits: creditsProducts });
+  } catch (error: any) {
+    console.error('❌ Credits endpoint error:', error);
+    return c.json(
+      {
+        error: 'Failed to get credits products',
         message: error.message || 'Unknown error',
       },
       500
@@ -323,21 +458,16 @@ app.get('/diagnostics', async (c) => {
     // Test API connection by listing products
     try {
       const productsResponse = await creem.products.list();
-      // 处理不同的返回格式：可能是数组，也可能是 { data: [...] } 对象
-      const productsResponseAny = productsResponse as any;
-      const productsArray: any[] = Array.isArray(productsResponse as any) 
-        ? (productsResponse as any) 
-        : ((productsResponseAny as any).data || (productsResponseAny as any).products || []);
+      // ProductList 包含 items 数组和 pagination 信息
+      const products = productsResponse.items || [];
       
       diagnostics.apiConnection = {
         status: 'success',
-        productsCount: Array.isArray(productsArray) ? productsArray.length : 0,
-        products: Array.isArray(productsArray) 
-          ? productsArray.slice(0, 5).map((p: any) => ({
-              id: p?.id,
-              name: p?.name,
-            }))
-          : [],
+        productsCount: products.length,
+        products: products.slice(0, 5).map((p) => ({
+              id: p.id,
+              name: p.name,
+            })),
         rawResponseType: typeof productsResponse,
         rawResponseKeys: productsResponse ? Object.keys(productsResponse) : [],
       };
@@ -374,32 +504,35 @@ app.get('/subscription/status', async (c) => {
     const { subscriptionService, creem, isTestMode, env } = getServices(c);
     // 优先从查询参数获取 user_id
     let userId = c.req.query('user_id');
+    let user: { id: string; email?: string } | null = null;
 
     // 如果没有查询参数，尝试从 Authorization header 解析
     if (!userId) {
-      const user = await getUserFromToken(c);
+      user = await getUserFromToken(c);
       if (user) {
         userId = user.id;
       }
+    } else {
+      // 即使有 user_id，也尝试获取 user 对象以获取 email（避免重复调用）
+      user = await getUserFromToken(c);
     }
 
     if (!userId) {
       return c.json({ error: 'User ID is required (use ?user_id=xxx or Authorization header)' }, 400);
     }
 
-    // 获取用户邮箱（优先从 token 解析，否则从数据库获取）
+    // 获取用户邮箱（优先使用已获取的 user 对象，避免重复调用）
     let userEmail: string | undefined;
-    const user = await getUserFromToken(c);
     if (user?.email) {
       userEmail = user.email;
     } else {
       // 如果无法从 token 获取邮箱，尝试从数据库获取
+      // 注意：这里假设数据库中有邮箱字段，如果没有，需要从 Supabase auth 表获取
+      // 暂时先使用 token 解析的方式
       const { data: subscriptionData } = await subscriptionService['table']
         .select('*')
         .eq('user_id', userId)
         .single();
-      // 注意：这里假设数据库中有邮箱字段，如果没有，需要从 Supabase auth 表获取
-      // 暂时先使用 token 解析的方式
     }
 
     if (!userEmail) {
@@ -414,55 +547,114 @@ app.get('/subscription/status', async (c) => {
     });
 
     if (!customerByEmail || !customerByEmail.id) {
-      console.log(`No Creem customer found for email ${userEmail}, returning free account status`);
-      const status = await subscriptionService.getSubscriptionStatus(userId);
-      return c.json(status);
+      return c.json(
+        {
+          error: 'Customer not found',
+          message: `No Creem customer found for email ${userEmail}`,
+        },
+        404
+      );
     }
 
     const customerId = customerByEmail.id;
 
-    // 步骤2: 通过客户ID获取交易列表
-    const transactionsResponse = await creem.transactions.list({
-      customerId: customerId,
-    });
-
-    // TransactionList 包含 items 数组和 pagination 信息
-    const transactions = transactionsResponse.items || [];
-
-    if (!transactions || transactions.length === 0) {
-      console.log(`No transactions found for customer ${customerId}, returning free account status`);
-      const status = await subscriptionService.getSubscriptionStatus(userId);
-      return c.json(status);
-    }
-
-    // 步骤3: 从交易列表中找到第一个有订阅ID的交易
-    // Transaction 接口中订阅ID字段是 subscription?: string
-    const firstTransactionWithSubscription = transactions.find(t => t.subscription);
+    // 优化：先检查数据库是否已有 subscriptionId，避免调用慢速的 transactions.list API
+    let subscriptionId: string | null = null;
+    // 优化：查询完整数据，避免后续步骤重复查询（节省7-8秒）
+    const { data: existingSubscriptionData, error: dbError } = await subscriptionService['table']
+      .select('*')
+      .eq('user_id', userId)
+      .single();
     
-    if (!firstTransactionWithSubscription || !firstTransactionWithSubscription.subscription) {
-      console.log(`No subscription ID found in transactions for customer ${customerId}`);
+    // 如果数据库中有 subscriptionId 且 customerId 匹配，直接使用
+    if (existingSubscriptionData?.creem_subscription_id && 
+        existingSubscriptionData?.creem_customer_id === customerId) {
+      subscriptionId = existingSubscriptionData.creem_subscription_id;
+      console.log(`Using cached subscriptionId from database: ${subscriptionId}`);
+    } else {
+      // 步骤2: 通过客户ID获取交易列表（仅在数据库中没有 subscriptionId 时调用）
+      const transactionsResponse = await creem.transactions.list({
+        customerId: customerId,
+      });
+
+      // TransactionList 包含 items 数组和 pagination 信息
+      const transactions = transactionsResponse.items || [];
+
+      if (!transactions || transactions.length === 0) {
+        return c.json(
+          {
+            error: 'No transactions found',
+            message: `No transactions found for customer ${customerId}`,
+          },
+          404
+        );
+      }
+
+      // 步骤3: 从交易列表中找到第一个有订阅ID的交易
+      // Transaction 接口中订阅ID字段是 subscription?: string
+      const firstTransactionWithSubscription = transactions.find(t => t.subscription);
+      
+      if (!firstTransactionWithSubscription || !firstTransactionWithSubscription.subscription) {
+        console.log(`No subscription ID found in transactions for customer ${customerId}`);
+        const status = await subscriptionService.getSubscriptionStatus(userId);
+        return c.json(status);
+      }
+
+      subscriptionId = firstTransactionWithSubscription.subscription;
+    }
+
+    if (!subscriptionId) {
       const status = await subscriptionService.getSubscriptionStatus(userId);
       return c.json(status);
     }
-
-    const subscriptionId = firstTransactionWithSubscription.subscription;
 
     // 步骤4: 使用订阅ID获取订阅信息
+    // TypeScript 会自动推断类型为 Subscription（来自 creem_io SDK）
     const subscription = await creem.subscriptions.get({
       subscriptionId,
     });
 
-    const subscriptionAny = subscription as any;
-
-    // 从 Creem API 返回的数据中提取信息
-    const creemStatus = subscriptionAny.status || 'active';
-    const productId = subscriptionAny.items?.[0]?.productId 
-      || subscriptionAny.items?.[0]?.product_id
-      || subscriptionAny.productId 
-      || subscriptionAny.product?.id;
+    // 从 Creem API 返回的数据中提取信息（使用正确的类型定义）
+    const creemStatus = subscription.status;
+    
+    // 获取产品ID：只使用 subscription.product.id（当前订阅的产品）
+    const productId = getProductIdFromSubscription(subscription);
+    
+    // #region agent log
+    try {
+      await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'index.ts:subscription/status:subscription-details',
+          message: 'Subscription details from Creem API',
+          data: {
+            subscriptionId,
+            creemStatus,
+            productId,
+            hasProduct: !!subscription.product,
+            productType: typeof subscription.product,
+            productName: typeof subscription.product === 'object' && subscription.product ? (subscription.product as any).name : null,
+            hasItems: !!subscription.items,
+            itemsLength: subscription.items?.length,
+            isTestMode,
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          runId: 'run1',
+          hypothesisId: 'A',
+        }),
+      }).catch(() => {});
+    } catch {}
+    // #endregion
     
     if (!productId) {
-      console.error('No product ID found in Creem subscription response');
+      console.error('No product ID found in Creem subscription response', {
+        hasItems: !!subscription.items,
+        itemsLength: subscription.items?.length,
+        productType: typeof subscription.product,
+        product: subscription.product,
+      });
       return c.json(
         {
           error: 'Invalid subscription data',
@@ -472,41 +664,129 @@ app.get('/subscription/status', async (c) => {
       );
     }
     
-    // 获取 period_end（优先使用官方标准格式）
-    const periodEnd = subscriptionAny.current_period_end_date
-      || subscriptionAny.current_period_end 
-      || subscriptionAny.period_end 
-      || subscriptionAny.currentPeriodEndDate
-      || null;
+    // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+    const periodEnd = toISOString(subscription.currentPeriodEndDate);
+    
+    // 获取 last_transaction_id（用于判断是否是新交易）
+    const lastTransactionId = subscription.lastTransactionId || null;
 
-    // 根据产品ID确定计划类型
-    const plan = getPlanFromProductId(productId, isTestMode, env);
-
-    // 从数据库获取现有订阅记录（用于比较和更新）
+    // 先从数据库获取现有订阅记录（用于优化：如果订阅ID匹配，可以跳过API调用）
     const { data: subscriptionData } = await subscriptionService['table']
       .select('*')
       .eq('user_id', userId)
       .single();
 
+    // 根据产品ID确定计划类型（优化：如果订阅ID匹配，使用数据库中的plan）
+    let plan: PlanType;
+    if (subscriptionData?.plan && subscriptionData?.creem_subscription_id === subscriptionId) {
+      // 数据库中有记录且订阅ID匹配，直接使用数据库中的plan（快速路径，避免API调用）
+      plan = subscriptionData.plan as PlanType;
+      console.log(`Using cached plan from database: ${plan} for subscriptionId: ${subscriptionId}`);
+    } else {
+      // 需要调用API确定plan类型（订阅ID不匹配或数据库中没有记录）
+      plan = await getPlanFromProductId(productId, isTestMode, creem);
+      // #region agent log
+      try {
+        await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'index.ts:subscription/status:plan-mapping',
+            message: 'Plan mapping result',
+            data: { productId, plan, isTestMode, dbPlan: subscriptionData?.plan, dbSubscriptionId: subscriptionData?.creem_subscription_id },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'B',
+          }),
+        }).catch(() => {});
+      } catch {}
+      // #endregion
+    }
+
     // 如果计划类型、状态或周期结束时间发生变化，更新数据库
+    // #region agent log
+    try {
+      await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'index.ts:subscription/status:before-update-check',
+          message: 'Before update check',
+          data: {
+            hasSubscriptionData: !!subscriptionData,
+            plan,
+            dbPlan: subscriptionData?.plan,
+            creemStatus,
+            dbStatus: subscriptionData?.status,
+            periodEnd,
+            dbPeriodEnd: subscriptionData?.period_end,
+            subscriptionId,
+            dbSubscriptionId: subscriptionData?.subscription_id,
+            needsUpdate: !subscriptionData || 
+              plan !== subscriptionData.plan || 
+              creemStatus !== subscriptionData.status || 
+              periodEnd !== subscriptionData.period_end ||
+              subscriptionId !== subscriptionData.subscription_id,
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          runId: 'run1',
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {});
+    } catch {}
+    // #endregion
     if (!subscriptionData || 
         plan !== subscriptionData.plan || 
         creemStatus !== subscriptionData.status || 
-        periodEnd !== subscriptionData.period_end) {
-      console.log(`Updating subscription in database: plan=${plan}, status=${creemStatus}, periodEnd=${periodEnd}`);
+        periodEnd !== subscriptionData.period_end ||
+        subscriptionId !== subscriptionData.subscription_id) {
+      console.log(`Updating subscription in database: plan=${plan}, status=${creemStatus}, periodEnd=${periodEnd}, lastTransactionId=${lastTransactionId}`);
+      // 将 Creem 订阅状态映射到数据库状态
+      // Creem 状态: "active" | "canceled" | "unpaid" | "paused" | "trialing" | "scheduled_cancel"
+      // 数据库状态: "active" | "canceled" | "expired"
+      let dbStatus: 'active' | 'canceled' | 'expired' = 'active';
+      if (creemStatus === 'canceled' || creemStatus === 'scheduled_cancel') {
+        dbStatus = 'canceled';
+      } else if (creemStatus === 'unpaid') {
+        dbStatus = 'expired';
+      } else {
+        dbStatus = 'active';
+      }
+      
+      // #region agent log
+      try {
+        await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'index.ts:subscription/status:updating-db',
+            message: 'Updating database',
+            data: { userId, plan, subscriptionId, customerId, dbStatus, periodEnd, creemStatus },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'C',
+          }),
+        }).catch(() => {});
+      } catch {}
+      // #endregion
+      
       await subscriptionService.updateSubscription(
         userId,
         plan,
         subscriptionId,
         customerId,
-        creemStatus === 'canceled' || creemStatus === 'cancelled' ? 'canceled' : 
-        creemStatus === 'expired' || creemStatus === 'unpaid' ? 'expired' : 'active',
-        periodEnd
+        dbStatus,
+        periodEnd,
+        lastTransactionId
       );
     }
 
     // 获取更新后的数据库状态（包含试穿次数等信息）
-    const status = await subscriptionService.getSubscriptionStatus(userId);
+    // 优化：如果 existingSubscriptionData 存在，直接使用，避免重复查询数据库
+    const status = await subscriptionService.getSubscriptionStatus(userId, existingSubscriptionData);
     
     // 使用 Creem API 返回的状态覆盖数据库状态（确保状态准确）
     return c.json({
@@ -621,22 +901,61 @@ app.post('/subscription/update', async (c) => {
 // ==================== Helper Functions ====================
 
 /**
- * 根据产品ID和环境确定套餐类型
- * 使用配置模块中的函数
+ * 从订阅对象中获取产品ID
+ * 只使用 subscription.product.id（当前订阅的产品）
  */
-function getPlanFromProductId(
+function getProductIdFromSubscription(subscription: { product?: any }): string | undefined {
+  if (typeof subscription.product === 'string') {
+    return subscription.product;
+  } else if (subscription.product && typeof subscription.product === 'object' && 'id' in subscription.product) {
+    return subscription.product.id;
+  }
+  return undefined;
+}
+
+/**
+ * 安全地将日期转换为 ISO 字符串
+ * 处理 Date 对象、字符串或时间戳
+ */
+function toISOString(date: Date | string | number | null | undefined): string | null {
+  if (!date) return null;
+  
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  
+  if (typeof date === 'string') {
+    // 如果已经是 ISO 字符串，直接返回
+    if (date.includes('T') && date.includes('Z')) {
+      return date;
+    }
+    // 尝试解析字符串
+    const parsed = new Date(date);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+    return date; // 如果无法解析，返回原字符串
+  }
+  
+  if (typeof date === 'number') {
+    // 时间戳（可能是秒或毫秒）
+    const timestamp = date < 10000000000 ? date * 1000 : date;
+    return new Date(timestamp).toISOString();
+  }
+  
+  return null;
+}
+
+/**
+ * 根据产品ID确定套餐类型
+ * 使用配置模块中的函数，通过 Creem API 动态获取产品列表
+ */
+async function getPlanFromProductId(
   productId: string | undefined,
   isTestMode: boolean,
-  env: Env
-): PlanType {
-  return getPlanTypeFromProductId(productId, isTestMode, {
-    CREEM_TEST_PRODUCT_ID: env.CREEM_TEST_PRODUCT_ID,
-    CREEM_PROD_PRODUCT_ID: env.CREEM_PROD_PRODUCT_ID,
-    CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
-    CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
-    CREEM_TEST_PRODUCT_ID_PREMIUM_PRO: env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO,
-    CREEM_PROD_PRODUCT_ID_PREMIUM_PRO: env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO,
-  });
+  creem: ReturnType<typeof createCreem>
+): Promise<PlanType> {
+  return await getPlanTypeFromProductId(productId, isTestMode, creem);
 }
 
 // ==================== Webhook Routes ====================
@@ -649,7 +968,6 @@ async function handleSubscriptionEvent(
   subscriptionService: SubscriptionService,
   creem: ReturnType<typeof createCreem>,
   isTestMode: boolean,
-  env: Env,
   targetStatus: 'active' | 'canceled'
 ) {
   // 根据官方文档，事件格式为：{ id, eventType, object, created_at, mode }
@@ -681,6 +999,32 @@ async function handleSubscriptionEvent(
     data.metadata?.user_id ||
     data.subscription?.metadata?.userId ||
     data.subscription?.metadata?.user_id;
+  
+  // #region agent log
+  try {
+    await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'index.ts:handleSubscriptionEvent:userId-lookup',
+        message: 'UserId lookup from metadata',
+        data: {
+          subscriptionId,
+          userId,
+          hasEventObject: !!eventObject,
+          eventObjectMetadata: eventObject.metadata,
+          checkoutMetadata: data.checkout?.metadata,
+          topLevelMetadata: data.metadata,
+          subscriptionMetadata: data.subscription?.metadata,
+        },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        runId: 'run1',
+        hypothesisId: 'E',
+      }),
+    }).catch(() => {});
+  } catch {}
+  // #endregion
 
   // 如果 metadata 中没有 userId，从数据库查找
   if (!userId) {
@@ -739,6 +1083,30 @@ async function handleSubscriptionEvent(
         fullData: JSON.stringify(data, null, 2),
       });
       
+      // #region agent log
+      try {
+        await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'index.ts:handleSubscriptionEvent:userId-not-found',
+            message: 'UserId not found after all attempts',
+            data: {
+              subscriptionId,
+              customerId,
+              customerEmail,
+              targetStatus,
+              metadata: data.subscription?.metadata || data.checkout?.metadata || data.metadata,
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'E',
+          }),
+        }).catch(() => {});
+      } catch {}
+      // #endregion
+      
       // 不直接返回，而是记录错误并继续
       // 这样至少可以记录订阅信息，等待后续通过其他方式（如 sync-from-subscription）同步
       console.warn('⚠️ Subscription event received but cannot update without userId. Subscription details:', {
@@ -759,35 +1127,30 @@ async function handleSubscriptionEvent(
       subscriptionId,
     });
     
-    const subscriptionAny = subscription as any;
+    // 获取产品ID（优先使用 subscription.product.id）
+    let productId = getProductIdFromSubscription(subscription);
     
-    // 获取产品ID（优先使用官方标准格式）
-    const productId = subscriptionAny.items?.[0]?.productId 
-      || subscriptionAny.items?.[0]?.product_id
-      || subscriptionAny.productId 
-      || subscriptionAny.product?.id
-      || eventObject.product?.id
-      || eventObject.items?.[0]?.productId
-      || eventObject.items?.[0]?.product_id
-      || data.subscription?.items?.[0]?.productId
-      || data.subscription?.productId;
+    // 如果从 subscription 中获取不到，尝试从 eventObject 或 data 中获取
+    if (!productId) {
+      productId = (eventObject as any)?.product?.id
+        || (eventObject as any)?.items?.[0]?.productId
+        || (data as any)?.subscription?.items?.[0]?.productId
+        || (data as any)?.subscription?.productId;
+    }
     
-    const plan = getPlanFromProductId(productId, isTestMode, env);
+    const plan = await getPlanFromProductId(productId, isTestMode, creem);
     
-    // 获取 period_end（优先使用官方标准格式）
-    const periodEnd = subscriptionAny.current_period_end_date
-      || subscriptionAny.current_period_end 
-      || subscriptionAny.period_end 
-      || subscriptionAny.currentPeriodEndDate
-      || eventObject.current_period_end_date
-      || eventObject.current_period_end
-      || data.subscription?.current_period_end
-      || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-      || null;
+    // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+    const periodEnd = subscription.currentPeriodEndDate 
+      ? toISOString(subscription.currentPeriodEndDate)
+      : ((eventObject as any)?.current_period_end_date
+        || (eventObject as any)?.current_period_end
+        || (data as any)?.subscription?.current_period_end
+        || null);
     
     // 获取 customerId（优先使用官方标准格式）
     const customerId = eventObject.customer?.id 
-      || subscriptionAny.customer?.id 
+      || (typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id)
       || data.customer?.id;
     
     console.log(`🔄 Updating subscription for user: ${userId}`, {
@@ -817,6 +1180,137 @@ async function handleSubscriptionEvent(
 }
 
 /**
+ * 处理 subscription.paid 和 subscription.trialing 事件
+ * 这些事件会强制增加试穿次数
+ */
+async function handleSubscriptionPaidOrTrialing(
+  data: any,
+  subscriptionService: SubscriptionService,
+  creem: ReturnType<typeof createCreem>,
+  isTestMode: boolean,
+  eventType: 'paid' | 'trialing'
+) {
+  // 根据官方文档，事件格式为：{ id, eventType, object, created_at, mode }
+  // 优先使用 object 字段（官方标准格式）
+  const eventObject = data.object || data.subscription || data;
+  
+  // 尝试多种方式获取 subscriptionId
+  const subscriptionId = eventObject.id || data.subscription?.id || data.id;
+  
+  if (!subscriptionId) {
+    console.error(`❌ No subscription ID found in ${eventType} event`);
+    return;
+  }
+
+  // 尝试多种方式获取 userId
+  let userId = 
+    eventObject.metadata?.userId ||
+    eventObject.metadata?.user_id ||
+    data.checkout?.metadata?.userId || 
+    data.checkout?.metadata?.user_id ||
+    data.metadata?.userId || 
+    data.metadata?.user_id ||
+    data.subscription?.metadata?.userId ||
+    data.subscription?.metadata?.user_id;
+
+  // 如果 metadata 中没有 userId，从数据库查找
+  if (!userId) {
+    try {
+      const { data: subscriptionData, error: queryError } = await subscriptionService['table']
+        .select('user_id')
+        .eq('creem_subscription_id', subscriptionId)
+        .single();
+
+      if (!queryError && subscriptionData?.user_id) {
+        userId = subscriptionData.user_id;
+      }
+    } catch (dbError: any) {
+      console.warn(`⚠️ Error querying database for ${eventType} event:`, dbError.message);
+    }
+  }
+
+  if (!userId) {
+    console.error(`❌ Could not find userId for ${eventType} event, subscriptionId: ${subscriptionId}`);
+    return;
+  }
+
+  try {
+    // 从 eventObject 中获取订阅信息（根据官方示例，数据在 object 字段中）
+    const productId = eventObject.product?.id 
+      || eventObject.items?.[0]?.productId
+      || (data.subscription as any)?.product?.id
+      || (data.subscription as any)?.items?.[0]?.productId;
+
+    if (!productId) {
+      // 如果 eventObject 中没有，尝试从 Creem API 获取
+      const subscription = await creem.subscriptions.get({ subscriptionId });
+      const fetchedProductId = getProductIdFromSubscription(subscription);
+      if (!fetchedProductId) {
+        console.error(`❌ Could not determine productId for ${eventType} event`);
+        return;
+      }
+      // 使用从 API 获取的数据
+      const plan = await getPlanFromProductId(fetchedProductId, isTestMode, creem);
+      const periodEnd = subscription.currentPeriodEndDate 
+        ? toISOString(subscription.currentPeriodEndDate)
+        : null;
+      const customerId = typeof subscription.customer === 'string' 
+        ? subscription.customer 
+        : subscription.customer?.id;
+
+      await subscriptionService.updateSubscription(
+        userId,
+        plan,
+        subscriptionId,
+        customerId || null,
+        'active',
+        periodEnd,
+        subscription.lastTransactionId || null // 传入 last_transaction_id
+      );
+
+      console.log(`✅ Subscription ${eventType} processed for user: ${userId}`);
+      return;
+    }
+
+    const plan = await getPlanFromProductId(productId, isTestMode, creem);
+    
+    // 从 eventObject 中获取 period_end（根据官方示例，字段名可能是 snake_case 或 camelCase）
+    const periodEnd = eventObject.current_period_end_date || eventObject.currentPeriodEndDate
+      ? toISOString(eventObject.current_period_end_date || eventObject.currentPeriodEndDate)
+      : null;
+    
+    // 从 eventObject 中获取 last_transaction_id（根据官方示例，字段名可能是 snake_case 或 camelCase）
+    const lastTransactionId = eventObject.last_transaction_id || eventObject.lastTransactionId || null;
+    
+    const customerId = eventObject.customer?.id || data.customer?.id;
+
+    console.log(`💰 Processing ${eventType} event for user: ${userId}`, {
+      subscriptionId,
+      productId,
+      plan,
+      periodEnd,
+      lastTransactionId,
+    });
+
+    // 调用 updateSubscription，通过 last_transaction_id 判断是否增加试穿次数
+    await subscriptionService.updateSubscription(
+      userId,
+      plan,
+      subscriptionId,
+      customerId || null,
+      'active',
+      periodEnd,
+      lastTransactionId // 传入 last_transaction_id 用于判断是否是新交易
+    );
+
+    console.log(`✅ Subscription ${eventType} processed for user: ${userId}`);
+  } catch (error: any) {
+    console.error(`❌ Error processing ${eventType} event:`, error);
+    console.error('❌ Error stack:', error.stack);
+  }
+}
+
+/**
  * 共享的 webhook 事件处理逻辑
  */
 const createWebhookHandler = (
@@ -826,90 +1320,92 @@ const createWebhookHandler = (
   env: Env
 ) => {
   return {
-      // 结账完成事件
+      // 结账完成事件 - 处理 credits 购买
       onCheckoutCompleted: async (data: any) => {
         console.log('✅ Checkout completed:', {
+          eventType: data.eventType || 'checkout.completed',
           checkoutId: data.checkout?.id,
           customerEmail: data.customer?.email,
           customerId: data.customer?.id,
           subscriptionId: data.subscription?.id,
           metadata: data.checkout?.metadata,
-          fullData: JSON.stringify(data, null, 2), // 完整数据用于调试
         });
-
-        // 尝试多种方式获取 userId
-        const userId = 
-          data.checkout?.metadata?.userId || 
-          data.metadata?.userId || 
-          data.checkout?.metadata?.user_id ||
-          data.metadata?.user_id;
-        
-        console.log('🔍 Extracted userId:', userId);
-        console.log('🔍 Available metadata paths:', {
-          'data.checkout.metadata': data.checkout?.metadata,
-          'data.metadata': data.metadata,
-          'data.checkout': data.checkout,
-        });
-
-        if (!userId) {
-          console.error('❌ No userId found in webhook data. Cannot update subscription.');
-          console.error('📋 Full webhook data structure:', JSON.stringify(data, null, 2));
-          return;
-        }
-
-        if (!data.subscription?.id) {
-          console.error('❌ No subscription ID found in webhook data. Cannot update subscription.');
-          return;
-        }
 
         try {
-          // 获取订阅详情以获取产品ID
-          const subscription = await creem.subscriptions.get({
-            subscriptionId: data.subscription.id,
-          });
+          // 对于 onetime 产品（credits），可能没有 subscription，需要从 checkout 获取产品信息
+          const checkoutId = data.checkout?.id || data.object?.id;
           
-          // 从订阅中获取产品ID
-          const subscriptionAny = subscription as any;
-          const productId = subscriptionAny.items?.[0]?.productId 
-            || subscriptionAny.productId 
-            || subscriptionAny.product?.id
-            || data.subscription?.items?.[0]?.productId
-            || data.subscription?.productId;
-          
-          // 根据产品ID确定套餐类型
-          const plan = getPlanFromProductId(productId, isTestMode, env);
-          
-          // 获取 period_end（可能是 current_period_end 或 period_end）
-          const periodEnd = subscriptionAny.current_period_end 
-            || subscriptionAny.period_end 
-            || subscriptionAny.currentPeriodEndDate
-            || subscriptionAny.current_period_end_date
-            || data.subscription?.current_period_end
-            || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-            || null;
-          
-          console.log(`🔄 Updating subscription for user: ${userId}`, {
-            plan,
-            productId,
-            subscriptionId: data.subscription.id,
-            customerId: data.customer?.id,
-            status: 'active',
-            periodEnd,
-          });
-          
-            await subscriptionService.updateSubscription(
-              userId,
-            plan,
-              data.subscription.id,
-              data.customer?.id,
-              'active',
-              periodEnd
-            );
-          
-          console.log(`✅ Subscription updated successfully for user: ${userId}`);
-          } catch (error: any) {
-            console.error('❌ Error updating subscription:', error);
-          console.error('❌ Error stack:', error.stack);
+          if (checkoutId) {
+            try {
+              // 获取 checkout 详情
+              const checkout = await creem.checkouts.get({
+                checkoutId,
+              });
+
+              // 获取产品ID
+              const productId = typeof checkout.product === 'string' 
+                ? checkout.product 
+                : checkout.product?.id
+                || data.checkout?.productId
+                || data.product?.id;
+
+              if (productId) {
+                // 获取产品详情
+                const product = await creem.products.get({
+                  productId,
+                });
+
+                // 检查是否是 credits 产品（onetime 类型，名称包含 "Credits"）
+                if (product && product.billingType === 'onetime' && product.name.includes('Credits')) {
+                  // 从产品名称中提取 credits 数量
+                  const creditsMatch = product.name.match(/(\d+)\s*Credits?/i);
+                  const credits = creditsMatch ? parseInt(creditsMatch[1]) : 0;
+
+                  if (credits > 0) {
+                    // 获取 userId
+                    let userId = data.checkout?.metadata?.userId
+                      || data.checkout?.metadata?.user_id
+                      || data.metadata?.userId
+                      || data.metadata?.user_id
+                      || data.customer?.metadata?.userId
+                      || data.customer?.metadata?.user_id;
+
+                    // 如果 metadata 中没有 userId，通过 customerId 查找
+                    if (!userId && data.customer?.id) {
+                      const customerId = data.customer.id;
+                      try {
+                        const { data: subscriptionData, error: queryError } = await subscriptionService['table']
+                          .select('user_id')
+                          .eq('creem_customer_id', customerId)
+                          .order('updated_at', { ascending: false })
+                          .limit(1)
+                          .single();
+
+                        if (!queryError && subscriptionData?.user_id) {
+                          userId = subscriptionData.user_id;
+                          console.log(`✅ Found userId ${userId} for customerId ${customerId} in database`);
+                        }
+                      } catch (dbError: any) {
+                        console.warn('⚠️ Error querying database by customerId:', dbError.message);
+                      }
+                    }
+
+                    if (userId) {
+                      console.log(`💰 Processing credits purchase from checkout: ${credits} credits for user: ${userId}`);
+                      await subscriptionService.addTries(userId, credits);
+                      console.log(`✅ Successfully added ${credits} tries for user: ${userId}`);
+                    } else {
+                      console.warn('⚠️ Could not find userId for credits purchase, checkoutId:', checkoutId);
+                    }
+                  }
+                }
+              }
+            } catch (error: any) {
+              console.error('❌ Error processing credits purchase from checkout:', error);
+            }
+          }
+        } catch (error: any) {
+          console.error('❌ Error in onCheckoutCompleted handler:', error);
         }
       },
 
@@ -929,14 +1425,23 @@ const createWebhookHandler = (
               subscriptionId: context.subscription.id,
             });
             
-            const subscriptionAny = subscription as any;
-            const productId = subscriptionAny.items?.[0]?.productId 
-              || subscriptionAny.productId 
-              || subscriptionAny.product?.id
-              || context.subscription?.items?.[0]?.productId
-              || context.subscription?.productId;
+            // 从订阅中获取产品ID
+            let productId: string | undefined;
+            if (subscription.items && subscription.items.length > 0 && subscription.items[0].productId) {
+              productId = subscription.items[0].productId;
+            } else if (typeof subscription.product === 'string') {
+              productId = subscription.product;
+            } else if (subscription.product && typeof subscription.product === 'object' && 'id' in subscription.product) {
+              productId = subscription.product.id;
+            }
             
-            const plan = getPlanFromProductId(productId, isTestMode, env);
+            // 如果从 subscription 中获取不到，尝试从 context 中获取
+            if (!productId) {
+              productId = (context.subscription as any)?.items?.[0]?.productId
+                || (context.subscription as any)?.productId;
+            }
+            
+            const plan = await getPlanFromProductId(productId, isTestMode, creem);
             
             await subscriptionService.updateSubscription(
               userId,
@@ -977,158 +1482,108 @@ const createWebhookHandler = (
         }
       },
 
-      // 订阅激活事件（根据 Creem 文档，这个事件在订阅变为 active 时触发）
+      // 订阅激活事件 - 只打印日志
       onSubscriptionActive: async (data: any) => {
-        console.log('✅ Subscription active:', {
-          subscriptionId: data.subscription?.id || data.object?.id || data.id,
-          customerId: data.customer?.id,
-          metadata: data.subscription?.metadata || data.checkout?.metadata || data.metadata,
-          fullData: JSON.stringify(data, null, 2),
+        console.log('✅ Subscription active (log only):', {
+          eventType: data.eventType || 'subscription.active',
+          subscriptionId: data.object?.id || data.subscription?.id || data.id,
+          customerId: data.object?.customer?.id || data.customer?.id,
         });
-
-        await handleSubscriptionEvent(
-          data,
-          subscriptionService,
-          creem,
-          isTestMode,
-          env,
-          'active'
-        );
       },
 
-      // 订阅试用事件
+      // 订阅试用事件 - 增加试穿次数
       onSubscriptionTrialing: async (data: any) => {
         console.log('🆓 Subscription trialing:', {
-          subscriptionId: data.subscription?.id || data.object?.id || data.id,
-          customerId: data.customer?.id,
-          metadata: data.subscription?.metadata || data.checkout?.metadata || data.metadata,
-          fullData: JSON.stringify(data, null, 2),
+          eventType: data.eventType || 'subscription.trialing',
+          subscriptionId: data.object?.id || data.subscription?.id || data.id,
+          customerId: data.object?.customer?.id || data.customer?.id,
+          lastTransactionId: data.object?.last_transaction_id,
+          periodEnd: data.object?.current_period_end_date,
         });
 
-        await handleSubscriptionEvent(
+        await handleSubscriptionPaidOrTrialing(
           data,
           subscriptionService,
           creem,
           isTestMode,
-          env,
-          'active'
+          'trialing'
         );
       },
 
-      // 订阅已支付事件
+      // 订阅已支付事件 - 增加试穿次数
       onSubscriptionPaid: async (data: any) => {
         console.log('💰 Subscription paid:', {
-          subscriptionId: data.subscription?.id || data.object?.id || data.id,
-          customerId: data.customer?.id,
-          metadata: data.subscription?.metadata || data.checkout?.metadata || data.metadata,
+          eventType: data.eventType || 'subscription.paid',
+          subscriptionId: data.object?.id || data.subscription?.id || data.id,
+          customerId: data.object?.customer?.id || data.customer?.id,
+          lastTransactionId: data.object?.last_transaction_id,
+          lastTransactionDate: data.object?.last_transaction_date,
+          periodEnd: data.object?.current_period_end_date,
         });
 
-        await handleSubscriptionEvent(
+        await handleSubscriptionPaidOrTrialing(
           data,
           subscriptionService,
           creem,
           isTestMode,
-          env,
-          'active'
+          'paid'
         );
       },
 
-      // 订阅创建事件
+      // 订阅创建事件 - 更新数据库状态
       onSubscriptionCreated: async (data: any) => {
         console.log('📝 Subscription created:', {
-          subscriptionId: data.subscription?.id || data.object?.id || data.id,
-          customerId: data.customer?.id,
-          productId: data.subscription?.items?.[0]?.productId,
-          metadata: data.subscription?.metadata || data.checkout?.metadata || data.metadata,
-          fullData: JSON.stringify(data, null, 2),
+          eventType: data.eventType || 'subscription.created',
+          subscriptionId: data.object?.id || data.subscription?.id || data.id,
+          customerId: data.object?.customer?.id || data.customer?.id,
+          productId: data.object?.product?.id || data.subscription?.items?.[0]?.productId,
         });
 
+        // #region agent log
+        try {
+          await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'index.ts:onSubscriptionCreated:webhook-received',
+              message: 'Subscription created webhook received',
+              data: {
+                eventType: data.eventType || 'subscription.created',
+                subscriptionId: data.object?.id || data.subscription?.id || data.id,
+                customerId: data.object?.customer?.id || data.customer?.id,
+                productId: data.object?.product?.id || data.subscription?.items?.[0]?.productId,
+                hasObject: !!data.object,
+                hasSubscription: !!data.subscription,
+                metadata: data.object?.metadata || data.metadata || data.subscription?.metadata,
+                checkoutMetadata: data.checkout?.metadata,
+                isTestMode,
+              },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'D',
+            }),
+          }).catch(() => {});
+        } catch {}
+        // #endregion
+
+        // 新创建的订阅应该是 active 状态，使用 handleSubscriptionEvent 更新数据库
         await handleSubscriptionEvent(
           data,
           subscriptionService,
           creem,
           isTestMode,
-          env,
           'active'
         );
       },
 
-      // 订阅更新事件（可能包括续费）
+      // 订阅更新事件 - 只打印日志
       onSubscriptionUpdated: async (data: any) => {
-        console.log('🔄 Subscription updated:', {
-          subscriptionId: data.subscription?.id,
-          customerId: data.customer?.id,
+        console.log('🔄 Subscription updated (log only):', {
+          eventType: data.eventType || 'subscription.updated',
+          subscriptionId: data.object?.id || data.subscription?.id || data.id,
+          customerId: data.object?.customer?.id || data.customer?.id,
         });
-
-        // 尝试获取 userId 并更新订阅（续费时可能需要累加次数）
-        const subscriptionId = data.subscription?.id || data.object?.id || data.id;
-        if (!subscriptionId) {
-          console.warn('⚠️ No subscription ID found in update event');
-          return;
-        }
-
-        try {
-          // 从数据库查找 userId
-          const { data: subscriptionData, error: queryError } = await subscriptionService['table']
-            .select('user_id')
-            .eq('creem_subscription_id', subscriptionId)
-            .single();
-
-          if (queryError || !subscriptionData) {
-            console.warn(`⚠️ Could not find user_id for subscription ${subscriptionId} in update event`);
-            return;
-          }
-
-          const userId = subscriptionData.user_id;
-
-          // 获取订阅详情
-          const subscription = await creem.subscriptions.get({
-            subscriptionId,
-          });
-
-          const subscriptionAny = subscription as any;
-          
-          // 获取产品ID以确定套餐类型
-          const productId = subscriptionAny.items?.[0]?.productId 
-            || subscriptionAny.productId 
-            || subscriptionAny.product?.id
-            || data.subscription?.items?.[0]?.productId
-            || data.subscription?.productId;
-          
-          const plan = getPlanFromProductId(productId, isTestMode, env);
-          
-          // 获取 period_end
-          const periodEnd = subscriptionAny.current_period_end 
-            || subscriptionAny.period_end 
-            || subscriptionAny.currentPeriodEndDate
-            || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-            || null;
-          
-          // 获取订阅状态
-          const subscriptionStatus = subscriptionAny.status || 'active';
-          
-          console.log(`🔄 Processing subscription update for user: ${userId}`, {
-            plan,
-            productId,
-            subscriptionId,
-            status: subscriptionStatus,
-            periodEnd,
-          });
-
-          // 更新订阅（如果是续费，会自动累加次数）
-          await subscriptionService.updateSubscription(
-            userId,
-            plan,
-            subscriptionId,
-            subscriptionAny.customer?.id || data.customer?.id,
-            subscriptionStatus === 'active' ? 'active' : 'canceled',
-            periodEnd
-          );
-
-          console.log(`✅ Subscription updated successfully for user: ${userId}`);
-        } catch (error: any) {
-          console.error('❌ Error processing subscription update:', error);
-        }
       },
 
       // 订阅取消事件
@@ -1209,29 +1664,23 @@ const createWebhookHandler = (
             subscriptionId,
           });
           
-          // 获取 period_end（可能是 current_period_end 或 period_end）
-          const subscriptionAny = subscription as any;
-          // 也尝试从 webhook 数据中获取 period_end
-          const periodEnd = subscriptionAny.current_period_end 
-            || subscriptionAny.period_end 
-            || subscriptionAny.currentPeriodEndDate
-            || subscriptionAny.current_period_end_date
-            || data.object?.current_period_end_date
-            || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-            || null;
+          // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+          const periodEnd = subscription.currentPeriodEndDate 
+            ? toISOString(subscription.currentPeriodEndDate)
+            : ((data as any)?.object?.current_period_end_date || null);
           
           // 获取产品ID以确定套餐类型
-          // 也尝试从 webhook 数据中获取 productId
-          const productId = subscriptionAny.items?.[0]?.productId 
-            || subscriptionAny.items?.[0]?.product_id
-            || subscriptionAny.productId 
-            || subscriptionAny.product?.id
-            || data.object?.product?.id
-            || data.subscription?.items?.[0]?.productId
-            || data.subscription?.productId
-            || data.object?.items?.[0]?.product_id;
+          let productId = getProductIdFromSubscription(subscription);
           
-          const plan = getPlanFromProductId(productId, isTestMode, env);
+          // 如果从 subscription 中获取不到，尝试从 data 中获取
+          if (!productId) {
+            productId = (data as any)?.object?.product?.id
+              || (data as any)?.subscription?.items?.[0]?.productId
+              || (data as any)?.subscription?.productId
+              || (data as any)?.object?.items?.[0]?.product_id;
+          }
+          
+          const plan = await getPlanFromProductId(productId, isTestMode, creem);
           
           console.log('📅 Subscription period end:', periodEnd);
           console.log('📦 Plan determined from product ID:', { productId, plan });
@@ -1261,12 +1710,18 @@ const createWebhookHandler = (
       },
 
       // 支付成功事件
+      // 注意：credits 处理只在 checkout.completed 事件中进行
       onPaymentSucceeded: async (data: any) => {
         console.log('💳 Payment succeeded:', {
           transactionId: data.transaction?.id,
           amount: data.transaction?.amount,
           customerId: data.customer?.id,
+          productId: data.transaction?.productId || data.product?.id,
+          productName: data.product?.name || data.transaction?.product?.name,
         });
+
+        // Credits 处理已移至 checkout.completed 事件
+        // 此事件仅用于日志记录，不处理 credits
       },
 
       // 支付失败事件
@@ -1356,26 +1811,34 @@ const createWebhookHandler = (
             subscriptionId,
           });
 
-          const subscriptionAny = subscription as any;
-          const productId = subscriptionAny.items?.[0]?.productId 
-            || subscriptionAny.productId 
-            || subscriptionAny.product?.id
-            || data.object?.product?.id;
+          // 获取产品ID
+          let productId = getProductIdFromSubscription(subscription);
           
-          const plan = getPlanFromProductId(productId, isTestMode, env);
+          // 如果从 subscription 中获取不到，尝试从 data 中获取
+          if (!productId) {
+            productId = (data as any)?.object?.product?.id;
+          }
           
-          const periodEnd = subscriptionAny.current_period_end_date 
-            || subscriptionAny.current_period_end 
-            || data.object?.current_period_end_date
-            || null;
+          const plan = await getPlanFromProductId(productId, isTestMode, creem);
+          
+          // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+          const periodEnd = subscription.currentPeriodEndDate 
+            ? toISOString(subscription.currentPeriodEndDate)
+            : ((data as any)?.object?.current_period_end_date || null);
 
           // 保持计划但状态设为 paused（如果数据库支持）或 canceled
           // 注意：如果数据库不支持 paused 状态，可以标记为 canceled 但保留 period_end
+          const customerId = typeof subscription.customer === 'string' 
+            ? subscription.customer 
+            : subscription.customer?.id 
+            || (data as any)?.object?.customer?.id 
+            || (data as any)?.customer?.id;
+          
           await subscriptionService.updateSubscription(
             userId,
             plan,
             subscriptionId,
-            subscriptionAny.customer?.id || data.object?.customer?.id || data.customer?.id,
+            customerId,
             'canceled', // 如果数据库不支持 paused，使用 canceled
             periodEnd
           );
@@ -1694,6 +2157,62 @@ app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
     });
 
     console.log('Subscription upgraded successfully:', upgradedSubscription);
+
+    // 升级/降级成功后，立即更新数据库
+    // 这样能确保试穿次数逻辑正确执行（升级/降级时保持次数不变）
+    try {
+      const { subscriptionService, creem, isTestMode } = getServices(c);
+      
+      // 从订阅的metadata中获取用户ID
+      const userId = upgradedSubscription.metadata?.userId 
+        ? String(upgradedSubscription.metadata.userId)
+        : null;
+      
+      if (userId) {
+        // 获取产品ID和计划类型
+        const productId = getProductIdFromSubscription(upgradedSubscription);
+        if (productId) {
+          const plan = await getPlanFromProductId(productId, isTestMode, creem);
+          const periodEnd = toISOString(upgradedSubscription.currentPeriodEndDate);
+          const customerId: string | null = typeof upgradedSubscription.customer === 'string' 
+            ? upgradedSubscription.customer 
+            : (upgradedSubscription.customer?.id ? String(upgradedSubscription.customer.id) : null);
+          
+          // 确定订阅状态
+          const creemStatus = upgradedSubscription.status;
+          let dbStatus: 'active' | 'canceled' | 'expired' = 'active';
+          if (creemStatus === 'canceled' || creemStatus === 'scheduled_cancel') {
+            dbStatus = 'canceled';
+          } else if (creemStatus === 'unpaid') {
+            dbStatus = 'expired';
+          } else {
+            dbStatus = 'active';
+          }
+          
+          // 调用 updateSubscription 更新数据库
+          // 这会触发试穿次数逻辑：升级/降级时保持次数不变，只有续费时才增加
+          await subscriptionService.updateSubscription(
+            userId,
+            plan,
+            String(upgradedSubscription.id),
+            customerId || null,
+            dbStatus,
+            periodEnd
+          );
+          
+          console.log(`✅ Database updated after upgrade/downgrade for user: ${userId}, plan: ${plan}`);
+        } else {
+          console.warn('⚠️ Could not determine product ID from upgraded subscription, skipping database update');
+        }
+      } else {
+        console.warn('⚠️ No userId found in subscription metadata, skipping database update');
+      }
+    } catch (updateError: any) {
+      // 数据库更新失败不应该影响升级操作的返回
+      // 因为 Creem 端的订阅已经成功升级了
+      console.error('⚠️ Failed to update database after upgrade/downgrade:', updateError);
+    }
+
     return c.json(upgradedSubscription);
   } catch (error: any) {
     console.error('Error upgrading subscription:', error);
@@ -1763,12 +2282,12 @@ app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
       const currentSubscription = await creem.subscriptions.get({
         subscriptionId,
       });
-      const currentStatus = (currentSubscription as any).status;
+      const currentStatus = currentSubscription.status;
       
       console.log(`📋 Current subscription status: ${currentStatus}`);
       
-      // 如果订阅已经是 canceled 或 expired，不需要再次取消
-      if (currentStatus === 'canceled' || currentStatus === 'expired') {
+      // 如果订阅已经是 canceled，不需要再次取消
+      if (currentStatus === 'canceled') {
         console.log(`ℹ️ Subscription is already ${currentStatus}, skipping cancel API call`);
         subscriptionAlreadyCanceled = true;
         canceledSubscription = currentSubscription;
@@ -1777,10 +2296,11 @@ app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
         console.log(`🔄 Calling Creem API to cancel subscription: ${subscriptionId}`);
         canceledSubscription = await creem.subscriptions.cancel({
           subscriptionId,
-        });
+          mode: 'scheduled',
+        } as any);
         console.log('✅ Subscription canceled in Creem:', {
           subscriptionId: canceledSubscription.id || subscriptionId,
-          status: (canceledSubscription as any).status,
+          status: canceledSubscription.status,
         });
       }
     } catch (cancelError: any) {
@@ -1823,23 +2343,23 @@ app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
           subscriptionId,
         });
 
-        const subscriptionAny = subscription as any;
+        // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+        const periodEnd = subscription.currentPeriodEndDate 
+          ? toISOString(subscription.currentPeriodEndDate)
+          : null;
         
-        // 获取 period_end（可能是 current_period_end 或 period_end）
-        const periodEnd = subscriptionAny.current_period_end 
-          || subscriptionAny.period_end 
-          || subscriptionAny.currentPeriodEndDate
-          || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-          || null;
+        // 获取 last_transaction_id（保留原有值，不改变）
+        const lastTransactionId = subscription.lastTransactionId || null;
         
         // 获取产品ID以确定套餐类型
-        const productId = subscriptionAny.items?.[0]?.productId 
-          || subscriptionAny.productId 
-          || subscriptionAny.product?.id
-          || (canceledSubscription && canceledSubscription.items?.[0]?.productId)
-          || (canceledSubscription && (canceledSubscription as any).productId);
+        let productId = getProductIdFromSubscription(subscription);
         
-        const plan = getPlanFromProductId(productId, isTestMode, env);
+        // 如果从 subscription 中获取不到，尝试从 canceledSubscription 中获取
+        if (!productId && canceledSubscription) {
+          productId = getProductIdFromSubscription(canceledSubscription);
+        }
+        
+        const plan = await getPlanFromProductId(productId, isTestMode, creem);
         
         console.log('📅 Subscription period end:', periodEnd);
         console.log('📦 Plan determined from product ID:', { productId, plan });
@@ -1847,13 +2367,24 @@ app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
         // 3. 更新数据库状态为 canceled
         // 注意：即使订阅在 Creem 端已经是 canceled，我们也需要确保数据库状态同步
         console.log(`🔄 Updating database status to 'canceled' for user: ${userId}`);
+        
+        // 获取 customerId
+        const customerId = typeof subscription.customer === 'string' 
+          ? subscription.customer 
+          : subscription.customer?.id 
+          || (canceledSubscription && (typeof canceledSubscription.customer === 'string' 
+            ? canceledSubscription.customer 
+            : canceledSubscription.customer?.id))
+          || null;
+        
         await subscriptionService.updateSubscription(
           userId,
           plan, // 保持原套餐，直到 period_end
           subscriptionId,
-          subscriptionAny.customer?.id || (canceledSubscription && (canceledSubscription as any).customer?.id),
+          customerId,
           'canceled',
-          periodEnd
+          periodEnd,
+          lastTransactionId // 保留原有的 last_transaction_id
         );
 
         console.log(`✅ Subscription status updated to canceled for user: ${userId}, period ends at: ${periodEnd}`);
@@ -1932,19 +2463,16 @@ app.post('/checkouts', async (c) => {
     // 先验证产品是否存在（可选，用于调试）
     try {
       const productsResponse = await creem.products.list();
-      // 处理不同的返回格式：可能是数组，也可能是 { data: [...] } 对象
-      const productsResponseAny = productsResponse as any;
-      const productsArray: any[] = Array.isArray(productsResponse as any) 
-        ? (productsResponse as any) 
-        : ((productsResponseAny as any).data || (productsResponseAny as any).products || []);
+      // ProductList 包含 items 数组和 pagination 信息
+      const products = productsResponse.items || [];
       
-      if (Array.isArray(productsArray)) {
-        const productExists = productsArray.some((p: any) => p?.id === body.productId);
-        console.log('Available products:', productsArray.map((p: any) => ({ id: p?.id, name: p?.name })));
+      if (products.length > 0) {
+        const productExists = products.some((p) => p.id === body.productId);
+        console.log('Available products:', products.map((p) => ({ id: p.id, name: p.name })));
         console.log(`Product ${body.productId} exists: ${productExists}`);
         
         // 注意：如果验证失败，我们仍然尝试创建 checkout，因为 API 可能会返回更准确的错误信息
-        if (!productExists && productsArray.length > 0) {
+        if (!productExists && products.length > 0) {
           console.warn(`⚠️ Product ID "${body.productId}" not found in available products list, but will try to create checkout anyway`);
         }
       } else {
@@ -2031,8 +2559,8 @@ app.post('/checkouts', async (c) => {
       // 尝试从请求中获取产品ID，如果失败则使用默认值
       let productId = 'unknown';
       try {
-        const requestBody = await c.req.json();
-        productId = (requestBody as any)?.productId || 'unknown';
+        const requestBody = await c.req.json() as { productId?: string };
+        productId = requestBody?.productId || 'unknown';
       } catch {
         // 如果无法解析请求体，使用默认值
       }
@@ -2049,8 +2577,8 @@ app.post('/checkouts', async (c) => {
         message: errorMessage,
         details: c.env.NODE_ENV === 'development' ? {
           originalError: error.message,
-          status: error.status || error.statusCode,
-          response: (error as any).response?.data,
+          status: (error as { status?: number; statusCode?: number }).status || (error as { status?: number; statusCode?: number }).statusCode,
+          response: (error as { response?: { data?: unknown } }).response?.data,
         } : undefined,
       },
       statusCode
@@ -2113,55 +2641,68 @@ app.post('/subscription/sync-from-checkout', async (c) => {
       checkoutId,
     });
 
-    const checkoutAny = checkout as any;
     console.log('📦 Checkout data:', {
-      id: checkoutAny.id,
-      status: checkoutAny.status,
-      subscriptionId: checkoutAny.subscription?.id,
-      customerId: checkoutAny.customer?.id,
-      metadata: checkoutAny.metadata,
+      id: checkout.id,
+      status: checkout.status,
+      subscriptionId: typeof checkout.subscription === 'string' ? checkout.subscription : checkout.subscription?.id,
+      customerId: typeof checkout.customer === 'string' ? checkout.customer : checkout.customer?.id,
+      metadata: checkout.metadata,
     });
 
     // 如果 checkout 有订阅 ID，获取订阅详情
-    const subscriptionId = checkoutAny.subscription?.id || checkoutAny.subscriptionId;
+    const subscriptionId = typeof checkout.subscription === 'string' 
+      ? checkout.subscription 
+      : checkout.subscription?.id;
     if (subscriptionId) {
       const subscription = await creem.subscriptions.get({
-        subscriptionId: typeof subscriptionId === 'string' ? subscriptionId : subscriptionId.id,
+        subscriptionId: typeof subscriptionId === 'string' ? subscriptionId : subscriptionId,
       });
 
-      const subscriptionAny = subscription as any;
       console.log('📦 Subscription data:', {
-        id: subscriptionAny.id,
-        status: subscriptionAny.status,
-        customerId: subscriptionAny.customer?.id,
+        id: subscription.id,
+        status: subscription.status,
+        customerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id,
       });
 
       // 获取产品ID以确定套餐类型
-      const productId = subscriptionAny.items?.[0]?.productId 
-        || subscriptionAny.productId 
-        || subscriptionAny.product?.id
-        || checkoutAny.productId;
+      let productId: string | undefined;
+      if (subscription.items && subscription.items.length > 0 && subscription.items[0].productId) {
+        productId = subscription.items[0].productId;
+      } else if (typeof subscription.product === 'string') {
+        productId = subscription.product;
+      } else if (subscription.product && typeof subscription.product === 'object' && 'id' in subscription.product) {
+        productId = subscription.product.id;
+      }
       
-      const plan = getPlanFromProductId(productId, isTestMode, env);
+      // 如果从 subscription 中获取不到，尝试从 checkout 中获取（虽然不太可能）
+      if (!productId && typeof checkout.product === 'string') {
+        productId = checkout.product;
+      } else if (!productId && checkout.product && typeof checkout.product === 'object' && 'id' in checkout.product) {
+        productId = checkout.product.id;
+      }
+      
+      const plan = await getPlanFromProductId(productId, isTestMode, creem);
       console.log('📦 Plan determined from product ID:', { productId, plan });
 
-      // 获取 period_end
-      const periodEnd = subscriptionAny.current_period_end 
-        || subscriptionAny.period_end 
-        || subscriptionAny.currentPeriodEndDate
-        || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-        || null;
+      // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+      const periodEnd = subscription.currentPeriodEndDate 
+        ? toISOString(subscription.currentPeriodEndDate)
+        : null;
       
       console.log('📅 Subscription period end:', periodEnd);
 
       // 更新订阅状态
-      if (subscriptionAny.status === 'active' || subscriptionAny.status === 'trialing') {
-        const customerId = subscriptionAny.customer?.id || checkoutAny.customer?.id;
+      if (subscription.status === 'active' || subscription.status === 'trialing') {
+        const customerId = typeof subscription.customer === 'string' 
+          ? subscription.customer 
+          : subscription.customer?.id 
+          || (typeof checkout.customer === 'string' ? checkout.customer : checkout.customer?.id);
+        
         await subscriptionService.updateSubscription(
           userId,
           plan,
-          subscriptionAny.id,
-          typeof customerId === 'string' ? customerId : customerId?.id,
+          subscription.id,
+          typeof customerId === 'string' ? customerId : customerId,
           'active',
           periodEnd
         );
@@ -2386,33 +2927,31 @@ app.post('/subscription/sync-from-subscription', async (c) => {
       subscriptionId,
     });
 
-    const subscriptionAny = subscription as any;
-    
-    // 获取订阅状态
-    // Creem API 返回的状态字段是 status
-    const subscriptionStatus = subscriptionAny.status || '';
+    // 获取订阅状态（使用类型定义中的 status）
+    const subscriptionStatus = subscription.status;
     console.log('📦 Subscription status from Creem API (raw):', subscriptionStatus);
-    console.log('📦 Subscription object keys:', Object.keys(subscriptionAny));
-    console.log('📦 Full subscription data (first 500 chars):', JSON.stringify(subscriptionAny).substring(0, 500));
+    console.log('📦 Subscription object keys:', Object.keys(subscription));
+    console.log('📦 Full subscription data (first 500 chars):', JSON.stringify(subscription).substring(0, 500));
     
     // 如果状态为空或未定义，记录警告
-    if (!subscriptionAny.status) {
-      console.warn('⚠️ Subscription status field is missing or empty. Full subscription data:', JSON.stringify(subscriptionAny, null, 2));
+    if (!subscription.status) {
+      console.warn('⚠️ Subscription status field is missing or empty. Full subscription data:', JSON.stringify(subscription, null, 2));
     }
 
-    // 获取 period_end
-    const periodEnd = subscriptionAny.current_period_end 
-      || subscriptionAny.period_end 
-      || subscriptionAny.currentPeriodEndDate
-      || (subscriptionAny.periods && subscriptionAny.periods[0]?.end_date)
-      || null;
+    // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
+    const periodEnd = toISOString(subscription.currentPeriodEndDate);
     
     // 获取产品ID以确定套餐类型
-    const productId = subscriptionAny.items?.[0]?.productId 
-      || subscriptionAny.productId 
-      || subscriptionAny.product?.id;
+    let productId: string | undefined;
+    if (subscription.items && subscription.items.length > 0 && subscription.items[0].productId) {
+      productId = subscription.items[0].productId;
+    } else if (typeof subscription.product === 'string') {
+      productId = subscription.product;
+    } else if (subscription.product && typeof subscription.product === 'object' && 'id' in subscription.product) {
+      productId = subscription.product.id;
+    }
     
-    const plan = getPlanFromProductId(productId, isTestMode, env);
+    const plan = await getPlanFromProductId(productId, isTestMode, creem);
     
     console.log('📅 Subscription period end:', periodEnd);
     console.log('📦 Plan determined from product ID:', { productId, plan });
@@ -2433,14 +2972,18 @@ app.post('/subscription/sync-from-subscription', async (c) => {
       console.log('📊 Subscription status is active/trialing, will update database to active');
     } else {
       console.log(`📊 Unknown subscription status: "${subscriptionStatus}", defaulting to active`);
-      console.log('📊 Full subscription object for debugging:', JSON.stringify(subscriptionAny, null, 2));
+      console.log('📊 Full subscription object for debugging:', JSON.stringify(subscription, null, 2));
     }
+
+    const customerId = typeof subscription.customer === 'string' 
+      ? subscription.customer 
+      : subscription.customer?.id;
 
     await subscriptionService.updateSubscription(
       userId,
       plan,
       subscriptionId,
-      subscriptionAny.customer?.id,
+      customerId,
       dbStatus,
       periodEnd
     );

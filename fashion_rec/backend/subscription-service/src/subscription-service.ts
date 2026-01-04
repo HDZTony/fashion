@@ -7,16 +7,20 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { 
   PlanType, 
   getPlanConfig, 
-  PLAN_CONFIGS 
 } from './plan-config';
 
 const TABLE_NAME = 'user_subscriptions';
 
+/**
+ * 每个账号的初始穿搭次数
+ * 直接创建账号时默认给100次
+ */
+const INITIAL_TRIES = 100;
+
 interface SubscriptionStatus {
   planName: string;
   remainingTries: number;
-  totalTries: number;
-  period: 'daily' | 'monthly';
+  period: 'daily';
   nextResetDate: string | null;
   subscriptionId: string | null;
   customerId: string | null;
@@ -33,6 +37,7 @@ interface SubscriptionRecord {
   status: 'active' | 'canceled' | 'expired';
   last_reset_at: string;
   period_end?: string | null; // 订阅计费周期结束时间
+  last_transaction_id?: string | null; // 最后一次交易的ID，用于判断是否是新交易
   daily_free_tries_used?: number; // 当天已使用的免费次数
   daily_free_tries_date?: string; // 免费次数使用的日期(YYYY-MM-DD)
   created_at?: string;
@@ -54,9 +59,8 @@ export class SubscriptionService {
      */
     this.client = createClient(supabaseUrl, supabaseKey, {
       auth: {
-        persistSession: false, // No localStorage in Cloudflare Worker
-        autoRefreshToken: false, // Service role key doesn't expire, or handled by Supabase
-        detectSessionInUrl: false, // Not needed for service role
+        persistSession: true, // localStorage in Cloudflare Worker
+        autoRefreshToken: true, // Service role key doesn't expire, or handled by Supabase
       },
     });
     this.table = this.client.from(TABLE_NAME);
@@ -98,12 +102,28 @@ export class SubscriptionService {
   /**
    * 获取用户订阅状态和试穿次数信息
    */
-  async getSubscriptionStatus(userId: string): Promise<SubscriptionStatus> {
+  /**
+   * 获取订阅状态
+   * @param userId 用户ID
+   * @param cachedData 可选的缓存数据，如果提供则跳过数据库查询（优化性能）
+   */
+  async getSubscriptionStatus(userId: string, cachedData?: any): Promise<SubscriptionStatus> {
     try {
-      const { data, error } = await this.table
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      let data: any = null;
+      let error: any = null;
+      
+      // 如果提供了缓存数据，直接使用，避免重复查询数据库
+      if (cachedData) {
+        data = cachedData;
+      } else {
+        // 如果没有缓存数据，查询数据库
+        const queryResult = await this.table
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+        data = queryResult.data;
+        error = queryResult.error;
+      }
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error getting subscription:', error);
@@ -148,11 +168,13 @@ export class SubscriptionService {
               
               const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
               
+              // 订阅和次数无关，直接使用现有次数
+              const currentRemaining = sub.remaining_tries ?? 0;
+              
               return {
                 planName: planConfig.name,
-                remainingTries: sub.remaining_tries ?? planConfig.monthlyTries,
-                totalTries: planConfig.monthlyTries,
-                period: planConfig.resetPeriodDays === 1 ? 'daily' : 'monthly',
+                remainingTries: currentRemaining,
+                period: 'daily',
                 nextResetDate: actualNextReset.toISOString(),
                 subscriptionId: sub.creem_subscription_id || null,
                 customerId: sub.creem_customer_id || null,
@@ -167,14 +189,17 @@ export class SubscriptionService {
           }
           
           // 计费周期已结束，降级为免费版
+          // 注意：订阅和次数无关，直接使用用户现有的剩余次数
           const freeConfig = getPlanConfig('free');
           const nextReset = this.addDays(new Date(), 1);
           const dailyFreeTriesRemaining = Math.max(0, freeConfig.dailyFreeTries - dailyFreeTriesUsed);
           
+          // 订阅和次数无关，直接使用现有次数
+          const currentRemaining = sub.remaining_tries ?? 0;
+          
           return {
             planName: freeConfig.name,
-            remainingTries: freeConfig.monthlyTries,
-            totalTries: freeConfig.monthlyTries,
+            remainingTries: currentRemaining,
             period: 'daily',
             nextResetDate: nextReset.toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
@@ -186,20 +211,19 @@ export class SubscriptionService {
         
         // 订阅是 active 状态，正常处理
         if (daysSinceReset >= planConfig.resetPeriodDays) {
-          // 保存当前剩余次数，用于累加
+          // 注意：订阅和次数无关，重置时保持现有次数
           const currentRemaining = sub.remaining_tries ?? 0;
           await this.resetTries(userId, plan);
           
-          // 累加后的次数
-          const newRemaining = currentRemaining + planConfig.monthlyTries;
+          // 订阅不影响次数，保持现有次数
+          const newRemaining = currentRemaining;
           
           const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
           
           return {
             planName: planConfig.name,
-            remainingTries: newRemaining, // 返回累加后的次数
-            totalTries: planConfig.monthlyTries, // 每月新增的次数
-            period: planConfig.resetPeriodDays === 1 ? 'daily' : 'monthly',
+            remainingTries: newRemaining, // 订阅不影响次数
+            period: 'daily',
             nextResetDate: this.addDays(lastReset, planConfig.resetPeriodDays).toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
             customerId: sub.creem_customer_id || null,
@@ -212,9 +236,8 @@ export class SubscriptionService {
           
           return {
             planName: planConfig.name,
-            remainingTries: sub.remaining_tries ?? planConfig.monthlyTries,
-            totalTries: planConfig.monthlyTries,
-            period: planConfig.resetPeriodDays === 1 ? 'daily' : 'monthly',
+            remainingTries: sub.remaining_tries ?? 0, // 订阅和次数无关，直接使用现有次数
+            period: 'daily',
             nextResetDate: nextReset.toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
             customerId: sub.creem_customer_id || null,
@@ -223,15 +246,28 @@ export class SubscriptionService {
           };
         }
       } else {
-        // 新用户，创建免费订阅
-        await this.createFreeSubscription(userId);
+        // 新用户，插入新记录（数据库默认 remaining_tries 为 100）
+        const now = new Date().toISOString();
+        const today = this.getTodayDateString();
         const freeConfig = getPlanConfig('free');
+        
+        // 插入新记录，依赖数据库默认值 remaining_tries = 100
+        const { data: newRecord } = await this.table.insert({
+          user_id: userId,
+          plan: 'free',
+          status: 'active',
+          last_reset_at: now,
+          daily_free_tries_used: 0,
+          daily_free_tries_date: today,
+          created_at: now,
+          updated_at: now,
+        }).select().single();
+        
         const nextReset = this.addDays(new Date(), 1);
         
         return {
           planName: freeConfig.name,
-          remainingTries: freeConfig.monthlyTries,
-          totalTries: freeConfig.monthlyTries,
+          remainingTries: newRecord?.remaining_tries ?? INITIAL_TRIES,
           period: 'daily',
           nextResetDate: nextReset.toISOString(),
           subscriptionId: null,
@@ -242,12 +278,11 @@ export class SubscriptionService {
       }
     } catch (error: any) {
       console.error('Error getting subscription status:', error);
-      // 返回默认免费版
+      // 返回默认免费版（直接创建账号时默认给100次）
       const freeConfig = getPlanConfig('free');
       return {
         planName: freeConfig.name,
-        remainingTries: freeConfig.monthlyTries,
-        totalTries: freeConfig.monthlyTries,
+        remainingTries: INITIAL_TRIES,
         period: 'daily',
         nextResetDate: null,
         subscriptionId: null,
@@ -305,7 +340,7 @@ export class SubscriptionService {
         } else {
           return {
             success: false,
-            message: 'Your monthly try-on limit has been reached. Please wait for next month\'s reset, or contact support.',
+            message: 'Your try-on limit has been reached. Please try again tomorrow, or contact support.',
           };
         }
       }
@@ -336,7 +371,8 @@ export class SubscriptionService {
     creemSubscriptionId?: string | null,
     creemCustomerId?: string | null,
     status: 'active' | 'canceled' | 'expired' = 'active',
-    periodEnd?: string | null
+    periodEnd?: string | null,
+    lastTransactionId?: string | null
   ): Promise<void> {
     try {
       console.log(`📝 Updating subscription for user: ${userId}`, {
@@ -363,45 +399,32 @@ export class SubscriptionService {
       const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
       
-      // 判断是否是新的计费周期（续费）
-      const isNewBillingPeriod = this.isNewBillingPeriod(data, periodEnd, planConfig);
-      
-      // 如果是新订阅，设置初始次数
-      // 如果是套餐类型变化（升级/降级）或续费（新计费周期），累加新的次数
-      // 否则保留现有的 remaining_tries（避免状态更新时错误重置次数）
-      let remaining: number;
-      if (!data) {
-        // 新订阅，设置初始次数
-        remaining = planConfig.monthlyTries;
-        console.log(`📊 New subscription, setting initial tries: ${remaining}`);
-      } else if (data.plan !== plan) {
-        // 套餐类型变化（升级/降级），累加新套餐的次数
-        const currentRemaining = data.remaining_tries !== undefined ? data.remaining_tries : 0;
-        remaining = currentRemaining + planConfig.monthlyTries;
-        console.log(`📊 Plan changed from ${data.plan} to ${plan}, adding tries: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new ${plan}) = ${remaining} (total)`);
-      } else if (isNewBillingPeriod) {
-        // 续费（新计费周期），累加新的次数
-        const currentRemaining = data.remaining_tries !== undefined ? data.remaining_tries : 0;
-        remaining = currentRemaining + planConfig.monthlyTries;
-        console.log(`📊 New billing period detected, adding tries: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new) = ${remaining} (total)`);
-      } else {
-        // 套餐类型未变化且不是新计费周期，保留现有的 remaining_tries
-        remaining = data.remaining_tries !== undefined ? data.remaining_tries : planConfig.monthlyTries;
-        console.log(`📊 Plan unchanged (${plan}), keeping existing remaining_tries: ${remaining}`);
+      // 订阅和次数无关，如果用户没有订阅记录，插入新记录时依赖数据库默认值（100）
+      // 如果已有记录，保持现有次数
+      let remaining: number | undefined;
+      if (data) {
+        // 已有记录，保持现有次数
+        remaining = data.remaining_tries;
       }
+      // 如果没有记录，不设置 remaining_tries，让数据库使用默认值 100
 
-      const subscriptionData = {
+      const subscriptionData: any = {
         plan,
-        remaining_tries: remaining,
         creem_subscription_id: creemSubscriptionId || null,
         creem_customer_id: creemCustomerId || null,
         status,
         period_end: periodEnd || null,
+        last_transaction_id: lastTransactionId || null, // 保存最后一次交易的ID
         last_reset_at: now,
         daily_free_tries_used: 0, // 重置免费次数
         daily_free_tries_date: today,
         updated_at: now,
       };
+      
+      // 如果已有记录，保持现有次数；如果没有记录，不设置 remaining_tries，让数据库使用默认值 100
+      if (remaining !== undefined) {
+        subscriptionData.remaining_tries = remaining;
+      }
 
       if (data) {
         // 更新现有订阅
@@ -458,48 +481,82 @@ export class SubscriptionService {
     }
   }
 
+
   /**
-   * 创建免费订阅
+   * 增加试穿次数（用于购买 credits）
+   * @param userId 用户ID
+   * @param additionalTries 要增加的次数
    */
-  private async createFreeSubscription(userId: string): Promise<void> {
+  async addTries(userId: string, additionalTries: number): Promise<void> {
     try {
-      const now = new Date().toISOString();
-      const today = this.getTodayDateString();
-      const freeConfig = getPlanConfig('free');
+      console.log(`➕ Adding ${additionalTries} tries for user: ${userId}`);
       
-      await this.table.insert({
-        user_id: userId,
-        plan: 'free',
-        remaining_tries: freeConfig.monthlyTries,
-        status: 'active',
-        last_reset_at: now,
-        daily_free_tries_used: 0,
-        daily_free_tries_date: today,
-        created_at: now,
-        updated_at: now,
-      });
+      // 先检查现有记录
+      const { data, error: selectError } = await this.table
+        .select('remaining_tries')
+        .eq('user_id', userId)
+        .single();
+
+      if (selectError && selectError.code !== 'PGRST116') {
+        console.error('❌ Error checking existing subscription:', selectError);
+        throw selectError;
+      }
+
+      const currentRemaining = data?.remaining_tries ?? INITIAL_TRIES;
+      const newRemaining = currentRemaining + additionalTries;
+
+      console.log(`📊 Current tries: ${currentRemaining}, Adding: ${additionalTries}, New total: ${newRemaining}`);
+
+      // 如果记录不存在，创建新记录
+      if (!data) {
+        const now = new Date().toISOString();
+        const today = this.getTodayDateString();
+        const freeConfig = getPlanConfig('free');
+
+        await this.table.insert({
+          user_id: userId,
+          plan: 'free',
+          status: 'active',
+          remaining_tries: newRemaining,
+          last_reset_at: now,
+          daily_free_tries_used: 0,
+          daily_free_tries_date: today,
+          created_at: now,
+          updated_at: now,
+        });
+      } else {
+        // 更新现有记录
+        await this.table
+          .update({
+            remaining_tries: newRemaining,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+      }
+
+      console.log(`✅ Successfully added ${additionalTries} tries for user: ${userId}, new total: ${newRemaining}`);
     } catch (error: any) {
-      console.error('Error creating free subscription:', error);
+      console.error('❌ Error adding tries:', error);
+      throw error;
     }
   }
 
   /**
-   * 重置试穿次数（累加模式：保留未用完的次数，并累加新的次数）
+   * 重置试穿次数
+   * 注意：订阅和次数无关，重置时保持现有次数
    */
   private async resetTries(userId: string, plan: PlanType): Promise<void> {
     try {
       const now = new Date().toISOString();
       const today = this.getTodayDateString();
-      const planConfig = getPlanConfig(plan);
 
       // 获取当前剩余次数
       const { data } = await this.table.select('remaining_tries').eq('user_id', userId).single();
       const currentRemaining = data?.remaining_tries ?? 0;
 
-      // 累加新的次数（保留未用完的次数）
-      const newRemaining = currentRemaining + planConfig.monthlyTries;
-
-      console.log(`🔄 Resetting tries for plan ${plan}: ${currentRemaining} (current) + ${planConfig.monthlyTries} (new) = ${newRemaining} (total)`);
+      // 订阅不影响次数，保持现有次数
+      const newRemaining = currentRemaining;
+      console.log(`🔄 Resetting tries for plan ${plan}: ${currentRemaining} (kept, subscription does not affect tries)`);
 
       await this.table
         .update({
@@ -515,48 +572,6 @@ export class SubscriptionService {
     }
   }
 
-  /**
-   * 判断是否是新的计费周期（续费）
-   * 通过比较 period_end 或 last_reset_at 来判断
-   */
-  private isNewBillingPeriod(
-    existingData: SubscriptionRecord | null,
-    newPeriodEnd: string | null | undefined,
-    planConfig: ReturnType<typeof getPlanConfig>
-  ): boolean {
-    if (!existingData) {
-      return false; // 新订阅，不是续费
-    }
-
-    // 如果提供了新的 period_end，检查是否更新了
-    if (newPeriodEnd) {
-      const newPeriodEndDate = new Date(newPeriodEnd);
-      const existingPeriodEnd = existingData.period_end ? new Date(existingData.period_end) : null;
-      
-      // 如果新的 period_end 比现有的晚，说明进入了新的计费周期
-      if (existingPeriodEnd && newPeriodEndDate > existingPeriodEnd) {
-        console.log(`📅 New billing period detected: period_end updated from ${existingPeriodEnd.toISOString()} to ${newPeriodEndDate.toISOString()}`);
-        return true;
-      }
-    }
-
-    // 如果 period_end 没有更新，检查 last_reset_at 是否已经超过一个周期
-    if (existingData.last_reset_at) {
-      const lastReset = new Date(existingData.last_reset_at);
-      const now = new Date();
-      const daysSinceReset = Math.floor(
-        (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      // 如果距离上次重置已经超过一个周期，说明应该进入新周期
-      if (daysSinceReset >= planConfig.resetPeriodDays) {
-        console.log(`📅 New billing period detected: ${daysSinceReset} days since last reset (>= ${planConfig.resetPeriodDays} days)`);
-        return true;
-      }
-    }
-
-    return false;
-  }
 
   /**
    * 添加天数

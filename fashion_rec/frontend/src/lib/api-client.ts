@@ -121,9 +121,11 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
     return config
   })
 
-  // Add response interceptor to handle 401 errors
+  // Add response interceptor for 401 retry logic
   client.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      return response
+    },
     async (error) => {
       const originalRequest = error.config
       
@@ -191,6 +193,8 @@ export const longUploadApiClient = createAuthenticatedApiClient(API_URL, 600000)
 /**
  * Subscription service API client.
  * Use this for subscription-related API calls.
+ * Note: Increased timeout to 60 seconds due to slow /subscription/status endpoint
+ * which makes multiple sequential API calls to Creem and Supabase.
  */
-export const subscriptionClient = createAuthenticatedApiClient(SUBSCRIPTION_API_URL)
+export const subscriptionClient = createAuthenticatedApiClient(SUBSCRIPTION_API_URL, 60000) // 60 seconds
 

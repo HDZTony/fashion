@@ -7,7 +7,7 @@
  * 2. 所有套餐相关的逻辑会自动使用新的配置
  */
 
-export type PlanType = 'free' | 'premium' | 'premium_plus' | 'premium_pro';
+export type PlanType = 'free' | 'member';
 
 export interface PlanConfig {
   /** 套餐类型标识 */
@@ -37,27 +37,11 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     resetPeriodDays: 1, // 每天重置
     dailyFreeTries: 3, // 每天前3次免费
   },
-  premium: {
-    type: 'premium',
-    name: 'Premium',
-    price: 5,
+  member: {
+    type: 'member',
+    name: 'Member',
+    price: 4.9,
     monthlyTries: 50,
-    resetPeriodDays: 30, // 每月重置
-    dailyFreeTries: 3, // 每天前3次不计入次数
-  },
-  premium_plus: {
-    type: 'premium_plus',
-    name: 'Premium Plus',
-    price: 15,
-    monthlyTries: 200,
-    resetPeriodDays: 30, // 每月重置
-    dailyFreeTries: 3, // 每天前3次不计入次数
-  },
-  premium_pro: {
-    type: 'premium_pro',
-    name: 'Premium Pro',
-    price: 29.9,
-    monthlyTries: 500,
     resetPeriodDays: 30, // 每月重置
     dailyFreeTries: 3, // 每天前3次不计入次数
   },
@@ -78,59 +62,105 @@ export function getAllPlanConfigs(): PlanConfig[] {
 }
 
 /**
- * 根据产品ID获取套餐类型
- * 此函数需要根据实际的产品ID映射关系进行配置
+ * 产品名称到套餐类型的映射配置
+ * 这个映射用于将 Creem API 中的产品名称映射到我们的套餐类型
+ * 注意：Creem 产品名称可能与 plan.name 不同
  */
-export function getPlanTypeFromProductId(
+export const PRODUCT_NAME_TO_PLAN_TYPE: Record<string, PlanType> = {
+  'Fashion Rec Member': 'member',
+};
+
+/**
+ * 产品ID缓存结构
+ */
+interface ProductIdCache {
+  productIdToPlanType: Record<string, PlanType>;
+  cachedAt: number;
+  isTestMode: boolean;
+}
+
+/**
+ * 内存缓存（模块级变量）
+ * 注意：在 Cloudflare Workers 环境中，每个请求可能在不同的实例上运行，缓存是请求级别的
+ */
+let productIdCache: ProductIdCache | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟
+
+/**
+ * 根据产品ID获取套餐类型
+ * 通过 Creem API 动态获取产品列表，根据产品名称匹配产品ID
+ */
+export async function getPlanTypeFromProductId(
   productId: string | undefined,
   isTestMode: boolean,
-  env: {
-    CREEM_TEST_PRODUCT_ID?: string;
-    CREEM_PROD_PRODUCT_ID?: string;
-    CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS?: string;
-    CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS?: string;
-    CREEM_TEST_PRODUCT_ID_PREMIUM_PRO?: string;
-    CREEM_PROD_PRODUCT_ID_PREMIUM_PRO?: string;
+  creem: {
+    products: {
+      list: (params?: { page?: number; limit?: number }) => Promise<{
+        items: Array<{
+          id: string;
+          name: string;
+          billingType: 'recurring' | 'onetime';
+        }>;
+        pagination: any;
+      }>;
+    };
   }
-): PlanType {
+): Promise<PlanType> {
   if (!productId) {
     return 'free';
   }
 
-  // Premium Pro 产品ID
-  const premiumProIds = [
-    isTestMode ? env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO : env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO,
-    env.CREEM_TEST_PRODUCT_ID_PREMIUM_PRO,
-    env.CREEM_PROD_PRODUCT_ID_PREMIUM_PRO,
-  ].filter(Boolean);
-
-  if (premiumProIds.includes(productId)) {
-    return 'premium_pro';
+  // 检查缓存是否有效
+  const now = Date.now();
+  if (
+    productIdCache &&
+    productIdCache.isTestMode === isTestMode &&
+    now - productIdCache.cachedAt < CACHE_TTL_MS &&
+    productIdCache.productIdToPlanType[productId]
+  ) {
+    return productIdCache.productIdToPlanType[productId];
   }
 
-  // Premium Plus 产品ID
-  const premiumPlusIds = [
-    isTestMode ? env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS : env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
-    env.CREEM_TEST_PRODUCT_ID_PREMIUM_PLUS,
-    env.CREEM_PROD_PRODUCT_ID_PREMIUM_PLUS,
-  ].filter(Boolean);
+  try {
+    // 调用 API 获取产品列表
+    const productsResponse = await creem.products.list({
+      page: 1,
+      limit: 100, // 获取足够多的产品
+    });
 
-  if (premiumPlusIds.includes(productId)) {
-    return 'premium_plus';
+    const products = productsResponse.items || [];
+    
+    // 构建产品ID到套餐类型的映射（只处理 recurring 类型的产品）
+    const productIdToPlanType: Record<string, PlanType> = {};
+    
+    for (const product of products) {
+      // 只匹配订阅类型（recurring）的产品
+      if (product.billingType === 'recurring') {
+        const planType = PRODUCT_NAME_TO_PLAN_TYPE[product.name];
+        if (planType) {
+          productIdToPlanType[product.id] = planType;
+        }
+      }
+    }
+
+    // 更新缓存
+    productIdCache = {
+      productIdToPlanType,
+      cachedAt: now,
+      isTestMode,
+    };
+
+    // 返回匹配的套餐类型，如果没有匹配则返回 free
+    return productIdToPlanType[productId] || 'free';
+  } catch (error: any) {
+    console.error('❌ Error fetching products from Creem API:', error);
+    // 如果 API 调用失败，尝试使用缓存（即使过期）
+    if (productIdCache && productIdCache.productIdToPlanType[productId]) {
+      console.warn('⚠️ Using expired cache due to API error');
+      return productIdCache.productIdToPlanType[productId];
+    }
+    // 降级处理：返回 free
+    return 'free';
   }
-
-  // Premium 产品ID
-  const premiumIds = [
-    isTestMode ? env.CREEM_TEST_PRODUCT_ID : env.CREEM_PROD_PRODUCT_ID,
-    env.CREEM_TEST_PRODUCT_ID,
-    env.CREEM_PROD_PRODUCT_ID,
-  ].filter(Boolean);
-
-  if (premiumIds.includes(productId)) {
-    return 'premium';
-  }
-
-  // 默认返回 free
-  return 'free';
 }
 

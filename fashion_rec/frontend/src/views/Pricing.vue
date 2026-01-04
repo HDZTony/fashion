@@ -7,70 +7,35 @@
         <p class="text-lg text-green-700">Unlock more virtual try-on power</p>
       </div>
 
-      <!-- Pricing Cards -->
-      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
-        <!-- Free Plan -->
-        <div class="bg-white rounded-2xl shadow-lg border-2 border-green-200 p-8 hover:border-green-500 transition-all">
-          <div class="text-center">
-            <h2 class="text-2xl font-bold text-green-800 mb-2">Free</h2>
-            <div class="mb-6">
-              <span class="text-5xl font-bold text-green-800">$0</span>
-              <span class="text-green-700 ml-2">/mo</span>
-            </div>
-            <ul class="text-left space-y-4 mb-8">
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span class="text-green-700">3 virtual try-ons per day (first 3 tries are free for all plans)</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span class="text-green-700">Access to core features</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span class="text-green-700">Save your history</span>
-              </li>
-            </ul>
-            <button
-              @click="selectPlan('free')"
-              class="w-full py-3 px-6 rounded-lg font-semibold transition-all bg-green-100 text-green-800 hover:bg-green-200"
-            >
-              Continue with Free
-            </button>
-          </div>
-        </div>
-
-        <!-- Premium Plan -->
-        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-xl border-2 border-green-500 p-8 text-white relative transform hover:scale-105 transition-all">
+      <!-- Subscription Plan -->
+      <div class="max-w-md mx-auto mb-16">
+        <div
+          v-for="plan in plansData"
+          :key="plan.slug"
+          class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-xl border-2 border-green-500 p-8 text-white relative transform hover:scale-105 transition-all"
+        >
           <!-- Popular Badge -->
           <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
             <span class="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold">Recommended</span>
           </div>
           
           <div class="text-center">
-            <h2 class="text-2xl font-bold mb-2">Premium</h2>
+            <h2 class="text-2xl font-bold mb-2">{{ plan.name }}</h2>
             <div class="mb-6">
-              <span class="text-5xl font-bold">$5</span>
-              <span class="text-green-100 ml-2">/mo</span>
+              <span class="text-5xl font-bold">{{ plan.price }}</span>
             </div>
             <ul class="text-left space-y-4 mb-8">
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>50 virtual try-ons per month</span>
+                <span>{{ plan.tries }}</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>Includes all Free features</span>
+                <span>3 free tries per day (first 3 tries are free for all users)</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,7 +51,7 @@
               </li>
             </ul>
             <button
-              @click="selectPlan('premium')"
+              @click="selectPlan('member')"
               :disabled="isLoading"
               :class="[
                 'w-full py-3 px-6 rounded-lg font-semibold transition-all',
@@ -99,114 +64,66 @@
             </button>
           </div>
         </div>
+      </div>
 
-        <!-- Premium Plus Plan -->
-        <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl shadow-xl border-2 border-emerald-500 p-8 text-white relative transform hover:scale-105 transition-all">
-          <div class="text-center">
-            <h2 class="text-2xl font-bold mb-2">Premium Plus</h2>
-            <div class="mb-6">
-              <span class="text-5xl font-bold">$15</span>
-              <span class="text-emerald-100 ml-2">/mo</span>
-            </div>
-            <ul class="text-left space-y-4 mb-8">
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>200 virtual try-ons per month</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Includes all Premium features</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span class="font-semibold">2K resolution for try-on images</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Front and side views</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Unlimited history</span>
-              </li>
-            </ul>
-            <button
-              @click="selectPlan('premium_plus')"
-              :disabled="isLoading"
-              :class="[
-                'w-full py-3 px-6 rounded-lg font-semibold transition-all',
-                isLoading
-                  ? 'bg-white/80 text-emerald-600 cursor-wait'
-                  : 'bg-white text-emerald-600 hover:bg-emerald-50'
-              ]"
-            >
-              {{ isLoading ? 'Processing...' : 'Subscribe now' }}
-            </button>
-          </div>
+      <!-- Credits (One-time Purchase) -->
+      <div class="mb-12">
+        <div class="text-center mb-8">
+          <h2 class="text-3xl font-bold text-blue-800 mb-2">Or Purchase Credits</h2>
+          <p class="text-lg text-blue-700">One-time purchase, credits never expire</p>
         </div>
-
-        <!-- Premium Pro Plan -->
-        <div class="bg-gradient-to-br from-teal-500 to-teal-600 rounded-2xl shadow-xl border-2 border-teal-500 p-8 text-white relative transform hover:scale-105 transition-all">
-          <div class="text-center">
-            <h2 class="text-2xl font-bold mb-2">Premium Pro</h2>
-            <div class="mb-6">
-              <span class="text-5xl font-bold">$29.9</span>
-              <span class="text-teal-100 ml-2">/mo</span>
+        <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div
+            v-for="credit in creditsData"
+            :key="credit.id"
+            class="bg-white rounded-2xl shadow-lg border-2 border-blue-200 p-8 hover:border-blue-400 transition-all"
+          >
+            <div class="text-center">
+              <h3 class="text-2xl font-bold text-blue-800 mb-2">{{ credit.name }}</h3>
+              <div class="mb-6 relative">
+                <div v-if="getCreditDiscountInfo(credit)" class="flex flex-col items-center">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-3xl line-through text-gray-400">${{ getCreditDiscountInfo(credit)!.originalPrice.toFixed(2) }}</span>
+                    <span class="text-5xl font-bold text-blue-800">${{ credit.price.toFixed(2) }}</span>
+                    <span class="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">-{{ ((1 - getCreditDiscountInfo(credit)!.discount) * 100).toFixed(0) }}%</span>
+                  </div>
+                  <span class="text-sm text-blue-600 font-semibold">{{ getCreditDiscountInfo(credit)!.discountText }}</span>
+                </div>
+                <span v-else class="text-5xl font-bold text-blue-800">${{ credit.price.toFixed(2) }}</span>
+              </div>
+              <ul class="text-left space-y-4 mb-8">
+                <li class="flex items-start">
+                  <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span class="text-blue-700">{{ credit.credits }} virtual try-ons</span>
+                </li>
+                <li class="flex items-start">
+                  <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span class="text-blue-700">One-time purchase</span>
+                </li>
+                <li class="flex items-start">
+                  <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span class="text-blue-700">Credits never expire</span>
+                </li>
+              </ul>
+              <button
+                @click="purchaseCredits(credit.id)"
+                :disabled="isLoading"
+                :class="[
+                  'w-full py-3 px-6 rounded-lg font-semibold transition-all',
+                  isLoading
+                    ? 'bg-blue-200 text-blue-600 cursor-wait'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                ]"
+              >
+                {{ isLoading ? 'Processing...' : 'Purchase' }}
+              </button>
             </div>
-            <ul class="text-left space-y-4 mb-8">
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>500 virtual try-ons per month</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Includes all Premium Plus features</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span class="font-semibold">2K resolution for try-on images</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Comprehensive Perspective</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Unlimited history</span>
-              </li>
-            </ul>
-            <button
-              @click="selectPlan('premium_pro')"
-              :disabled="isLoading"
-              :class="[
-                'w-full py-3 px-6 rounded-lg font-semibold transition-all',
-                isLoading
-                  ? 'bg-white/80 text-teal-600 cursor-wait'
-                  : 'bg-white text-teal-600 hover:bg-teal-50'
-              ]"
-            >
-              {{ isLoading ? 'Processing...' : 'Subscribe now' }}
-            </button>
           </div>
         </div>
       </div>
@@ -234,34 +151,59 @@ const router = useRouter()
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const subscriptionInfo = ref<any>(null)
-// 从后端获取环境配置
-const isTestMode = ref(false)
-const productIds = ref<{
-  premium: { test: string; prod: string }
-  premiumPlus: { test: string; prod: string }
-  premiumPro: { test: string; prod: string }
-} | null>(null)
+// Credits 商品数据
+const creditsData = ref<Array<{
+  id: string
+  name: string
+  price: number
+  credits: number
+  currency: string
+}>>([])
 
-// 从后端加载环境配置（完全依赖后端，无环境变量后备）
-const loadConfig = async () => {
-  try {
-    const response = await subscriptionClient.get('/config')
-    isTestMode.value = response.data.isTestMode
-    productIds.value = response.data.productIds
-    
-    // 验证配置是否完整
-    if (!productIds.value || !productIds.value.premium || !productIds.value.premiumPlus || !productIds.value.premiumPro) {
-      throw new Error('Backend configuration is incomplete. Missing product IDs.')
+// 获取 credits 的原价和折扣信息
+const getCreditDiscountInfo = (credit: { credits: number; price: number }) => {
+  if (credit.credits === 200) {
+    return {
+      originalPrice: 20,
+      discount: 0.9,
+      discountText: '10% OFF'
     }
-    
-    console.log('Environment config loaded from backend:', { 
-      isTestMode: isTestMode.value, 
-      productIds: productIds.value 
-    })
-  } catch (error: any) {
-    console.error('Failed to load config from backend:', error)
-    error.value = `无法加载订阅配置: ${error?.response?.data?.error || error?.message || 'Unknown error'}. 请确保后端服务正常运行。`
-    throw error // 抛出错误，让调用者知道配置加载失败
+  } else if (credit.credits === 500) {
+    return {
+      originalPrice: 50,
+      discount: 0.85,
+      discountText: '15% OFF'
+    }
+  }
+  return null
+}
+// Plans 数据（从后端动态获取）
+const plansData = ref<Array<{
+  slug: string
+  name: string
+  price: string
+  tries: string
+  desc: string
+  productId?: string
+}>>([])
+
+// 从后端加载 credits 商品数据
+const loadCredits = async () => {
+  try {
+    const response = await subscriptionClient.get('/credits')
+    creditsData.value = response.data.credits || []
+  } catch (e: any) {
+    console.error('Failed to load credits:', e)
+  }
+}
+
+// 从后端加载计划数据
+const loadPlans = async () => {
+  try {
+    const response = await subscriptionClient.get('/plans')
+    plansData.value = response.data.plans || []
+  } catch (e: any) {
+    console.error('Failed to load plans:', e)
   }
 }
 
@@ -298,12 +240,8 @@ const hasActivePaidSubscription = (): boolean => {
   const planName = (subscriptionInfo.value.planName || '').toString().toLowerCase()
   const status = (subscriptionInfo.value.status || '').toString().toLowerCase()
   
-  // 检查是否为付费计划（premium/premium_plus/premium_pro）
-  const isPaidPlan = planName === 'premium' || 
-                     planName === 'premium_plus' || 
-                     planName === 'premium plus' ||
-                     planName === 'premium_pro' || 
-                     planName === 'premium pro'
+  // 检查是否为付费计划（member）
+  const isPaidPlan = planName === 'member' || planName === 'fashion rec member'
   
   // 检查状态是否为 active 或 trialing
   const isActiveStatus = status === 'active' || status === 'trialing'
@@ -311,88 +249,89 @@ const hasActivePaidSubscription = (): boolean => {
   return isPaidPlan && isActiveStatus
 }
 
-// Choose plan
-const selectPlan = async (plan: 'free' | 'premium' | 'premium_plus' | 'premium_pro') => {
-  if (plan === 'free') {
-    // Free plan does not require payment
-    router.push('/studio')
+// Choose subscription plan
+const selectPlan = async (plan: 'member') => {
+  // 如果用户已订阅非免费计划，重定向到 Profile 页面
+  if (hasActivePaidSubscription()) {
+    router.push('/profile')
     return
   }
 
-  if (plan === 'premium' || plan === 'premium_plus' || plan === 'premium_pro') {
-    // 如果用户已订阅非免费计划，重定向到 Profile 页面
-    if (hasActivePaidSubscription()) {
-      router.push('/profile')
-      return
+  isLoading.value = true
+  error.value = null
+
+  try {
+    // 获取当前用户信息
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('Please sign in first')
     }
 
-    isLoading.value = true
-    error.value = null
+    // 确保 plans 数据已加载
+    if (plansData.value.length === 0) {
+      await loadPlans()
+    }
 
-    try {
-      // 获取当前用户信息
+    // 从 plans 数据中获取 productId
+    const planData = plansData.value.find((p: any) => p.slug === plan)
+    if (!planData || !planData.productId) {
+      throw new Error('Plan not found. Please refresh the page.')
+    }
+
+    const response = await subscriptionClient.post('/checkouts', {
+      productId: planData.productId,
+      successUrl: `${window.location.origin}/pricing?success=true`,
+      cancelUrl: `${window.location.origin}/pricing?canceled=true`,
+    })
+
+    // Save checkout ID to localStorage (for post-payment sync)
+    if (response.data.checkoutId) {
+      localStorage.setItem('pending_checkout_id', response.data.checkoutId)
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        throw new Error('Please sign in first')
+      if (user) {
+        localStorage.setItem('pending_checkout_user_id', user.id)
       }
-
-      // 确保配置已加载
-      if (!productIds.value) {
-        await loadConfig()
-      }
-
-      // Create checkout session
-      // 根据后端返回的环境配置选择产品ID
-      let productId: string | undefined
-      if (plan === 'premium_pro') {
-        productId = isTestMode.value 
-          ? productIds.value?.premiumPro.test
-          : productIds.value?.premiumPro.prod
-        if (!productId) {
-          throw new Error(`Product ID for premium_pro (${isTestMode.value ? 'test' : 'prod'} mode) is not configured`)
-        }
-      } else if (plan === 'premium_plus') {
-        productId = isTestMode.value
-          ? productIds.value?.premiumPlus.test
-          : productIds.value?.premiumPlus.prod
-        if (!productId) {
-          throw new Error(`Product ID for premium_plus (${isTestMode.value ? 'test' : 'prod'} mode) is not configured`)
-        }
-      } else {
-        productId = isTestMode.value
-          ? productIds.value?.premium.test
-          : productIds.value?.premium.prod
-        if (!productId) {
-          throw new Error(`Product ID for premium (${isTestMode.value ? 'test' : 'prod'} mode) is not configured`)
-        }
-      }
-
-      const response = await subscriptionClient.post('/checkouts', {
-        productId: productId,
-        successUrl: `${window.location.origin}/pricing?success=true`,
-        cancelUrl: `${window.location.origin}/pricing?canceled=true`,
-      })
-
-      // Save checkout ID to localStorage (for post-payment sync)
-      if (response.data.checkoutId) {
-        localStorage.setItem('pending_checkout_id', response.data.checkoutId)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          localStorage.setItem('pending_checkout_user_id', user.id)
-        }
-      }
-
-      // Redirect to checkout page
-      if (response.data.checkoutUrl) {
-        window.location.href = response.data.checkoutUrl
-      } else {
-        throw new Error('Unable to create checkout session')
-      }
-    } catch (err: any) {
-      console.error('Failed to create checkout:', err)
-      error.value = err.response?.data?.error || err.message || 'Failed to create checkout session'
-      isLoading.value = false
     }
+
+    // Redirect to checkout page
+    if (response.data.checkoutUrl) {
+      window.location.href = response.data.checkoutUrl
+    } else {
+      throw new Error('Unable to create checkout session')
+    }
+  } catch (err: any) {
+    console.error('Failed to create checkout:', err)
+    error.value = err.response?.data?.error || err.message || 'Failed to create checkout session'
+    isLoading.value = false
+  }
+}
+
+// Purchase credits (one-time purchase)
+const purchaseCredits = async (creditProductId: string) => {
+  isLoading.value = true
+  error.value = null
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('Please sign in first')
+    }
+
+    const response = await subscriptionClient.post('/checkouts', {
+      productId: creditProductId,
+      successUrl: `${window.location.origin}/pricing?success=credits`,
+      cancelUrl: `${window.location.origin}/pricing?canceled=credits`,
+    })
+
+    if (response.data.checkoutUrl) {
+      window.location.href = response.data.checkoutUrl
+    } else {
+      throw new Error('Unable to create checkout session')
+    }
+  } catch (err: any) {
+    console.error('Failed to purchase credits:', err)
+    error.value = err.response?.data?.error || err.message || 'Failed to purchase credits'
+    isLoading.value = false
   }
 }
 
@@ -428,10 +367,9 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000, check
       })
       
       const info = response.data
-      // 检查是否已升级为高级版、Premium Plus或Premium Pro
-      if (info.planName === 'Premium' || info.planName === 'premium' || 
-          info.planName === 'Premium Plus' || info.planName === 'premium_plus' ||
-          info.planName === 'Premium Pro' || info.planName === 'premium_pro') {
+      // 检查是否已升级为 member
+      const planName = (info.planName || '').toString().toLowerCase()
+      if (planName === 'member' || planName === 'fashion rec member') {
         subscriptionInfo.value = info
         return true
       }
@@ -446,9 +384,8 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000, check
             params: { user_id: user.id },
           })
           const syncInfo = syncResponse.data
-          if (syncInfo.planName === 'Premium' || syncInfo.planName === 'premium' || 
-              syncInfo.planName === 'Premium Plus' || syncInfo.planName === 'premium_plus' ||
-              syncInfo.planName === 'Premium Pro' || syncInfo.planName === 'premium_pro') {
+          const syncPlanName = (syncInfo.planName || '').toString().toLowerCase()
+          if (syncPlanName === 'member' || syncPlanName === 'fashion rec member') {
             subscriptionInfo.value = syncInfo
             return true
           }
@@ -475,17 +412,15 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000, check
 onMounted(async () => {
   if (typeof window === 'undefined') return
 
-  // 首先加载后端配置（必需，无后备方案）
-  try {
-    await loadConfig()
-  } catch (err: any) {
-    // 配置加载失败，显示错误但继续加载订阅信息（可能仍能显示当前状态）
-    console.error('Failed to load config, subscription features may be unavailable:', err)
-    isLoading.value = false
-  }
+  // 加载数据
+  await Promise.all([
+    loadPlans(),
+    loadCredits(),
+    loadSubscriptionInfo()
+  ])
 
   const urlParams = new URLSearchParams(window.location.search)
-  if (urlParams.get('success') === 'true') {
+  if (urlParams.get('success') === 'true' || urlParams.get('success') === 'credits') {
     // Payment succeeded; wait for subscription status to update
     isLoading.value = true
     
@@ -500,13 +435,23 @@ onMounted(async () => {
     // 立即加载一次
     await loadSubscriptionInfo()
     
-    // 如果有 checkout ID，先尝试同步
+    // 如果是 credits 购买，不需要同步订阅
+    if (urlParams.get('success') === 'credits') {
+      alert('Credits purchased successfully!')
+      isLoading.value = false
+      if (checkoutId) localStorage.removeItem('pending_checkout_id')
+      if (savedUserId) localStorage.removeItem('pending_checkout_user_id')
+      window.history.replaceState({}, '', '/pricing')
+      return
+    }
+    
+    // 如果有 checkout ID，先尝试同步（仅限订阅）
     if (checkoutId && userId) {
       console.log('🔄 Attempting to sync subscription from checkout...')
       const synced = await syncSubscriptionFromCheckout(checkoutId, userId)
       if (synced) {
         await loadSubscriptionInfo()
-        alert('Subscription activated! Premium features are now available.')
+        alert('Subscription activated! Member features are now available.')
         isLoading.value = false
         window.history.replaceState({}, '', '/pricing')
         return
@@ -518,7 +463,7 @@ onMounted(async () => {
     const updated = await pollSubscriptionStatus(10, 2000, checkoutId || undefined)
     
     if (updated) {
-    alert('Subscription activated! Premium features are now available.')
+      alert('Subscription activated! Member features are now available.')
       // 清除保存的数据
       if (checkoutId) localStorage.removeItem('pending_checkout_id')
       if (savedUserId) localStorage.removeItem('pending_checkout_user_id')
@@ -529,15 +474,12 @@ onMounted(async () => {
     isLoading.value = false
     // 清除 URL 参数
     window.history.replaceState({}, '', '/pricing')
-  } else if (urlParams.get('canceled') === 'true') {
+  } else if (urlParams.get('canceled') === 'true' || urlParams.get('canceled') === 'credits') {
     // Clear saved data
     localStorage.removeItem('pending_checkout_id')
     localStorage.removeItem('pending_checkout_user_id')
     error.value = 'Payment was canceled'
     window.history.replaceState({}, '', '/pricing')
   }
-
-  // 加载订阅信息
-  await loadSubscriptionInfo()
 })
 </script>

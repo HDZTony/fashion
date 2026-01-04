@@ -132,8 +132,8 @@ if can_auto_create:
                 migration_sql = """-- 创建 user_subscriptions 表
 CREATE TABLE IF NOT EXISTS user_subscriptions (
     user_id TEXT PRIMARY KEY,
-    plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'premium')),
-    remaining_tries INTEGER NOT NULL DEFAULT 1,
+    plan TEXT NOT NULL DEFAULT 'free',
+    remaining_tries INTEGER NOT NULL DEFAULT 100,
     creem_subscription_id TEXT,
     creem_customer_id TEXT,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'canceled', 'expired')),
@@ -234,8 +234,8 @@ else:
     print("""-- 创建 user_subscriptions 表
 CREATE TABLE IF NOT EXISTS user_subscriptions (
     user_id TEXT PRIMARY KEY,
-    plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'premium')),
-    remaining_tries INTEGER NOT NULL DEFAULT 1,
+    plan TEXT NOT NULL DEFAULT 'free',
+    remaining_tries INTEGER NOT NULL DEFAULT 100,
     creem_subscription_id TEXT,
     creem_customer_id TEXT,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'canceled', 'expired')),
