@@ -357,17 +357,6 @@ function isApiRequest(url: URL, request: Request): boolean {
 }
 
 /**
- * Check if path requires version routing
- * All authenticated pages use the user's determined version
- * Only unauthenticated pages use stable
- */
-function requiresVersionRouting(path: string, userId: string | null): boolean {
-  // If user is authenticated, use their determined version for all pages
-  // If not authenticated, use stable for all pages
-  return userId !== null
-}
-
-/**
  * Main worker handler
  */
 export default {
@@ -505,11 +494,8 @@ export default {
       let version = 'stable' // Default to stable
       
       // If user is authenticated, check their version (from KV cache or database)
-      // This ensures all pages use the version determined when they first accessed /studio
-      if (userId && requiresVersionRouting(path, userId)) {
-        version = await getUserVersion(userId, env)
-      } else if (userId && isApiRequest(url, request)) {
-        // API requests also use user's version
+      // This ensures all requests use the version determined when they first accessed /studio
+      if (userId) {
         version = await getUserVersion(userId, env)
       }
 
@@ -520,17 +506,27 @@ export default {
       if (isApi) {
         // Check if this is a subscription-service request
         const isSubscriptionRequest = path.startsWith('/subscription') || 
-                                      path === '/webhook' || 
+                                      path === '/webhook' ||
                                       path === '/test-webhook'
         
         // Route subscription requests to subscription-service, others to main backend
         let backendUrl: string
         if (isSubscriptionRequest) {
-          // Route subscription requests based on user version (stable/v2)
-          backendUrl = version === 'v2'
-            ? env.V2_SUBSCRIPTION_SERVICE_URL
-            : env.STABLE_SUBSCRIPTION_SERVICE_URL
-          console.log(`[Router] Routing subscription request ${request.method} ${path} to subscription-service: ${backendUrl} (version: ${version})`)
+          // Webhook routing: test-webhook -> v2, webhook -> stable
+          // Other subscription requests route based on user version
+          if (path === '/test-webhook') {
+            backendUrl = env.V2_SUBSCRIPTION_SERVICE_URL
+            console.log(`[Router] Routing test-webhook to v2 subscription-service: ${backendUrl}`)
+          } else if (path === '/webhook') {
+            backendUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
+            console.log(`[Router] Routing webhook to stable subscription-service: ${backendUrl}`)
+          } else {
+            // Route subscription requests based on user version (stable/v2)
+            backendUrl = version === 'v2'
+              ? env.V2_SUBSCRIPTION_SERVICE_URL
+              : env.STABLE_SUBSCRIPTION_SERVICE_URL
+            console.log(`[Router] Routing subscription request ${request.method} ${path} to subscription-service: ${backendUrl} (version: ${version}, userId: ${userId || 'null'})`)
+          }
         } else {
           backendUrl = version === 'v2' 
             ? env.V2_BACKEND_URL 
@@ -692,9 +688,20 @@ Troubleshooting steps:
           const isSubscriptionRequest = path.startsWith('/subscription') || 
                                         path === '/webhook' || 
                                         path === '/test-webhook'
-          const fallbackUrl = isSubscriptionRequest
-            ? env.STABLE_SUBSCRIPTION_SERVICE_URL
-            : env.STABLE_BACKEND_URL
+          let fallbackUrl: string
+          if (isSubscriptionRequest) {
+            // Webhook routing: test-webhook -> v2, webhook -> stable
+            if (path === '/test-webhook') {
+              fallbackUrl = env.V2_SUBSCRIPTION_SERVICE_URL
+            } else if (path === '/webhook') {
+              fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
+            } else {
+              // Other subscription requests fallback to stable
+              fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
+            }
+          } else {
+            fallbackUrl = env.STABLE_BACKEND_URL
+          }
           const stableRequest = routeToBackend(request, fallbackUrl)
           return fetch(stableRequest)
         } else {

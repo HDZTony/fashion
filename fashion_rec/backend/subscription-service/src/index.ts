@@ -1990,6 +1990,9 @@ app.post('/test-webhook', async (c) => {
       bodyLength: rawBody?.length || 0,
       hasSignature: !!signature,
       headers: Object.keys(c.req.raw.headers),
+      isTestMode,
+      hasWebhookSecret: !!creemWebhookSecret,
+      webhookSecretPrefix: creemWebhookSecret ? creemWebhookSecret.substring(0, 10) + '...' : 'not set',
     });
 
     if (!signature) {
@@ -2000,6 +2003,7 @@ app.post('/test-webhook', async (c) => {
 
     if (!creemWebhookSecret) {
       console.error(`❌ ${isTestMode ? '测试' : '生产'}环境 Webhook Secret 未配置`);
+      console.error(`   请检查环境变量: ${isTestMode ? 'CREEM_TEST_WEBHOOK_SECRET' : 'CREEM_PROD_WEBHOOK_SECRET'}`);
       return c.json({ error: 'Webhook secret not configured' }, 500);
     }
     
