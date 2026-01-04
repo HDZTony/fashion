@@ -23,6 +23,8 @@ interface Env {
   V2_FRONTEND_HOST: string
   STABLE_BACKEND_URL: string
   V2_BACKEND_URL: string
+  STABLE_SUBSCRIPTION_SERVICE_URL: string
+  V2_SUBSCRIPTION_SERVICE_URL: string
   USER_VERSIONS: KVNamespace
 }
 
@@ -516,10 +518,25 @@ export default {
       console.log(`[Router] Request ${request.method} ${path} - isApiRequest: ${isApi}, version: ${version}`)
       
       if (isApi) {
-        // Route API request to appropriate backend
-        const backendUrl = version === 'v2' 
-          ? env.V2_BACKEND_URL 
-          : env.STABLE_BACKEND_URL
+        // Check if this is a subscription-service request
+        const isSubscriptionRequest = path.startsWith('/subscription') || 
+                                      path === '/webhook' || 
+                                      path === '/test-webhook'
+        
+        // Route subscription requests to subscription-service, others to main backend
+        let backendUrl: string
+        if (isSubscriptionRequest) {
+          // Route subscription requests based on user version (stable/v2)
+          backendUrl = version === 'v2'
+            ? env.V2_SUBSCRIPTION_SERVICE_URL
+            : env.STABLE_SUBSCRIPTION_SERVICE_URL
+          console.log(`[Router] Routing subscription request ${request.method} ${path} to subscription-service: ${backendUrl} (version: ${version})`)
+        } else {
+          backendUrl = version === 'v2' 
+            ? env.V2_BACKEND_URL 
+            : env.STABLE_BACKEND_URL
+          console.log(`[Router] Routing API request ${request.method} ${path} to backend: ${backendUrl} (version: ${version})`)
+        }
         
         // Validate backend URL
         if (!backendUrl || !backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
@@ -537,7 +554,6 @@ export default {
           })
         }
         
-        console.log(`[Router] Routing API request ${request.method} ${path} to backend: ${backendUrl} (version: ${version})`)
         const backendRequest = routeToBackend(request, backendUrl)
         console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)
         
@@ -670,8 +686,16 @@ Troubleshooting steps:
       // On any error, route to stable version as fallback
       try {
         const url = new URL(request.url)
+        const path = url.pathname
         if (isApiRequest(url, request)) {
-          const stableRequest = routeToBackend(request, env.STABLE_BACKEND_URL)
+          // Check if this is a subscription-service request for fallback
+          const isSubscriptionRequest = path.startsWith('/subscription') || 
+                                        path === '/webhook' || 
+                                        path === '/test-webhook'
+          const fallbackUrl = isSubscriptionRequest
+            ? env.STABLE_SUBSCRIPTION_SERVICE_URL
+            : env.STABLE_BACKEND_URL
+          const stableRequest = routeToBackend(request, fallbackUrl)
           return fetch(stableRequest)
         } else {
           const stableRequest = routeToFrontend(request, env.STABLE_FRONTEND_HOST)

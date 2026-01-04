@@ -28,5 +28,19 @@ compatibility_flags = ["nodejs_compat"]
 port = 3001  # 与前端默认端口保持一致（前端使用 localhost:3001）
 local_protocol = "http"
 
+# Observability configuration
+[observability]
+enabled = false
+head_sampling_rate = 1
 
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
 

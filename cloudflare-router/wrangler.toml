@@ -12,6 +12,8 @@ compatibility_date = "2024-01-01"
 # - V2_FRONTEND_HOST: V2 version frontend hostname (e.g., v2.fashion-rec-frontend.pages.dev)
 # - STABLE_BACKEND_URL: Stable version backend URL (e.g., https://fashion-rec-backend.fly.dev)
 # - V2_BACKEND_URL: V2 version backend URL (e.g., https://fashion-rec-backend-v2.fly.dev)
+# - STABLE_SUBSCRIPTION_SERVICE_URL: Stable version subscription service URL (e.g., https://fashion-rec-subscription-service.954504788.workers.dev)
+# - V2_SUBSCRIPTION_SERVICE_URL: V2 version subscription service URL (e.g., https://fashion-rec-subscription-service-v2.workers.dev)
 #
 # KV Namespace for caching user versions
 # Create with: wrangler kv namespace create USER_VERSIONS
@@ -44,8 +46,16 @@ id = "e335d5ff4f4948718434187ca14f94b7"
 # Staging environment configuration (optional)
 
 [observability]
+enabled = false
+head_sampling_rate = 1
+
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
-invocation_logs = true
 persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
