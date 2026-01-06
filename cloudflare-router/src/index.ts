@@ -349,6 +349,7 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||
          path.startsWith('/cleanup-expired-files') ||
+         path === '/userinfo' ||
          path === '/webhook' ||
          path === '/test-webhook'
   
@@ -506,6 +507,7 @@ export default {
       if (isApi) {
         // Check if this is a subscription-service request
         const isSubscriptionRequest = path.startsWith('/subscription') || 
+                                      path === '/userinfo' ||
                                       path === '/webhook' ||
                                       path === '/test-webhook'
         
@@ -686,6 +688,7 @@ Troubleshooting steps:
         if (isApiRequest(url, request)) {
           // Check if this is a subscription-service request for fallback
           const isSubscriptionRequest = path.startsWith('/subscription') || 
+                                        path === '/userinfo' ||
                                         path === '/webhook' || 
                                         path === '/test-webhook'
           let fallbackUrl: string
