@@ -263,14 +263,21 @@ app.get('/plans', async (c) => {
   try {
     const { creem } = getServices(c);
     const allPlans = getAllPlanConfigs();
-    
-    // Get products from Creem API to map plan names to product IDs
-    const productsResponse = await creem.products.list({
-      page: 1,
-      limit: 100,
-    });
-    const allProducts = productsResponse.items || [];
-    const recurringProducts = allProducts.filter((p) => p.billingType === 'recurring');
+    let recurringProducts: Array<{ id: string; name: string; billingType: string }> = [];
+
+    // Get products from Creem API to map plan names to product IDs.
+    // If the external call fails, fall back to local plan configs so the frontend still works.
+    try {
+      const productsResponse = await creem.products.list({
+        page: 1,
+        limit: 100,
+      });
+      const allProducts = productsResponse.items || [];
+      recurringProducts = allProducts.filter((p) => p.billingType === 'recurring');
+    } catch (err: any) {
+      console.error('Failed to fetch products from Creem API, returning plans without productId', err?.message || err);
+      recurringProducts = [];
+    }
     
     // Format plans for frontend consumption
     // Product name mapping: Creem product names may differ from plan names
@@ -301,10 +308,7 @@ app.get('/plans', async (c) => {
       
       // Format price
       const priceDisplay = `$${plan.price} / mo`;
-      
-      // Format tries display
-      const triesDisplay = 'Unlimited';
-      
+          
       // Format description
       let desc: string;
       switch (plan.type) {
@@ -319,7 +323,6 @@ app.get('/plans', async (c) => {
         slug: plan.type,
         name: plan.name,
         price: priceDisplay,
-        tries: triesDisplay,
         desc,
         productId, // Include productId for checkout/upgrade operations
         // Frontend will set action based on user's current subscription status
@@ -617,34 +620,6 @@ app.get('/userinfo', async (c) => {
     // 获取产品ID：只使用 subscription.product.id（当前订阅的产品）
     const productId = getProductIdFromSubscription(subscription);
     
-    // #region agent log
-    try {
-      await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'index.ts:subscription/status:subscription-details',
-          message: 'Subscription details from Creem API',
-          data: {
-            subscriptionId,
-            creemStatus,
-            productId,
-            hasProduct: !!subscription.product,
-            productType: typeof subscription.product,
-            productName: typeof subscription.product === 'object' && subscription.product ? (subscription.product as any).name : null,
-            hasItems: !!subscription.items,
-            itemsLength: subscription.items?.length,
-            isTestMode,
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'A',
-        }),
-      }).catch(() => {});
-    } catch {}
-    // #endregion
-    
     if (!productId) {
       console.error('No product ID found in Creem subscription response', {
         hasItems: !!subscription.items,
@@ -682,94 +657,17 @@ app.get('/userinfo', async (c) => {
     } else {
       // 需要调用API确定plan类型（订阅ID不匹配或数据库中没有记录）
       plan = await getPlanFromProductId(productId, isTestMode, creem);
-      // #region agent log
-      try {
-        await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'index.ts:subscription/status:plan-mapping',
-            message: 'Plan mapping result',
-            data: { productId, plan, isTestMode, dbPlan: subscriptionData?.plan, dbSubscriptionId: subscriptionData?.creem_subscription_id },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'B',
-          }),
-        }).catch(() => {});
-      } catch {}
-      // #endregion
     }
 
     // 如果计划类型、状态或周期结束时间发生变化，更新数据库
-    // #region agent log
-    try {
-      await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'index.ts:subscription/status:before-update-check',
-          message: 'Before update check',
-          data: {
-            hasSubscriptionData: !!subscriptionData,
-            plan,
-            dbPlan: subscriptionData?.plan,
-            creemStatus,
-            dbStatus: subscriptionData?.status,
-            periodEnd,
-            dbPeriodEnd: subscriptionData?.period_end,
-            subscriptionId,
-            dbSubscriptionId: subscriptionData?.subscription_id,
-            needsUpdate: !subscriptionData || 
-              plan !== subscriptionData.plan || 
-              creemStatus !== subscriptionData.status || 
-              periodEnd !== subscriptionData.period_end ||
-              subscriptionId !== subscriptionData.subscription_id,
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          runId: 'run1',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {});
-    } catch {}
-    // #endregion
     if (!subscriptionData || 
         plan !== subscriptionData.plan || 
         creemStatus !== subscriptionData.status || 
         periodEnd !== subscriptionData.period_end ||
         subscriptionId !== subscriptionData.subscription_id) {
       console.log(`Updating subscription in database: plan=${plan}, status=${creemStatus}, periodEnd=${periodEnd}, lastTransactionId=${lastTransactionId}`);
-      // 将 Creem 订阅状态映射到数据库状态
-      // Creem 状态: "active" | "canceled" | "unpaid" | "paused" | "trialing" | "scheduled_cancel"
-      // 数据库状态: "active" | "canceled" | "expired"
-      let dbStatus: 'active' | 'canceled' | 'expired' = 'active';
-      if (creemStatus === 'canceled' || creemStatus === 'scheduled_cancel') {
-        dbStatus = 'canceled';
-      } else if (creemStatus === 'unpaid') {
-        dbStatus = 'expired';
-      } else {
-        dbStatus = 'active';
-      }
-      
-      // #region agent log
-      try {
-        await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'index.ts:subscription/status:updating-db',
-            message: 'Updating database',
-            data: { userId, plan, subscriptionId, customerId, dbStatus, periodEnd, creemStatus },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'C',
-          }),
-        }).catch(() => {});
-      } catch {}
-      // #endregion
-      
+      // 不再映射，直接存 Creem 原始状态（业务逻辑仍按 canceled/expired 分支处理）
+      const dbStatus = creemStatus || 'active';
       await subscriptionService.updateSubscription(
         userId,
         plan,
@@ -997,32 +895,6 @@ async function handleSubscriptionEvent(
     data.subscription?.metadata?.userId ||
     data.subscription?.metadata?.user_id;
   
-  // #region agent log
-  try {
-    await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'index.ts:handleSubscriptionEvent:userId-lookup',
-        message: 'UserId lookup from metadata',
-        data: {
-          subscriptionId,
-          userId,
-          hasEventObject: !!eventObject,
-          eventObjectMetadata: eventObject.metadata,
-          checkoutMetadata: data.checkout?.metadata,
-          topLevelMetadata: data.metadata,
-          subscriptionMetadata: data.subscription?.metadata,
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'E',
-      }),
-    }).catch(() => {});
-  } catch {}
-  // #endregion
-
   // 如果 metadata 中没有 userId，从数据库查找
   if (!userId) {
     console.log('🔍 userId not found in metadata, querying database...');
@@ -1080,30 +952,6 @@ async function handleSubscriptionEvent(
         fullData: JSON.stringify(data, null, 2),
       });
       
-      // #region agent log
-      try {
-        await fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'index.ts:handleSubscriptionEvent:userId-not-found',
-            message: 'UserId not found after all attempts',
-            data: {
-              subscriptionId,
-              customerId,
-              customerEmail,
-              targetStatus,
-              metadata: data.subscription?.metadata || data.checkout?.metadata || data.metadata,
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            runId: 'run1',
-            hypothesisId: 'E',
-          }),
-        }).catch(() => {});
-      } catch {}
-      // #endregion
-      
       // 不直接返回，而是记录错误并继续
       // 这样至少可以记录订阅信息，等待后续通过其他方式（如 sync-from-subscription）同步
       console.warn('⚠️ Subscription event received but cannot update without userId. Subscription details:', {
@@ -1150,12 +998,14 @@ async function handleSubscriptionEvent(
       || (typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id)
       || data.customer?.id;
     
+    const rawStatus = subscription.status || (eventObject as any)?.status || targetStatus;
+
     console.log(`🔄 Updating subscription for user: ${userId}`, {
       plan,
       productId,
       subscriptionId,
       customerId,
-      status: targetStatus,
+      status: rawStatus,
       periodEnd,
       eventType: data.eventType || data.type,
     });
@@ -1165,7 +1015,7 @@ async function handleSubscriptionEvent(
       plan,
       subscriptionId,
       customerId,
-      targetStatus,
+      rawStatus,
       periodEnd
     );
     
@@ -1298,12 +1148,14 @@ async function updateSubscriptionFromWebhook(
         ? subscription.customer 
         : subscription.customer?.id;
 
+      const rawStatus = subscription.status || (eventObject as any)?.status || 'active';
+
       await subscriptionService.updateSubscription(
         userId,
         plan,
         subscriptionId,
         customerId || null,
-        'active',
+        rawStatus,
         periodEnd,
         subscription.lastTransactionId || null
       );
@@ -1830,7 +1682,7 @@ const createWebhookHandler = (
             plan,
             subscriptionId,
             customerId || null,
-            subscriptionStatus as 'active' | 'canceled' | 'expired', // 类型断言以兼容现有类型定义
+            subscriptionStatus || 'active',
             periodEnd
           );
 
@@ -2177,16 +2029,8 @@ app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
             ? upgradedSubscription.customer 
             : (upgradedSubscription.customer?.id ? String(upgradedSubscription.customer.id) : null);
           
-          // 确定订阅状态
-          const creemStatus = upgradedSubscription.status;
-          let dbStatus: 'active' | 'canceled' | 'expired' = 'active';
-          if (creemStatus === 'canceled' || creemStatus === 'scheduled_cancel') {
-            dbStatus = 'canceled';
-          } else if (creemStatus === 'unpaid') {
-            dbStatus = 'expired';
-          } else {
-            dbStatus = 'active';
-          }
+          // 确定订阅状态（原样存储 Creem 状态）
+          const creemStatus = upgradedSubscription.status || 'active';
           
           // 调用 updateSubscription 更新数据库
           // 这会触发试穿次数逻辑：升级/降级时保持次数不变，只有续费时才增加
@@ -2195,7 +2039,7 @@ app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
             plan,
             String(upgradedSubscription.id),
             customerId || null,
-            dbStatus,
+            creemStatus,
             periodEnd
           );
           
@@ -2956,22 +2800,20 @@ app.post('/subscription/sync-from-subscription', async (c) => {
     console.log('📦 Plan determined from product ID:', { productId, plan });
 
     // 3. 根据订阅状态更新数据库
-    // 如果订阅已取消或过期，状态设为 canceled/expired
-    // 否则设为 active
-    let dbStatus: 'active' | 'canceled' | 'expired' = 'active';
-    const statusLower = (subscriptionStatus || '').toLowerCase();
+    // 存储原始 Creem 状态；业务逻辑仍以 active/canceled/expired 做分支
+    const storedStatus = subscriptionStatus || 'active';
+    let logicStatus: 'active' | 'canceled' | 'expired' = 'active';
+    const statusLower = (storedStatus || '').toLowerCase();
     if (statusLower === 'canceled' || statusLower === 'cancelled') {
-      dbStatus = 'canceled';
-      console.log('📊 Subscription status is canceled, will update database to canceled');
+      logicStatus = 'canceled';
+      console.log('📊 Subscription status is canceled, will update database to canceled (store raw)');
     } else if (statusLower === 'expired' || statusLower === 'unpaid') {
-      dbStatus = 'expired';
-      console.log('📊 Subscription status is expired/unpaid, will update database to expired');
-    } else if (statusLower === 'active' || statusLower === 'trialing') {
-      dbStatus = 'active';
-      console.log('📊 Subscription status is active/trialing, will update database to active');
+      logicStatus = 'expired';
+      console.log('📊 Subscription status is expired/unpaid, will update database to expired (store raw)');
     } else {
-      console.log(`📊 Unknown subscription status: "${subscriptionStatus}", defaulting to active`);
-      console.log('📊 Full subscription object for debugging:', JSON.stringify(subscription, null, 2));
+      // 其他状态（例如 trialing）仍按 active 逻辑处理，但存储原始值
+      logicStatus = 'active';
+      console.log(`📊 Subscription status "${storedStatus}" treated as active for logic, storing raw`);
     }
 
     const customerId = typeof subscription.customer === 'string' 
@@ -2983,11 +2825,11 @@ app.post('/subscription/sync-from-subscription', async (c) => {
       plan,
       subscriptionId,
       customerId,
-      dbStatus,
+      storedStatus,
       periodEnd
     );
 
-    console.log(`✅ Subscription synced successfully for user: ${userId}, status: ${dbStatus}`);
+    console.log(`✅ Subscription synced successfully for user: ${userId}, status stored: ${storedStatus}, logicStatus: ${logicStatus}`);
 
     // 返回更新后的订阅状态
     const updatedStatus = await subscriptionService.getSubscriptionStatus(userId);

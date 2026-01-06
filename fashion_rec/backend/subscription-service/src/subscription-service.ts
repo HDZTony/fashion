@@ -34,7 +34,8 @@ interface SubscriptionRecord {
   credits: number;
   creem_subscription_id?: string | null;
   creem_customer_id?: string | null;
-  status: 'active' | 'canceled' | 'expired';
+  // 存储来自 Creem 的原始状态（如 trialing/active/canceled/expired 等）
+  status: string | null;
   last_reset_at: string;
   period_end?: string | null; // 订阅计费周期结束时间
   last_transaction_id?: string | null; // 最后一次交易的ID，用于判断是否是新交易
@@ -100,6 +101,20 @@ export class SubscriptionService {
   }
 
   /**
+   * 将任意 Creem 状态规范化为业务三态
+   */
+  private normalizeStatus(status: string | null | undefined): 'active' | 'canceled' | 'expired' {
+    const lower = (status || '').toLowerCase();
+    console.log(`🔍 [normalizeStatus] status: ${status}, lower: ${lower}`, {
+      status,
+      lower,
+    });
+    if (lower === 'canceled' || lower === 'scheduled_cancel') return 'canceled';
+    if (lower === 'expired' || lower === 'unpaid') return 'expired';
+    return 'active';
+  }
+
+  /**
    * 获取用户订阅状态和试穿次数信息
    */
   /**
@@ -154,12 +169,13 @@ export class SubscriptionService {
         // 检查是否需要重置
         const now = new Date();
         const lastReset = new Date(sub.last_reset_at);
+        const normalizedStatus = this.normalizeStatus(sub.status);
         const daysSinceReset = Math.floor(
           (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        // 如果订阅已取消，检查是否还在计费周期内
-        if (sub.status === 'canceled' || sub.status === 'expired') {
+        // 如果订阅已取消/过期，检查是否还在计费周期内
+        if (normalizedStatus === 'canceled' || normalizedStatus === 'expired') {
           if (sub.period_end) {
             const periodEnd = new Date(sub.period_end);
             
@@ -386,7 +402,7 @@ export class SubscriptionService {
     plan: PlanType,
     creemSubscriptionId?: string | null,
     creemCustomerId?: string | null,
-    status: 'active' | 'canceled' | 'expired' = 'active',
+    status: string = 'active',
     periodEnd?: string | null,
     lastTransactionId?: string | null
   ): Promise<void> {
