@@ -62,7 +62,7 @@ def _get_retention_days_for_user(user_id: str) -> int:
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
     try:
         resp = httpx.get(
-            f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+            f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
             params={"user_id": user_id},
             timeout=5.0,
         )

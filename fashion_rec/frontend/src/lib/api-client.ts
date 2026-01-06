@@ -193,7 +193,7 @@ export const longUploadApiClient = createAuthenticatedApiClient(API_URL, 600000)
 /**
  * Subscription service API client.
  * Use this for subscription-related API calls.
- * Note: Increased timeout to 60 seconds due to slow /subscription/status endpoint
+ * Note: Increased timeout to 60 seconds due to slow /userinfo endpoint
  * which makes multiple sequential API calls to Creem and Supabase.
  */
 export const subscriptionClient = createAuthenticatedApiClient(SUBSCRIPTION_API_URL, 60000) // 60 seconds

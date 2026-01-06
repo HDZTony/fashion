@@ -117,7 +117,7 @@ const loadSubscriptionInfo = async () => {
       throw new Error('Please sign in first')
     }
 
-    const response = await subscriptionClient.get('/subscription/status', {
+    const response = await subscriptionClient.get('/userinfo', {
       params: { user_id: user.id },
     })
     subscriptionInfo.value = response.data

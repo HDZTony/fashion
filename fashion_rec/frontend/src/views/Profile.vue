@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
 import { subscriptionClient } from '../lib/api-client'
 import { useAuthStore } from '../stores/auth'
+import type { UserInfo } from '../types'
 
 defineOptions({ name: 'Profile' })
 
@@ -13,7 +14,7 @@ const authStore = useAuthStore()
 
 const isLoading = ref(false)
 const error = ref<string | null>(null)
-const subscriptionInfo = ref<any>(null)
+const userinfo = ref<UserInfo | null>(null)
 const userEmail = ref<string>('—')
 // 从后端获取的计划数据
 const plansData = ref<Array<{
@@ -61,10 +62,10 @@ const loadCredits = async () => {
   }
 }
 
-const planNameRaw = computed(() => subscriptionInfo.value?.planName)
+const planNameRaw = computed(() => userinfo.value?.planName)
 const planDisplay = computed(() => {
   // 如果订阅状态是 Canceled 或 Expired，显示 Free
-  const currentStatus = subscriptionInfo.value?.status?.toLowerCase()
+  const currentStatus = userinfo.value?.status?.toLowerCase()
   if (currentStatus === 'canceled' || currentStatus === 'expired') {
     return 'Free'
   }
@@ -73,28 +74,28 @@ const planDisplay = computed(() => {
   if (name === 'member' || name === 'fashion rec member') {
     return 'Fashion Rec Member ($4.9)'
   }
-  return subscriptionInfo.value?.planName || 'Free'
+  return userinfo.value?.planName
 })
 const planSlug = computed(() => {
   // 如果订阅状态是 Canceled 或 Expired，返回 free
-  const currentStatus = subscriptionInfo.value?.status?.toLowerCase()
+  const currentStatus = userinfo.value?.status?.toLowerCase()
   if (currentStatus === 'canceled' || currentStatus === 'expired') {
     return 'free'
   }
   
   const name = (planNameRaw.value || '').toString().toLowerCase()
   if (name === 'member' || name === 'fashion rec member') return 'member'
-  return 'free'
+  return 'free' 
 })
 const planRank: Record<string, number> = { free: 0, member: 1 }
-const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
+const remainingCredits = computed(() => userinfo.value?.credits ?? 0)
 const freeRemainingTries = computed(() => {
   // 使用后端返回的 dailyFreeTriesRemaining 字段（所有计划都有每天3次免费机会）
   // 如果后端没有返回，默认显示3（如果还没有使用过）
-  return subscriptionInfo.value?.dailyFreeTriesRemaining ?? 0
+  return userinfo.value?.dailyFreeTriesRemaining ?? 0
 })
 const nextResetDate = computed(() => {
-  const dateStr = subscriptionInfo.value?.nextResetDate
+  const dateStr = userinfo.value?.nextResetDate
   if (!dateStr) return ''
   try {
     const date = new Date(dateStr)
@@ -107,7 +108,7 @@ const nextResetDate = computed(() => {
     return dateStr
   }
 })
-const status = computed(() => getStatusText(subscriptionInfo.value?.status))
+const status = computed(() => getStatusText(userinfo.value?.status))
 
 const getStatusText = (status: string | null | undefined): string => {
   if (!status) return 'Unknown'
@@ -124,7 +125,7 @@ const getStatusText = (status: string | null | undefined): string => {
 
 // 防止重复调用的标志
 let isLoadingSubscriptionInfo = false
-const loadSubscriptionInfo = async () => {
+const loadUserInfo = async () => {
   // 防止重复调用（特别是在开发环境的热重载场景下）
   if (isLoadingSubscriptionInfo) {
     console.log('🔄 Subscription info already loading, skipping...')
@@ -146,20 +147,17 @@ const loadSubscriptionInfo = async () => {
     if (!user) throw new Error('Please sign in first')
     userEmail.value = user.email || '—'
 
-    const response = await subscriptionClient.get('/subscription/status', {
+    const response = await subscriptionClient.get('/userinfo', {
       params: { user_id: user.id },
     })
-    subscriptionInfo.value = response.data
+    console.log('📊 Subscription status response:', response.data)
+    console.log('📊 Credits value:', response.data?.credits)
+    userinfo.value = response.data
+    console.log('📊 userinfo.value after assignment:', userinfo.value)
+    console.log('📊 userinfo.value.credits:', userinfo.value?.credits)
   } catch (e: any) {
     console.error('Failed to load subscription info:', e)
     error.value = e?.response?.data?.error || e?.message || 'Failed to load subscription info'
-    subscriptionInfo.value = {
-      planName: 'Free',
-      remainingTries: 0,
-      totalTries: 1,
-      period: 'daily',
-      status: 'free',
-    }
   } finally {
     isLoading.value = false
     isLoadingSubscriptionInfo = false
@@ -183,7 +181,7 @@ let portalOpenedTime = 0
 // 注意：Creem 的客户门户不支持 returnUrl 参数
 // 因此我们使用页面可见性和焦点监听来检测用户返回
 const openPortal = async () => {
-  const customerId = subscriptionInfo.value?.customerId || subscriptionInfo.value?.customer_id
+  const customerId = userinfo.value?.customerId
   if (!customerId) {
     goPricing()
     return
@@ -215,7 +213,7 @@ const openPortal = async () => {
 
 // Upgrade/downgrade existing subscription (only supports member now)
 const upgradeSubscription = async (target: 'member') => {
-  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+  const subscriptionId = userinfo.value?.subscriptionId
   if (!subscriptionId) {
     error.value = 'No active subscription found'
     return
@@ -238,7 +236,7 @@ const upgradeSubscription = async (target: 'member') => {
       updateBehavior,
     })
     
-    await loadSubscriptionInfo()
+    await loadUserInfo()
     alert('Subscription updated successfully!')
   } catch (e: any) {
     console.error('Failed to upgrade/downgrade subscription', e)
@@ -323,11 +321,11 @@ const purchaseCredits = async (creditProductId: string) => {
 }
 
 const cancelSubscription = async () => {
-  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+  const subscriptionId = userinfo.value?.subscriptionId
   try {
     isLoading.value = true
     await subscriptionClient.post(`/subscriptions/${subscriptionId}/cancel`)
-    await loadSubscriptionInfo()
+    await loadUserInfo()
   } catch (e) {
     console.error('Failed to cancel subscription', e)
   } finally {
@@ -350,7 +348,7 @@ const initializeData = async () => {
   await Promise.all([
     loadPlans(),
     loadCredits(),
-    loadSubscriptionInfo()
+    loadUserInfo()
   ])
 }
 
@@ -438,7 +436,7 @@ onMounted(async () => {
       <div class="max-w-4xl mx-auto space-y-8">
         <div>
           <h1 class="text-3xl font-bold text-green-800">Profile</h1>
-          <p class="text-green-700 mt-2">View your subscription status and remaining tries</p>
+          <p class="text-green-700 mt-2">View your subscription status and remaining credits</p>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
@@ -457,18 +455,14 @@ onMounted(async () => {
                 <span class="font-semibold text-green-900">{{ status }}</span>
               </div>
               <div class="flex justify-between text-sm text-green-700">
-                <span>Remaining free tries</span>
+                <span>Remaining free credits</span>
                 <span class="font-semibold text-green-900">
                   {{ freeRemainingTries }}/3 (Daily limit)
                 </span>
               </div>
-              <div class="flex justify-between text-sm text-green-700" v-if="planSlug !== 'free'">
-                <span>Remaining paid tries</span>
-                <span class="font-semibold text-green-900">{{ remainingTries }}</span>
-              </div>
-              <div class="flex justify-between text-sm text-green-700" v-else>
-                <span>Remaining tries</span>
-                <span class="font-semibold text-green-900">{{ remainingTries }}</span>
+              <div class="flex justify-between text-sm text-green-700">
+                <span>Remaining credits</span>
+                <span class="font-semibold text-green-900">{{ remainingCredits }}</span>
               </div>
               <div class="flex justify-between text-sm text-green-700" v-if="nextResetDate">
                 <span>Next reset</span>
@@ -495,7 +489,8 @@ onMounted(async () => {
             </div>
             <div class="space-y-3 text-sm text-green-700">
               <p>Sign-in email: <span class="font-semibold">{{ userEmail }}</span></p>
-              <p>Billing period: <span class="font-semibold">{{ subscriptionInfo?.period || 'daily' }}</span></p>
+              <p v-if="userinfo?.subscriptionId">Billing period: <span class="font-semibold">Monthly</span></p>
+              <p v-if="userinfo?.period">Credits reset period: <span class="font-semibold">{{ userinfo.period }}</span></p>
             </div>
             <div class="mt-6 space-y-3">
               <Button variant="outline" class="w-full" @click="openPortal">Customer Portal</Button>
@@ -527,7 +522,6 @@ onMounted(async () => {
                   class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700"
                 >Current</span>
               </div>
-              <p class="text-sm text-green-700">Includes: {{ plan.tries }}</p>
               <p class="text-sm text-green-600">{{ plan.desc }}</p>
               <Button
                 class="w-full"

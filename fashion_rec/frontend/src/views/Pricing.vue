@@ -217,7 +217,7 @@ const loadSubscriptionInfo = async () => {
     }
 
     // Call subscription-service directly
-    const response = await subscriptionClient.get('/subscription/status', {
+    const response = await subscriptionClient.get('/userinfo', {
       params: { user_id: user.id },
     })
     subscriptionInfo.value = response.data
@@ -362,7 +362,7 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000, check
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const response = await subscriptionClient.get('/subscription/status', {
+      const response = await subscriptionClient.get('/userinfo', {
         params: { user_id: user.id },
       })
       
@@ -380,7 +380,7 @@ const pollSubscriptionStatus = async (maxAttempts = 10, intervalMs = 2000, check
         await syncSubscriptionFromCheckout(checkoutId, user.id)
         // 同步后立即检查一次状态
         try {
-          const syncResponse = await subscriptionClient.get('/subscription/status', {
+          const syncResponse = await subscriptionClient.get('/userinfo', {
             params: { user_id: user.id },
           })
           const syncInfo = syncResponse.data

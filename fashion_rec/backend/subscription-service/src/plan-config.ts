@@ -7,7 +7,7 @@
  * 2. 所有套餐相关的逻辑会自动使用新的配置
  */
 
-export type PlanType = 'free' | 'member';
+export type PlanType = 'member';
 
 export interface PlanConfig {
   /** 套餐类型标识 */
@@ -16,12 +16,6 @@ export interface PlanConfig {
   name: string;
   /** 套餐价格（美元） */
   price: number;
-  /** 每月试穿次数 */
-  monthlyTries: number;
-  /** 重置周期（天） */
-  resetPeriodDays: number;
-  /** 每天免费次数（不计入总次数） */
-  dailyFreeTries: number;
 }
 
 /**
@@ -29,21 +23,10 @@ export interface PlanConfig {
  * 修改此配置即可调整所有套餐信息
  */
 export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
-  free: {
-    type: 'free',
-    name: 'Free',
-    price: 0,
-    monthlyTries: 3, // 每天3次免费
-    resetPeriodDays: 1, // 每天重置
-    dailyFreeTries: 3, // 每天前3次免费
-  },
   member: {
     type: 'member',
     name: 'Member',
     price: 4.9,
-    monthlyTries: 50,
-    resetPeriodDays: 30, // 每月重置
-    dailyFreeTries: 3, // 每天前3次不计入次数
   },
 };
 
@@ -107,7 +90,7 @@ export async function getPlanTypeFromProductId(
   }
 ): Promise<PlanType> {
   if (!productId) {
-    return 'free';
+    throw new Error('productId is required to determine plan type');
   }
 
   // 检查缓存是否有效
@@ -150,8 +133,11 @@ export async function getPlanTypeFromProductId(
       isTestMode,
     };
 
-    // 返回匹配的套餐类型，如果没有匹配则返回 free
-    return productIdToPlanType[productId] || 'free';
+    // 返回匹配的套餐类型，如果没有匹配则抛出错误
+    if (!productIdToPlanType[productId]) {
+      throw new Error(`No plan type found for productId: ${productId}`);
+    }
+    return productIdToPlanType[productId];
   } catch (error: any) {
     console.error('❌ Error fetching products from Creem API:', error);
     // 如果 API 调用失败，尝试使用缓存（即使过期）
@@ -159,8 +145,8 @@ export async function getPlanTypeFromProductId(
       console.warn('⚠️ Using expired cache due to API error');
       return productIdCache.productIdToPlanType[productId];
     }
-    // 降级处理：返回 free
-    return 'free';
+    // 如果缓存也没有，重新抛出错误
+    throw new Error(`Failed to determine plan type for productId: ${productId}. Original error: ${error.message}`);
   }
 }
 
