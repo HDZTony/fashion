@@ -95,9 +95,9 @@ GET /health
 
 ### 订阅管理
 
-#### 获取订阅状态
+#### 获取用户信息
 ```
-GET /subscription/status?user_id=<user_id>
+GET /userinfo?user_id=<user_id>
 ```
 
 #### 检查并消耗试穿次数

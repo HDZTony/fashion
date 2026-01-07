@@ -12,15 +12,15 @@ import {
 const TABLE_NAME = 'user_subscriptions';
 
 /**
- * 每个账号的初始穿搭次数
- * 直接创建账号时默认给100次
+ * 每个账号的初始 credits
+ * 直接创建账号时默认给100 credits
  */
-const INITIAL_TRIES = 100;
+const INITIAL_CREDITS = 100;
 
-interface SubscriptionStatus {
+interface UserInfo {
   planName: string;
-  remainingTries: number;
-  period: 'daily';
+  credits: number;
+  period: 'daily'; // 免费次数重置周期
   nextResetDate: string | null;
   subscriptionId: string | null;
   customerId: string | null;
@@ -31,10 +31,11 @@ interface SubscriptionStatus {
 interface SubscriptionRecord {
   user_id: string;
   plan: PlanType;
-  remaining_tries: number;
+  credits: number;
   creem_subscription_id?: string | null;
   creem_customer_id?: string | null;
-  status: 'active' | 'canceled' | 'expired';
+  // 存储来自 Creem 的原始状态（如 trialing/active/canceled/expired 等）
+  status: string | null;
   last_reset_at: string;
   period_end?: string | null; // 订阅计费周期结束时间
   last_transaction_id?: string | null; // 最后一次交易的ID，用于判断是否是新交易
@@ -100,6 +101,20 @@ export class SubscriptionService {
   }
 
   /**
+   * 将任意 Creem 状态规范化为业务三态
+   */
+  private normalizeStatus(status: string | null | undefined): 'active' | 'canceled' | 'expired' {
+    const lower = (status || '').toLowerCase();
+    console.log(`🔍 [normalizeStatus] status: ${status}, lower: ${lower}`, {
+      status,
+      lower,
+    });
+    if (lower === 'canceled' || lower === 'scheduled_cancel') return 'canceled';
+    if (lower === 'expired' || lower === 'unpaid') return 'expired';
+    return 'active';
+  }
+
+  /**
    * 获取用户订阅状态和试穿次数信息
    */
   /**
@@ -107,7 +122,7 @@ export class SubscriptionService {
    * @param userId 用户ID
    * @param cachedData 可选的缓存数据，如果提供则跳过数据库查询（优化性能）
    */
-  async getSubscriptionStatus(userId: string, cachedData?: any): Promise<SubscriptionStatus> {
+  async getUserInfo(userId: string, cachedData?: any): Promise<UserInfo> {
     try {
       let data: any = null;
       let error: any = null;
@@ -131,7 +146,10 @@ export class SubscriptionService {
 
       if (data) {
         const sub = data as SubscriptionRecord;
-        const plan: PlanType = (sub.plan || 'free') as PlanType;
+        if (!sub.plan) {
+          throw new Error(`Plan is missing for user ${userId}`);
+        }
+        const plan: PlanType = sub.plan;
         const planConfig = getPlanConfig(plan);
         const today = this.getTodayDateString();
         
@@ -144,36 +162,39 @@ export class SubscriptionService {
           plan,
           status: sub.status,
           period_end: sub.period_end,
-          remaining_tries: sub.remaining_tries,
+          credits: sub.credits,
           daily_free_tries_used: dailyFreeTriesUsed,
         });
 
         // 检查是否需要重置
         const now = new Date();
         const lastReset = new Date(sub.last_reset_at);
+        const normalizedStatus = this.normalizeStatus(sub.status);
         const daysSinceReset = Math.floor(
           (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        // 如果订阅已取消，检查是否还在计费周期内
-        if (sub.status === 'canceled' || sub.status === 'expired') {
+        // 如果订阅已取消/过期，检查是否还在计费周期内
+        if (normalizedStatus === 'canceled' || normalizedStatus === 'expired') {
           if (sub.period_end) {
             const periodEnd = new Date(sub.period_end);
             
             // 如果还在计费周期内，继续提供高级功能（直到 period_end）
             if (periodEnd > now) {
-              const nextReset = this.addDays(lastReset, planConfig.resetPeriodDays);
+              const RESET_PERIOD_DAYS = 30; // 重置周期（天数）
+              const DAILY_FREE_TRIES = 3; // 每天免费次数
+              const nextReset = this.addDays(lastReset, RESET_PERIOD_DAYS);
               const actualNextReset = periodEnd < nextReset ? periodEnd : nextReset;
               console.log(`✅ ${planConfig.name} subscription canceled but still active until ${periodEnd.toISOString()}`);
               
-              const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
+              const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
               
               // 订阅和次数无关，直接使用现有次数
-              const currentRemaining = sub.remaining_tries ?? 0;
+              const currentRemaining = sub.credits ?? 0;
               
               return {
                 planName: planConfig.name,
-                remainingTries: currentRemaining,
+                credits: currentRemaining,
                 period: 'daily',
                 nextResetDate: actualNextReset.toISOString(),
                 subscriptionId: sub.creem_subscription_id || null,
@@ -182,61 +203,63 @@ export class SubscriptionService {
                 dailyFreeTriesRemaining,
               };
             } else {
-              console.log(`⚠️ ${planConfig.name} subscription period ended at ${periodEnd.toISOString()}, downgrading to Free`);
+              console.log(`⚠️ ${planConfig.name} subscription period ended at ${periodEnd.toISOString()}`);
             }
           } else {
-            console.log(`⚠️ ${planConfig.name} subscription canceled but no period_end found, downgrading to Free`);
+            console.log(`⚠️ ${planConfig.name} subscription canceled but no period_end found`);
           }
           
-          // 计费周期已结束，降级为免费版
+          // 计费周期已结束，保持当前 plan 但状态为 expired
           // 注意：订阅和次数无关，直接使用用户现有的剩余次数
-          const freeConfig = getPlanConfig('free');
+          const DAILY_FREE_TRIES = 3; // 每天免费次数
           const nextReset = this.addDays(new Date(), 1);
-          const dailyFreeTriesRemaining = Math.max(0, freeConfig.dailyFreeTries - dailyFreeTriesUsed);
+          const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
           
           // 订阅和次数无关，直接使用现有次数
-          const currentRemaining = sub.remaining_tries ?? 0;
+          const currentRemaining = sub.credits ?? 0;
           
           return {
-            planName: freeConfig.name,
-            remainingTries: currentRemaining,
+            planName: planConfig.name,
+            credits: currentRemaining,
             period: 'daily',
             nextResetDate: nextReset.toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
             customerId: sub.creem_customer_id || null,
-            status: sub.status || 'canceled',
+            status: 'expired',
             dailyFreeTriesRemaining,
           };
         }
         
         // 订阅是 active 状态，正常处理
-        if (daysSinceReset >= planConfig.resetPeriodDays) {
+        const RESET_PERIOD_DAYS = 30; // 重置周期（天数）
+        const DAILY_FREE_TRIES = 3; // 每天免费次数
+        if (daysSinceReset >= RESET_PERIOD_DAYS) {
           // 注意：订阅和次数无关，重置时保持现有次数
-          const currentRemaining = sub.remaining_tries ?? 0;
+          const currentRemaining = sub.credits ?? 0;
           await this.resetTries(userId, plan);
           
           // 订阅不影响次数，保持现有次数
           const newRemaining = currentRemaining;
           
-          const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
+          const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
           
           return {
             planName: planConfig.name,
-            remainingTries: newRemaining, // 订阅不影响次数
+            credits: newRemaining, // 订阅不影响次数
             period: 'daily',
-            nextResetDate: this.addDays(lastReset, planConfig.resetPeriodDays).toISOString(),
+            nextResetDate: this.addDays(lastReset, RESET_PERIOD_DAYS).toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
             customerId: sub.creem_customer_id || null,
             status: sub.status || 'active',
             dailyFreeTriesRemaining,
           };
         } else {
-          const nextReset = this.addDays(lastReset, planConfig.resetPeriodDays);
-          const dailyFreeTriesRemaining = Math.max(0, planConfig.dailyFreeTries - dailyFreeTriesUsed);
+          const nextReset = this.addDays(lastReset, RESET_PERIOD_DAYS);
+          const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
           
           return {
             planName: planConfig.name,
-            remainingTries: sub.remaining_tries ?? 0, // 订阅和次数无关，直接使用现有次数
+            credits: sub.credits ?? 0, // 订阅和次数无关，直接使用现有次数
             period: 'daily',
             nextResetDate: nextReset.toISOString(),
             subscriptionId: sub.creem_subscription_id || null,
@@ -246,15 +269,15 @@ export class SubscriptionService {
           };
         }
       } else {
-        // 新用户，插入新记录（数据库默认 remaining_tries 为 100）
+        // 新用户，插入新记录（数据库默认 credits 为 100）
         const now = new Date().toISOString();
         const today = this.getTodayDateString();
-        const freeConfig = getPlanConfig('free');
+        const memberConfig = getPlanConfig('member');
         
-        // 插入新记录，依赖数据库默认值 remaining_tries = 100
+        // 插入新记录，依赖数据库默认值 credits = 100
         const { data: newRecord } = await this.table.insert({
           user_id: userId,
-          plan: 'free',
+          plan: 'member',
           status: 'active',
           last_reset_at: now,
           daily_free_tries_used: 0,
@@ -263,34 +286,46 @@ export class SubscriptionService {
           updated_at: now,
         }).select().single();
         
-        const nextReset = this.addDays(new Date(), 1);
+        const RESET_PERIOD_DAYS = 30; // 重置周期（天数）
+        const DAILY_FREE_TRIES = 3; // 每天免费次数
+        const nextReset = this.addDays(new Date(), RESET_PERIOD_DAYS);
         
         return {
-          planName: freeConfig.name,
-          remainingTries: newRecord?.remaining_tries ?? INITIAL_TRIES,
+          planName: memberConfig.name,
+          credits: newRecord?.credits ?? INITIAL_CREDITS,
           period: 'daily',
           nextResetDate: nextReset.toISOString(),
           subscriptionId: null,
           customerId: null,
           status: 'active',
-          dailyFreeTriesRemaining: freeConfig.dailyFreeTries,
+          dailyFreeTriesRemaining: DAILY_FREE_TRIES,
         };
       }
     } catch (error: any) {
       console.error('Error getting subscription status:', error);
-      // 返回默认免费版（直接创建账号时默认给100次）
-      const freeConfig = getPlanConfig('free');
+      // 返回默认 member plan（直接创建账号时默认给100次）
+      const memberConfig = getPlanConfig('member');
+      const DAILY_FREE_TRIES = 3; // 每天免费次数
       return {
-        planName: freeConfig.name,
-        remainingTries: INITIAL_TRIES,
+        planName: memberConfig.name,
+        credits: INITIAL_CREDITS,
         period: 'daily',
         nextResetDate: null,
         subscriptionId: null,
         customerId: null,
         status: 'active',
-        dailyFreeTriesRemaining: freeConfig.dailyFreeTries,
+        dailyFreeTriesRemaining: DAILY_FREE_TRIES,
       };
     }
+  }
+
+  /**
+   * 获取订阅状态（getUserInfo 的别名，保持向后兼容）
+   * @param userId 用户ID
+   * @param cachedData 可选的缓存数据
+   */
+  async getSubscriptionStatus(userId: string, cachedData?: any): Promise<UserInfo> {
+    return this.getUserInfo(userId, cachedData);
   }
 
   /**
@@ -299,7 +334,7 @@ export class SubscriptionService {
    */
   async checkAndConsumeTry(userId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const status = await this.getSubscriptionStatus(userId);
+      const status = await this.getUserInfo(userId);
       const { data } = await this.table.select('*').eq('user_id', userId).single();
       
       if (!data) {
@@ -307,7 +342,10 @@ export class SubscriptionService {
       }
 
       const record = data as SubscriptionRecord;
-      const plan: PlanType = (record.plan || 'free') as PlanType;
+      if (!record.plan) {
+        throw new Error(`Plan is missing for user ${userId}`);
+      }
+      const plan: PlanType = record.plan;
       const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
 
@@ -316,8 +354,9 @@ export class SubscriptionService {
         await this.checkAndResetDailyFreeTries(userId, today, record);
 
       // 如果还有免费次数可用，使用免费次数
-      if (dailyFreeTriesUsed < planConfig.dailyFreeTries) {
-        // 使用免费次数，不扣除 remaining_tries
+      const DAILY_FREE_TRIES = 3; // 每天免费次数
+      if (dailyFreeTriesUsed < DAILY_FREE_TRIES) {
+        // 使用免费次数，不扣除 credits
         await this.table
           .update({
             daily_free_tries_used: dailyFreeTriesUsed + 1,
@@ -326,30 +365,23 @@ export class SubscriptionService {
           })
           .eq('user_id', userId);
         
-        console.log(`✅ Used free try (${dailyFreeTriesUsed + 1}/${planConfig.dailyFreeTries}), remaining_tries unchanged`);
+        console.log(`✅ Used free try (${dailyFreeTriesUsed + 1}/${DAILY_FREE_TRIES}), credits unchanged`);
         return { success: true, message: '成功（使用免费次数）' };
       }
 
       // 免费次数已用完，检查付费次数
-      if (status.remainingTries <= 0) {
-        if (plan === 'free') {
-          return {
-            success: false,
-            message: 'Your daily free try-on limit has been reached. Please try again tomorrow, or upgrade to a premium plan for more tries.',
-          };
-        } else {
-          return {
-            success: false,
-            message: 'Your try-on limit has been reached. Please try again tomorrow, or contact support.',
-          };
-        }
+      if (status.credits <= 0) {
+        return {
+          success: false,
+          message: 'Your try-on limit has been reached. Please try again tomorrow, or contact support.',
+        };
       }
 
       // 消耗付费次数
-      const newRemaining = (record.remaining_tries ?? 0) - 1;
+      const newRemaining = (record.credits ?? 0) - 1;
       await this.table
         .update({
-          remaining_tries: newRemaining,
+          credits: newRemaining,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId);
@@ -370,7 +402,7 @@ export class SubscriptionService {
     plan: PlanType,
     creemSubscriptionId?: string | null,
     creemCustomerId?: string | null,
-    status: 'active' | 'canceled' | 'expired' = 'active',
+    status: string = 'active',
     periodEnd?: string | null,
     lastTransactionId?: string | null
   ): Promise<void> {
@@ -398,15 +430,6 @@ export class SubscriptionService {
       const now = new Date().toISOString();
       const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
-      
-      // 订阅和次数无关，如果用户没有订阅记录，插入新记录时依赖数据库默认值（100）
-      // 如果已有记录，保持现有次数
-      let remaining: number | undefined;
-      if (data) {
-        // 已有记录，保持现有次数
-        remaining = data.remaining_tries;
-      }
-      // 如果没有记录，不设置 remaining_tries，让数据库使用默认值 100
 
       const subscriptionData: any = {
         plan,
@@ -421,12 +444,23 @@ export class SubscriptionService {
         updated_at: now,
       };
       
-      // 如果已有记录，保持现有次数；如果没有记录，不设置 remaining_tries，让数据库使用默认值 100
-      if (remaining !== undefined) {
-        subscriptionData.remaining_tries = remaining;
-      }
+    
 
       if (data) {
+        // 优化：检查数据是否真的改变了，避免不必要的数据库更新
+        const hasChanges = 
+          data.plan !== subscriptionData.plan ||
+          data.creem_subscription_id !== subscriptionData.creem_subscription_id ||
+          data.creem_customer_id !== subscriptionData.creem_customer_id ||
+          data.status !== subscriptionData.status ||
+          data.period_end !== subscriptionData.period_end ||
+          (subscriptionData.last_transaction_id && data.last_transaction_id !== subscriptionData.last_transaction_id);
+        
+        if (!hasChanges) {
+          console.log('⏭️ Skipping database update: no changes detected');
+          return;
+        }
+        
         // 更新现有订阅
         console.log('🔄 Updating existing subscription...');
         const { data: updateData, error: updateError } = await this.table
@@ -493,7 +527,7 @@ export class SubscriptionService {
       
       // 先检查现有记录
       const { data, error: selectError } = await this.table
-        .select('remaining_tries')
+        .select('credits')
         .eq('user_id', userId)
         .single();
 
@@ -502,22 +536,22 @@ export class SubscriptionService {
         throw selectError;
       }
 
-      const currentRemaining = data?.remaining_tries ?? INITIAL_TRIES;
+      const currentRemaining = data?.credits ?? INITIAL_CREDITS;
       const newRemaining = currentRemaining + additionalTries;
 
-      console.log(`📊 Current tries: ${currentRemaining}, Adding: ${additionalTries}, New total: ${newRemaining}`);
+      console.log(`📊 Current credits: ${currentRemaining}, Adding: ${additionalTries}, New total: ${newRemaining}`);
 
       // 如果记录不存在，创建新记录
       if (!data) {
         const now = new Date().toISOString();
         const today = this.getTodayDateString();
-        const freeConfig = getPlanConfig('free');
+        const memberConfig = getPlanConfig('member');
 
         await this.table.insert({
           user_id: userId,
-          plan: 'free',
+          plan: 'member',
           status: 'active',
-          remaining_tries: newRemaining,
+          credits: newRemaining,
           last_reset_at: now,
           daily_free_tries_used: 0,
           daily_free_tries_date: today,
@@ -528,13 +562,13 @@ export class SubscriptionService {
         // 更新现有记录
         await this.table
           .update({
-            remaining_tries: newRemaining,
+            credits: newRemaining,
             updated_at: new Date().toISOString(),
           })
           .eq('user_id', userId);
       }
 
-      console.log(`✅ Successfully added ${additionalTries} tries for user: ${userId}, new total: ${newRemaining}`);
+      console.log(`✅ Successfully added ${additionalTries} credits for user: ${userId}, new total: ${newRemaining}`);
     } catch (error: any) {
       console.error('❌ Error adding tries:', error);
       throw error;
@@ -551,8 +585,8 @@ export class SubscriptionService {
       const today = this.getTodayDateString();
 
       // 获取当前剩余次数
-      const { data } = await this.table.select('remaining_tries').eq('user_id', userId).single();
-      const currentRemaining = data?.remaining_tries ?? 0;
+      const { data } = await this.table.select('credits').eq('user_id', userId).single();
+      const currentRemaining = data?.credits ?? 0;
 
       // 订阅不影响次数，保持现有次数
       const newRemaining = currentRemaining;
@@ -560,7 +594,7 @@ export class SubscriptionService {
 
       await this.table
         .update({
-          remaining_tries: newRemaining,
+          credits: newRemaining,
           last_reset_at: now,
           daily_free_tries_used: 0, // 重置免费次数
           daily_free_tries_date: today,

@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // 加载环境变量
-// 优先从 .dev.vars 文件加载（Cloudflare Workers 本地开发环境）
+// 从 .dev.vars 文件加载（Cloudflare Workers 本地开发环境）
 function loadEnvVars() {
   const devVarsPath = join(process.cwd(), '.dev.vars');
   

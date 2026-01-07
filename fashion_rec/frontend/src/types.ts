@@ -41,3 +41,24 @@ export interface AgentOutfit {
   reason: string;
   long_text: string;
 }
+
+// 订阅状态信息（不包含 credits）
+export interface SubscriptionStatus {
+  planName: string;
+  nextResetDate: string | null;
+  subscriptionId: string | null;
+  customerId: string | null;
+  status: string | null;
+}
+
+// 用户信息（包含 credits 和订阅信息）
+export interface UserInfo {
+  planName: string;
+  credits: number;
+  period: 'daily'; // 免费次数重置周期
+  nextResetDate: string | null;
+  subscriptionId: string | null;
+  customerId: string | null;
+  status: string | null;
+  dailyFreeTriesRemaining?: number; // 当天剩余免费次数
+}

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
 import { subscriptionClient } from '../lib/api-client'
 import { useAuthStore } from '../stores/auth'
+import type { UserInfo } from '../types'
 
 defineOptions({ name: 'Profile' })
 
@@ -13,7 +14,7 @@ const authStore = useAuthStore()
 
 const isLoading = ref(false)
 const error = ref<string | null>(null)
-const subscriptionInfo = ref<any>(null)
+const userinfo = ref<UserInfo | null>(null)
 const userEmail = ref<string>('—')
 // 从后端获取的计划数据
 const plansData = ref<Array<{
@@ -61,10 +62,10 @@ const loadCredits = async () => {
   }
 }
 
-const planNameRaw = computed(() => subscriptionInfo.value?.planName)
+const planNameRaw = computed(() => userinfo.value?.planName)
 const planDisplay = computed(() => {
   // 如果订阅状态是 Canceled 或 Expired，显示 Free
-  const currentStatus = subscriptionInfo.value?.status?.toLowerCase()
+  const currentStatus = userinfo.value?.status?.toLowerCase()
   if (currentStatus === 'canceled' || currentStatus === 'expired') {
     return 'Free'
   }
@@ -73,28 +74,28 @@ const planDisplay = computed(() => {
   if (name === 'member' || name === 'fashion rec member') {
     return 'Fashion Rec Member ($4.9)'
   }
-  return subscriptionInfo.value?.planName || 'Free'
+  return userinfo.value?.planName
 })
 const planSlug = computed(() => {
   // 如果订阅状态是 Canceled 或 Expired，返回 free
-  const currentStatus = subscriptionInfo.value?.status?.toLowerCase()
+  const currentStatus = userinfo.value?.status?.toLowerCase()
   if (currentStatus === 'canceled' || currentStatus === 'expired') {
     return 'free'
   }
   
   const name = (planNameRaw.value || '').toString().toLowerCase()
   if (name === 'member' || name === 'fashion rec member') return 'member'
-  return 'free'
+  return 'free' 
 })
 const planRank: Record<string, number> = { free: 0, member: 1 }
-const remainingTries = computed(() => subscriptionInfo.value?.remainingTries ?? 0)
+const remainingCredits = computed(() => userinfo.value?.credits ?? 0)
 const freeRemainingTries = computed(() => {
   // 使用后端返回的 dailyFreeTriesRemaining 字段（所有计划都有每天3次免费机会）
   // 如果后端没有返回，默认显示3（如果还没有使用过）
-  return subscriptionInfo.value?.dailyFreeTriesRemaining ?? 0
+  return userinfo.value?.dailyFreeTriesRemaining ?? 0
 })
 const nextResetDate = computed(() => {
-  const dateStr = subscriptionInfo.value?.nextResetDate
+  const dateStr = userinfo.value?.nextResetDate
   if (!dateStr) return ''
   try {
     const date = new Date(dateStr)
@@ -107,7 +108,7 @@ const nextResetDate = computed(() => {
     return dateStr
   }
 })
-const status = computed(() => getStatusText(subscriptionInfo.value?.status))
+const status = computed(() => getStatusText(userinfo.value?.status))
 
 const getStatusText = (status: string | null | undefined): string => {
   if (!status) return 'Unknown'
@@ -124,7 +125,7 @@ const getStatusText = (status: string | null | undefined): string => {
 
 // 防止重复调用的标志
 let isLoadingSubscriptionInfo = false
-const loadSubscriptionInfo = async () => {
+const loadUserInfo = async () => {
   // 防止重复调用（特别是在开发环境的热重载场景下）
   if (isLoadingSubscriptionInfo) {
     console.log('🔄 Subscription info already loading, skipping...')
@@ -146,20 +147,17 @@ const loadSubscriptionInfo = async () => {
     if (!user) throw new Error('Please sign in first')
     userEmail.value = user.email || '—'
 
-    const response = await subscriptionClient.get('/subscription/status', {
+    const response = await subscriptionClient.get('/userinfo', {
       params: { user_id: user.id },
     })
-    subscriptionInfo.value = response.data
+    console.log('📊 Subscription status response:', response.data)
+    console.log('📊 Credits value:', response.data?.credits)
+    userinfo.value = response.data
+    console.log('📊 userinfo.value after assignment:', userinfo.value)
+    console.log('📊 userinfo.value.credits:', userinfo.value?.credits)
   } catch (e: any) {
     console.error('Failed to load subscription info:', e)
     error.value = e?.response?.data?.error || e?.message || 'Failed to load subscription info'
-    subscriptionInfo.value = {
-      planName: 'Free',
-      remainingTries: 0,
-      totalTries: 1,
-      period: 'daily',
-      status: 'free',
-    }
   } finally {
     isLoading.value = false
     isLoadingSubscriptionInfo = false
@@ -183,7 +181,7 @@ let portalOpenedTime = 0
 // 注意：Creem 的客户门户不支持 returnUrl 参数
 // 因此我们使用页面可见性和焦点监听来检测用户返回
 const openPortal = async () => {
-  const customerId = subscriptionInfo.value?.customerId || subscriptionInfo.value?.customer_id
+  const customerId = userinfo.value?.customerId
   if (!customerId) {
     goPricing()
     return
@@ -215,7 +213,7 @@ const openPortal = async () => {
 
 // Upgrade/downgrade existing subscription (only supports member now)
 const upgradeSubscription = async (target: 'member') => {
-  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+  const subscriptionId = userinfo.value?.subscriptionId
   if (!subscriptionId) {
     error.value = 'No active subscription found'
     return
@@ -238,7 +236,7 @@ const upgradeSubscription = async (target: 'member') => {
       updateBehavior,
     })
     
-    await loadSubscriptionInfo()
+    await loadUserInfo()
     alert('Subscription updated successfully!')
   } catch (e: any) {
     console.error('Failed to upgrade/downgrade subscription', e)
@@ -323,11 +321,11 @@ const purchaseCredits = async (creditProductId: string) => {
 }
 
 const cancelSubscription = async () => {
-  const subscriptionId = subscriptionInfo.value?.subscriptionId || subscriptionInfo.value?.subscription_id
+  const subscriptionId = userinfo.value?.subscriptionId
   try {
     isLoading.value = true
     await subscriptionClient.post(`/subscriptions/${subscriptionId}/cancel`)
-    await loadSubscriptionInfo()
+    await loadUserInfo()
   } catch (e) {
     console.error('Failed to cancel subscription', e)
   } finally {
@@ -350,7 +348,7 @@ const initializeData = async () => {
   await Promise.all([
     loadPlans(),
     loadCredits(),
-    loadSubscriptionInfo()
+    loadUserInfo()
   ])
 }
 
@@ -433,69 +431,68 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-green-50/20">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50">
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="max-w-4xl mx-auto space-y-8">
         <div>
-          <h1 class="text-3xl font-bold text-green-800">Profile</h1>
-          <p class="text-green-700 mt-2">View your subscription status and remaining tries</p>
+          <h1 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            Profile
+          </h1>
+          <p class="text-xl text-gray-600 mt-2">View your subscription status and remaining credits</p>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
-          <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+          <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-green-800">Subscription</h2>
-              <span class="text-sm text-green-600">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
+              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Subscription</h2>
+              <span class="text-sm text-pink-600 font-medium">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
             </div>
             <div class="space-y-3">
-              <div class="flex justify-between text-sm text-green-700">
+              <div class="flex justify-between text-sm text-gray-700">
                 <span>Current plan</span>
-                <span class="font-semibold text-green-900">{{ planDisplay }}</span>
+                <span class="font-semibold text-gray-900">{{ planDisplay }}</span>
               </div>
-              <div class="flex justify-between text-sm text-green-700">
+              <div class="flex justify-between text-sm text-gray-700">
                 <span>Status</span>
-                <span class="font-semibold text-green-900">{{ status }}</span>
+                <span class="font-semibold text-gray-900">{{ status }}</span>
               </div>
-              <div class="flex justify-between text-sm text-green-700">
-                <span>Remaining free tries</span>
-                <span class="font-semibold text-green-900">
+              <div class="flex justify-between text-sm text-gray-700">
+                <span>Remaining free credits</span>
+                <span class="font-semibold text-gray-900">
                   {{ freeRemainingTries }}/3 (Daily limit)
                 </span>
               </div>
-              <div class="flex justify-between text-sm text-green-700" v-if="planSlug !== 'free'">
-                <span>Remaining paid tries</span>
-                <span class="font-semibold text-green-900">{{ remainingTries }}</span>
+              <div class="flex justify-between text-sm text-gray-700">
+                <span>Remaining credits</span>
+                <span class="font-semibold text-gray-900">{{ remainingCredits }}</span>
               </div>
-              <div class="flex justify-between text-sm text-green-700" v-else>
-                <span>Remaining tries</span>
-                <span class="font-semibold text-green-900">{{ remainingTries }}</span>
-              </div>
-              <div class="flex justify-between text-sm text-green-700" v-if="nextResetDate">
+              <div class="flex justify-between text-sm text-gray-700" v-if="nextResetDate">
                 <span>Next reset</span>
-                <span class="font-semibold text-green-900">{{ nextResetDate }}</span>
+                <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
               </div>
             </div>
             <!-- 退订按钮：只在付费计划且状态为 active/trialing 时显示 -->
-            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-green-200">
+            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-pink-200">
               <Button 
                 variant="outline" 
-                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
                 :disabled="isLoading"
                 @click="cancelSubscription"
               >
               Cancel Subscription
               </Button>
             </div>
-            <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <p v-if="error" class="mt-3 text-sm text-red-600 font-medium">{{ error }}</p>
           </div>
 
-          <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+          <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-green-800">Account</h2>
+              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Account</h2>
             </div>
-            <div class="space-y-3 text-sm text-green-700">
+            <div class="space-y-3 text-sm text-gray-700">
               <p>Sign-in email: <span class="font-semibold">{{ userEmail }}</span></p>
-              <p>Billing period: <span class="font-semibold">{{ subscriptionInfo?.period || 'daily' }}</span></p>
+              <p v-if="userinfo?.subscriptionId">Billing period: <span class="font-semibold">Monthly</span></p>
+              <p v-if="userinfo?.period">Credits reset period: <span class="font-semibold">{{ userinfo.period }}</span></p>
             </div>
             <div class="mt-6 space-y-3">
               <Button variant="outline" class="w-full" @click="openPortal">Customer Portal</Button>
@@ -505,30 +502,29 @@ onMounted(async () => {
         </div>
 
         <!-- Subscription Plans -->
-        <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6 space-y-4">
+        <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-green-800">Subscription Plans</h2>
-            <span class="text-sm text-green-600">Monthly recurring</span>
+            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Subscription Plans</h2>
+            <span class="text-sm text-pink-600 font-medium">Monthly recurring</span>
           </div>
           <div class="grid gap-4 md:grid-cols-1">
             <div
               v-for="plan in plans"
               :key="plan.slug"
-              class="border rounded-xl p-4 space-y-3"
-              :class="plan.slug === planSlug ? 'border-green-500 bg-green-50/50' : 'border-green-200'"
+              class="border-2 rounded-xl p-4 space-y-3 transition-all"
+              :class="plan.slug === planSlug ? 'border-pink-500 bg-gradient-to-br from-pink-50 to-purple-50 shadow-lg' : 'border-pink-200 hover:border-pink-300 hover:shadow-md'"
             >
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="font-semibold text-green-900">{{ plan.name }}</p>
-                  <p class="text-sm text-green-600">{{ plan.price }}</p>
+                  <p class="font-semibold text-gray-900">{{ plan.name }}</p>
+                  <p class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">{{ plan.price }}</p>
                 </div>
                 <span
                   v-if="plan.slug === planSlug"
-                  class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700"
+                  class="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold shadow-md"
                 >Current</span>
               </div>
-              <p class="text-sm text-green-700">Includes: {{ plan.tries }}</p>
-              <p class="text-sm text-green-600">{{ plan.desc }}</p>
+              <p class="text-sm text-gray-600">{{ plan.desc }}</p>
               <Button
                 class="w-full"
                 :class="plan.slug === planSlug && planSlug !== 'free' && (status === 'Active' || status === 'Trialing') 
@@ -545,32 +541,32 @@ onMounted(async () => {
         </div>
 
         <!-- Credits (One-time Purchase) -->
-        <div class="bg-white rounded-2xl border border-blue-100 shadow-sm p-6 space-y-4">
+        <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-blue-800">Credits</h2>
-            <span class="text-sm text-blue-600">One-time purchase</span>
+            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Credits</h2>
+            <span class="text-sm text-pink-600 font-medium">One-time purchase</span>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
             <div
               v-for="credit in creditsData"
               :key="credit.id"
-              class="border rounded-xl p-4 space-y-3 border-blue-200 hover:border-blue-400 transition-colors"
+              class="border-2 rounded-xl p-4 space-y-3 border-pink-200 hover:border-pink-400 hover:shadow-lg transition-all transform hover:-translate-y-1"
             >
               <div class="flex items-center justify-between">
                 <div class="flex-1">
-                  <p class="font-semibold text-blue-900">{{ credit.name }}</p>
+                  <p class="font-semibold text-gray-900">{{ credit.name }}</p>
                   <div v-if="getCreditDiscountInfo(credit)" class="flex items-center gap-2 mt-1">
                     <span class="text-xs line-through text-gray-400">${{ getCreditDiscountInfo(credit)!.originalPrice.toFixed(2) }}</span>
-                    <span class="text-sm font-bold text-blue-600">${{ credit.price.toFixed(2) }}</span>
+                    <span class="text-sm font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">${{ credit.price.toFixed(2) }}</span>
                     <span class="px-1.5 py-0.5 bg-red-500 text-white text-xs font-bold rounded">-{{ ((1 - getCreditDiscountInfo(credit)!.discount) * 100).toFixed(0) }}%</span>
                   </div>
-                  <p v-else class="text-sm text-blue-600">${{ credit.price.toFixed(2) }}</p>
+                  <p v-else class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">${{ credit.price.toFixed(2) }}</p>
                 </div>
               </div>
-              <p class="text-sm text-blue-700">{{ credit.credits }} try-ons</p>
-              <p class="text-sm text-blue-600">One-time purchase, credits never expire</p>
+              <p class="text-sm text-gray-700 font-medium">{{ credit.credits }} credits</p>
+              <p class="text-sm text-gray-600">One-time purchase, credits never expire</p>
               <Button
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl rounded-full"
                 :disabled="isLoading"
                 @click="purchaseCredits(credit.id)"
               >

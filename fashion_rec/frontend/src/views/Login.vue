@@ -262,10 +262,18 @@ const handleGoogleLogin = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-    <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-      <h1 class="text-3xl font-bold mb-2 text-center">Welcome</h1>
-      <p class="text-green-500 mb-8 text-center">
+  <div class="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 via-white to-purple-50 p-4 relative overflow-hidden">
+    <!-- Decorative background elements -->
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute top-0 left-1/4 w-96 h-96 bg-pink-200/20 rounded-full blur-3xl"></div>
+      <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl"></div>
+    </div>
+    
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 border border-pink-100">
+      <h1 class="text-4xl font-bold mb-2 text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+        Welcome
+      </h1>
+      <p class="text-gray-600 mb-8 text-center text-lg">
         {{ isForgotPassword ? 'Reset password' : isSignUp ? 'Create account' : 'Sign in to access your AI wardrobe' }}
       </p>
       
@@ -275,14 +283,14 @@ const handleGoogleLogin = async () => {
           v-model="resetEmail"
           type="email"
           placeholder="Enter your email address"
-          class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
+          class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleForgotPassword"
         />
         
         <button 
           @click="handleForgotPassword"
           :disabled="isLoading"
-          class="w-full bg-black text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-3 rounded-full font-semibold hover:from-pink-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
         >
           {{ isLoading ? 'Sending...' : 'Send reset link' }}
         </button>
@@ -294,9 +302,9 @@ const handleGoogleLogin = async () => {
         <div class="pt-4 border-t border-gray-200">
           <button
             @click="backToLogin"
-            class="w-full text-sm text-green-600 hover:text-black transition-colors"
+            class="w-full text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
           >
-            ← 返回登录
+            ← Back to login
           </button>
         </div>
       </div>
@@ -307,7 +315,7 @@ const handleGoogleLogin = async () => {
           v-model="email"
           type="email"
           placeholder="Enter email"
-          class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
+          class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleLogin"
         />
         
@@ -315,23 +323,23 @@ const handleGoogleLogin = async () => {
           v-model="password"
           type="password"
           placeholder="Enter password"
-          class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
+          class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleLogin"
         />
         
         <div class="flex justify-end">
-          <button
-            @click="showForgotPassword"
-            class="text-sm text-green-600 hover:text-black transition-colors"
-          >
-            Forgot password?
-          </button>
+            <button
+              @click="showForgotPassword"
+              class="text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
+            >
+              Forgot password?
+            </button>
         </div>
         
         <button 
           @click="handleLogin"
           :disabled="isLoading"
-          class="w-full bg-black text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-3 rounded-full font-semibold hover:from-pink-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
         >
           {{ isLoading ? (isSignUp ? 'Signing up...' : 'Signing in...') : (isSignUp ? 'Sign up' : 'Sign in') }}
         </button>
@@ -342,7 +350,7 @@ const handleGoogleLogin = async () => {
             <div class="w-full border-t border-gray-200"></div>
           </div>
           <div class="relative flex justify-center text-sm">
-            <span class="px-2 bg-white text-green-500">Or continue with</span>
+            <span class="px-2 bg-white text-gray-500">Or continue with</span>
           </div>
         </div>
 
@@ -350,7 +358,7 @@ const handleGoogleLogin = async () => {
         <button 
           @click="handleGoogleLogin"
           :disabled="isLoading"
-          class="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 text-green-700 py-3 rounded-xl font-medium hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full flex items-center justify-center gap-3 bg-white border-2 border-pink-200 text-gray-700 py-3 rounded-full font-medium hover:bg-pink-50 hover:border-pink-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
         >
           <svg class="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -361,7 +369,7 @@ const handleGoogleLogin = async () => {
           <span>Continue with Google</span>
         </button>
 
-        <p v-if="message" class="text-sm text-center" :class="message.toLowerCase().includes('success') || message.toLowerCase().includes('sent') ? 'text-green-600' : 'text-red-600'">
+        <p v-if="message" class="text-sm text-center font-medium" :class="message.toLowerCase().includes('success') || message.toLowerCase().includes('sent') ? 'text-pink-600' : 'text-red-600'">
           {{ message }}
         </p>
 
@@ -370,7 +378,7 @@ const handleGoogleLogin = async () => {
           <button
             @click="handleResendConfirmation"
             :disabled="isLoading || resendCooldown > 0"
-            class="w-full text-sm text-green-600 hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed underline"
+            class="w-full text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed underline"
           >
             {{ resendCooldown > 0 
               ? `Resend confirmation email (wait ${resendCooldown}s)` 
@@ -381,7 +389,7 @@ const handleGoogleLogin = async () => {
         <div class="pt-4 border-t border-gray-200">
           <button
             @click="toggleMode"
-            class="w-full text-sm text-green-600 hover:text-black transition-colors"
+            class="w-full text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
           >
             {{ isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up' }}
           </button>
@@ -389,12 +397,12 @@ const handleGoogleLogin = async () => {
       </div>
       
       <!-- Footer Links -->
-      <div class="mt-6 pt-4 border-t border-gray-200 flex justify-center gap-4 text-xs text-green-500">
-        <router-link to="/privacy-policy" class="hover:text-black transition-colors">
+      <div class="mt-6 pt-4 border-t border-pink-200 flex justify-center gap-4 text-xs text-gray-600">
+        <router-link to="/privacy-policy" class="hover:text-pink-600 transition-colors font-medium">
           Privacy Policy
         </router-link>
-        <span class="text-green-300">|</span>
-        <router-link to="/terms-of-service" class="hover:text-black transition-colors">
+        <span class="text-pink-300">|</span>
+        <router-link to="/terms-of-service" class="hover:text-pink-600 transition-colors font-medium">
           Terms of Service
         </router-link>
       </div>

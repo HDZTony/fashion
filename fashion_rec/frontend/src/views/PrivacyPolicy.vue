@@ -7,23 +7,25 @@ const router = useRouter()
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 py-8 px-4">
-    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-8">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 py-8 px-4">
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl p-8 border border-pink-100">
       <!-- Header -->
       <div class="mb-6">
         <button
           @click="router.back()"
-          class="flex items-center gap-2 text-green-600 hover:text-black transition-colors mb-4"
+          class="flex items-center gap-2 text-pink-600 hover:text-pink-700 font-medium transition-colors mb-4"
         >
           <ArrowLeft class="w-5 h-5" />
           <span>Back</span>
         </button>
-        <h1 class="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p class="text-green-500 text-sm">Last updated: Dec 16, 2025</p>
+        <h1 class="text-4xl sm:text-5xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+          Privacy Policy
+        </h1>
+        <p class="text-gray-600 text-sm font-medium">Last updated: Dec 16, 2025</p>
       </div>
 
       <!-- Content -->
-      <div class="prose prose-sm max-w-none space-y-6 text-green-700">
+      <div class="prose prose-sm max-w-none space-y-6 text-gray-700">
         <section>
           <h2 class="text-xl font-semibold mb-3 text-black">1. Information We Collect</h2>
           <p class="mb-3">We collect information to provide and improve our services:</p>

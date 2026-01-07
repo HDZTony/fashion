@@ -1,17 +1,17 @@
 <template>
-  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
-    <nav class="sticky top-0 z-50 w-full border-b border-green-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
+    <nav class="sticky top-0 z-50 w-full border-b border-pink-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <router-link to="/" class="flex items-center space-x-2">
-          <span class="text-2xl font-bold tracking-tight text-green-800">Fashion Rec</span>
+          <span class="text-2xl font-bold tracking-tight bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Fashion Rec</span>
           <!-- Version Badge -->
           <span 
             v-if="!isLoadingVersion && currentVersion" 
             :class="[
               'px-2 py-0.5 text-xs font-semibold rounded-full',
               isV2 
-                ? 'bg-green-100 text-green-700 border border-green-200' 
-                : 'bg-green-50 text-green-600 border border-green-200'
+                ? 'bg-pink-100 text-pink-700 border border-pink-200' 
+                : 'bg-purple-50 text-purple-600 border border-purple-200'
             ]"
             :title="`Current version: ${currentVersion}`"
           >
@@ -19,17 +19,17 @@
           </span>
         </router-link>
         <div class="flex items-center gap-4">
-          <router-link to="/studio" class="text-sm text-green-700 hover:text-green-900 transition-colors">Studio</router-link>
-          <router-link to="/wardrobe" class="text-sm text-green-700 hover:text-green-900 transition-colors">Wardrobe</router-link>
-          <router-link to="/tryon-history" class="text-sm text-green-700 hover:text-green-900 transition-colors">Outfit History</router-link>
-          <router-link to="/favorites" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
+          <router-link to="/studio" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">Studio</router-link>
+          <router-link to="/wardrobe" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">Wardrobe</router-link>
+          <router-link to="/tryon-history" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">Outfit History</router-link>
+          <router-link to="/favorites" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <Heart class="w-4 h-4" /> Favorites
           </router-link>
-          <a href="mailto:support@hdz73.com" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
+          <a href="mailto:support@hdz73.com" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <Mail class="w-4 h-4" />
             Contact Us
           </a>
-          <router-link to="/profile" class="text-sm text-green-700 hover:text-green-900 transition-colors flex items-center gap-1">
+          <router-link to="/profile" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <User class="w-4 h-4" />
             Profile
           </router-link>

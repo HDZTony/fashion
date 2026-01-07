@@ -117,7 +117,7 @@ const loadSubscriptionInfo = async () => {
       throw new Error('Please sign in first')
     }
 
-    const response = await subscriptionClient.get('/subscription/status', {
+    const response = await subscriptionClient.get('/userinfo', {
       params: { user_id: user.id },
     })
     subscriptionInfo.value = response.data
@@ -1580,21 +1580,21 @@ const searchOnGoogle = (description: string) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <main class="space-y-8">
       <!-- Describe today & generate outfits -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-4">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2 text-green-800">Tell AI about your day</h2>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Tell AI about your day</h2>
         </div>
         <div class="flex flex-col gap-4">
           <div class="w-full space-y-3">
             <!-- Rich input wrapper with integrated image upload -->
-            <div class="relative border border-green-200 rounded-xl bg-white transition-all focus-within:border-green-400 focus-within:shadow-md">
+            <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
               <textarea
                 v-model="customPrompt"
                 rows="3"
-                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-green-600"
+                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
                 placeholder="Describe your desired clothing style; artificial intelligence will create outfits based on your wardrobe.e.g.Minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
               ></textarea>
               
@@ -1639,11 +1639,11 @@ const searchOnGoogle = (description: string) => {
               </div>
               
               <!-- Toolbar with image upload button -->
-              <div class="flex items-center justify-between px-4 py-2 border-t border-green-100">
+              <div class="flex items-center justify-between px-4 py-2 border-t border-pink-100">
                 <div class="flex items-center gap-2">
                   <label
                     for="sceneImageInput"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-green-600 hover:text-green-900 hover:bg-green-50 cursor-pointer transition-colors"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
                     title="Upload a reference scene image"
                   >
                     <Upload class="w-4 h-4" />
@@ -1658,7 +1658,7 @@ const searchOnGoogle = (description: string) => {
                   />
                   <button
                     @click="showSceneImageHistory = !showSceneImageHistory"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-green-600 hover:text-green-900 hover:bg-green-50 cursor-pointer transition-colors"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
                     title="Pick from scene history"
                   >
                     <Clock class="w-4 h-4" />
@@ -1670,7 +1670,7 @@ const searchOnGoogle = (description: string) => {
             </div>
             
             <!-- Helper text below input -->
-            <p class="text-xs text-green-600 px-1">
+            <p class="text-xs text-pink-600 px-1">
               Upload a photo of your environment (office, cafe, outdoors, etc.). AI will use it as the scene reference.
             </p>
             
@@ -1682,17 +1682,17 @@ const searchOnGoogle = (description: string) => {
             >
               <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-6 border-b border-gray-200">
-                  <h3 class="text-lg font-semibold text-green-900">Choose a historical scene image</h3>
+                  <h3 class="text-lg font-semibold text-gray-900">Choose a historical scene image</h3>
                   <button
                     @click="showSceneImageHistory = false"
                     class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                   >
-                    <X class="w-5 h-5 text-green-500" />
+                    <X class="w-5 h-5 text-pink-500" />
                   </button>
                 </div>
                 <div class="flex-1 overflow-y-auto p-6">
-                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-green-400">
-                    <Clock class="w-12 h-12 mx-auto mb-3 text-green-300" />
+                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-pink-400">
+                    <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
                     <p>No historical scene images</p>
                   </div>
                   <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -1717,7 +1717,7 @@ const searchOnGoogle = (description: string) => {
                         <Trash2 class="w-4 h-4" />
                       </button>
                       <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-green-700">
+                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
                           {{ new Date(image.created_at).toLocaleDateString('en-US') }}
                         </div>
                       </div>
@@ -1731,18 +1731,18 @@ const searchOnGoogle = (description: string) => {
             <button 
               @click="getRecommendations" 
               :disabled="isGenerating"
-              class="bg-green-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 transition-colors shadow-lg shadow-green-500/20 w-full justify-center sm:w-auto"
+              class="bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 transition-colors shadow-lg shadow-pink-500/20 w-full justify-center sm:w-auto"
             >
               <Wand2 class="w-5 h-5" />
               {{ isGenerating ? 'AI is Thinking...' : 'Generate Outfit' }}
             </button>
             <!-- AI branding and transparency note -->
-            <div class="flex items-center gap-2 text-xs text-green-600">
-              <span class="font-medium text-green-700">fashion</span>
-              <span class="text-green-400">|</span>
+            <div class="flex items-center gap-2 text-xs text-pink-600">
+              <span class="font-medium text-gray-700">fashion</span>
+              <span class="text-pink-400">|</span>
               <span>Powered by Qwen</span>
-              <span class="text-green-400">|</span>
-              <span class="text-green-400">Independent service</span>
+              <span class="text-pink-400">|</span>
+              <span class="text-pink-400">Independent service</span>
             </div>
           </div>
           
@@ -1762,12 +1762,12 @@ const searchOnGoogle = (description: string) => {
                 >
                   <div>
                     <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
-                    <ul class="text-xs text-green-700 space-y-1 mb-2">
+                    <ul class="text-xs text-gray-700 space-y-1 mb-2">
                       <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
                         <div class="flex-1">
                           <span class="font-medium capitalize">{{ it.role }}:</span>
                           <span> {{ it.description }}</span>
-                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-green-600 ml-1">(in wardrobe)</span>
+                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">(in wardrobe)</span>
                           <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">(selected)</span>
                         </div>
                         <button
@@ -1776,14 +1776,14 @@ const searchOnGoogle = (description: string) => {
                           class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
                           :title="`Search for ${it.description} on Google`"
                         >
-                          <Search class="w-3.5 h-3.5 text-green-600" />
+                          <Search class="w-3.5 h-3.5 text-pink-600" />
                         </button>
                       </li>
                     </ul>
-                    <p class="text-xs text-green-500 mb-2">
+                    <p class="text-xs text-pink-500 mb-2">
                       {{ outfit.reason }}
                     </p>
-                    <p class="text-xs text-green-500 whitespace-pre-line">
+                    <p class="text-xs text-pink-500 whitespace-pre-line">
                       {{ outfit.long_text }}
                     </p>
                   </div>
@@ -1803,7 +1803,7 @@ const searchOnGoogle = (description: string) => {
                         v-for="(missingItem, idx) in getMissingItems(outfit)"
                         :key="idx"
                         @click.stop="searchOnGoogle(missingItem.description)"
-                        class="text-xs px-2 py-1 rounded-full border border-gray-300 text-green-700 hover:border-gray-400 hover:text-green-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                        class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
                       >
                         <Search class="w-3 h-3" />
                         <span>Search {{ missingItem.role }}</span>
@@ -1818,39 +1818,39 @@ const searchOnGoogle = (description: string) => {
           <!-- Loading State (only show when actively generating) -->
           <div v-else-if="isGenerating" class="mt-6 py-12 flex flex-col items-center justify-center">
              <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p class="text-green-600 animate-pulse mb-2">Consulting fashion knowledge base...</p>
+             <p class="text-pink-600 animate-pulse mb-2">Consulting fashion knowledge base...</p>
              
           </div>
         </div>
       </section>
 
       <!-- Applied Outfit Items - Independent Section -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-4">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2 text-green-800">Applied Outfit Items</h2>
-          <p class="text-sm text-green-700">
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Applied Outfit Items</h2>
+          <p class="text-sm text-gray-700">
             Items currently in this outfit. Remove items or generate suggestions for missing roles.
           </p>
         </div>
         
-        <div class="p-4 border border-green-100 rounded-xl bg-green-50/50">
+        <div class="p-4 border border-pink-100 rounded-xl bg-pink-50/50">
           <div class="flex items-center justify-between mb-3">
-            <p class="text-sm font-medium text-green-700">
+            <p class="text-sm font-medium text-gray-700">
               Applied outfit items ({{ activeWardrobeItems.length }})
             </p>
-            <p v-if="getMissingRoles().length > 0" class="text-xs text-green-600">
+            <p v-if="getMissingRoles().length > 0" class="text-xs text-pink-600">
               {{ getMissingRoles().length }} roles removed; re-generate to fill them.
             </p>
           </div>
           
           <!-- Empty state -->
           <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
-            <Shirt class="w-12 h-12 mx-auto mb-3 text-green-600" />
-            <p class="text-sm text-green-700 mb-2">No items selected yet</p>
-            <p class="text-xs text-green-600 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
+            <Shirt class="w-12 h-12 mx-auto mb-3 text-pink-600" />
+            <p class="text-sm text-gray-700 mb-2">No items selected yet</p>
+            <p class="text-xs text-pink-600 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
             <button
               @click="$router.push('/wardrobe')"
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-green-200 text-green-700 hover:border-green-600 hover:text-green-900 transition-colors"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-pink-200 text-gray-700 hover:border-pink-600 hover:text-gray-900 transition-colors"
             >
               <Shirt class="w-4 h-4" />
               Go to Wardrobe
@@ -1869,7 +1869,7 @@ const searchOnGoogle = (description: string) => {
                   @click="openImageViewer(index)"
                   class="cursor-pointer"
                 >
-                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-green-200 hover:border-green-500 transition-all hover:shadow-lg bg-green-100">
+                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-pink-200 hover:border-pink-500 transition-all hover:shadow-lg bg-pink-100">
                     <img
                       v-if="item.url || item.features.path"
                       :src="item.url || item.features.path"
@@ -1889,10 +1889,10 @@ const searchOnGoogle = (description: string) => {
                 </button>
               </div>
               <div class="mt-1 text-center">
-                <p class="text-xs text-green-700 truncate max-w-[80px]">
+                <p class="text-xs text-gray-700 truncate max-w-[80px]">
                   {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
                 </p>
-                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-green-600 truncate max-w-[80px]">
+                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-pink-600 truncate max-w-[80px]">
                   {{ activeWardrobeRoleMap.get(String(item.id)) }}
                 </p>
               </div>
@@ -1904,9 +1904,9 @@ const searchOnGoogle = (description: string) => {
       <!-- Step 2 moved to dedicated Wardrobe page -->
 
       <!-- Step 3: Review outfits & virtual try-on -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-green-100 flex flex-col gap-8">
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
         <div>
-          <h2 class="text-2xl font-bold mb-2 text-green-800">Review outfits & try on</h2>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Review outfits & try on</h2>
         </div>
 
         <!-- Model photo uploader with integrated empty state -->
@@ -1923,8 +1923,8 @@ const searchOnGoogle = (description: string) => {
           <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
             <div class="flex items-center justify-between mb-3">
               <div>
-                <p class="text-sm font-medium text-green-700 mb-1">Model photo</p>
-                <p class="text-xs text-green-500">
+                <p class="text-sm font-medium text-gray-700 mb-1">Model photo</p>
+                <p class="text-xs text-pink-500">
                   Upload a half-body or full-body photo of you. All try-ons will use this model photo.
                 </p>
               </div>
@@ -1970,13 +1970,13 @@ const searchOnGoogle = (description: string) => {
             <div class="text-center">
               <!-- Show empty state message only when no results generated -->
               <template v-if="!recommendations.length && !agentOutfits.length && !isGenerating">
-                <Wand2 class="w-12 h-12 mx-auto mb-3 text-green-600" />
+                <Wand2 class="w-12 h-12 mx-auto mb-3 text-pink-600" />
               </template>
               <div class="flex flex-col items-center gap-3">
                 <div class="flex items-center gap-3">
                   <label
                     for="modelImageInput"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-green-700 border border-green-200 hover:border-green-600 hover:text-green-900 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
                   >
                     <Upload class="w-4 h-4" />
                     <span>Upload new photo</span>
@@ -1991,13 +1991,13 @@ const searchOnGoogle = (description: string) => {
                   <button
                     v-if="historicalModelImages.length > 0"
                     @click="showModelImageHistory = !showModelImageHistory"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-green-700 border border-green-200 hover:border-green-600 hover:text-green-900 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
                   >
                     <Clock class="w-4 h-4" />
                     <span>History</span>
                   </button>
                 </div>
-                <p class="text-xs text-green-600">
+                <p class="text-xs text-pink-600">
                   Upload a half-body or full-body photo; all try-ons will use this model photo.
                 </p>
               </div>
@@ -2009,7 +2009,7 @@ const searchOnGoogle = (description: string) => {
             <div class="flex items-center gap-2">
               <label
                 for="modelImageInputReplace"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-green-600 hover:text-green-900 hover:bg-green-50 cursor-pointer transition-colors"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
               >
                 <Upload class="w-4 h-4" />
                 <span>Replace photo</span>
@@ -2024,7 +2024,7 @@ const searchOnGoogle = (description: string) => {
               <button
                 v-if="historicalModelImages.length > 0"
                 @click="showModelImageHistory = !showModelImageHistory"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-green-600 hover:text-green-900 hover:bg-gray-50 cursor-pointer transition-colors"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <Clock class="w-4 h-4" />
                 <span>History</span>
@@ -2041,17 +2041,17 @@ const searchOnGoogle = (description: string) => {
         >
           <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
             <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-green-900">Choose a historical model image</h3>
+              <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
               <button
                 @click="showModelImageHistory = false"
                 class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
               >
-                <X class="w-5 h-5 text-green-500" />
+                <X class="w-5 h-5 text-pink-500" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-green-400">
-                <Clock class="w-12 h-12 mx-auto mb-3 text-green-300" />
+              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-pink-400">
+                <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
                 <p>No historical model images</p>
               </div>
               <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -2076,7 +2076,7 @@ const searchOnGoogle = (description: string) => {
                     <Trash2 class="w-4 h-4" />
                   </button>
                   <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-green-700">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
                       {{ new Date(image.created_at).toLocaleDateString('en-US') }}
                     </div>
                   </div>
@@ -2090,8 +2090,8 @@ const searchOnGoogle = (description: string) => {
         <div v-if="activeWardrobeItems.length" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
           <div class="flex items-center justify-between mb-3">
             <div>
-              <p class="text-sm font-medium text-green-700 mb-1">Ready to try on</p>
-              <p class="text-xs text-green-500">
+              <p class="text-sm font-medium text-gray-700 mb-1">Ready to try on</p>
+              <p class="text-xs text-pink-500">
                 {{ activeWardrobeItems.length }} items selected. Click below to generate a virtual try-on.
               </p>
             </div>
@@ -2100,10 +2100,10 @@ const searchOnGoogle = (description: string) => {
             <button
               @click="performTryOn"
               :disabled="!activeWardrobeItems.length || isTryingOn"
-              class="px-4 py-2 rounded-lg border border-green-500 text-green-600 hover:border-green-700 hover:text-green-800 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-4 py-2 rounded-lg border border-pink-500 text-pink-600 hover:border-pink-700 hover:text-pink-700 hover:bg-pink-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Wand2 v-if="!isTryingOn" class="w-4 h-4" />
-              <div v-else class="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+              <div v-else class="w-4 h-4 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
               <span>{{ isTryingOn ? 'Generating try-on...' : 'Try on this outfit' }}</span>
             </button>
            
@@ -2111,9 +2111,9 @@ const searchOnGoogle = (description: string) => {
         </div>
 
         <!-- Try-on Loading State -->
-        <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-green-100 rounded-xl bg-green-50">
-          <div class="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p class="text-green-700 animate-pulse mb-2">Generating virtual try-on...</p>
+        <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-pink-100 rounded-xl bg-pink-50">
+          <div class="w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p class="text-gray-700 animate-pulse mb-2">Generating virtual try-on...</p>
           <!-- AI branding and transparency note (loading) -->
         </div>
 
@@ -2122,7 +2122,7 @@ const searchOnGoogle = (description: string) => {
           <h3 class="text-lg font-semibold mb-4">AI Suggestions</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div v-for="rec in recommendations" :key="rec.id" class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
-              <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-green-400 overflow-hidden">
+              <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-pink-400 overflow-hidden">
                 <img 
                   v-if="rec.path && rec.path.startsWith('http')" 
                   :src="rec.path" 
@@ -2131,8 +2131,8 @@ const searchOnGoogle = (description: string) => {
                 <span v-else>{{ rec.type }}</span>
               </div>
               <p class="font-medium text-sm">{{ rec.color }} {{ rec.type }}</p>
-              <p class="text-xs text-green-500 mt-1">{{ rec.reason }}</p>
-              <p class="text-xs text-green-600 mt-1 font-medium">Match: {{ Math.round(rec.score * 100) }}%</p>
+              <p class="text-xs text-pink-500 mt-1">{{ rec.reason }}</p>
+              <p class="text-xs text-pink-600 mt-1 font-medium">Match: {{ Math.round(rec.score * 100) }}%</p>
             </div>
           </div>
         </div>
@@ -2147,15 +2147,15 @@ const searchOnGoogle = (description: string) => {
               :class="[
                 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                 favoriteSaved
-                  ? 'bg-green-50 text-green-600 border border-green-200'
-                  : 'bg-gray-50 text-green-700 hover:bg-gray-100 border border-gray-200 hover:border-gray-300',
+                  ? 'bg-pink-50 text-pink-600 border border-pink-200'
+                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 hover:border-gray-300',
                 isSavingFavorite && 'opacity-50 cursor-not-allowed'
               ]"
             >
               <Heart
                 :class="[
                   'w-4 h-4 transition-all',
-                  favoriteSaved ? 'fill-current text-green-600' : ''
+                  favoriteSaved ? 'fill-current text-pink-600' : ''
                 ]"
               />
               <span v-if="isSavingFavorite">Saving...</span>
@@ -2171,17 +2171,17 @@ const searchOnGoogle = (description: string) => {
     </main>
     
     <!-- Footer -->
-    <footer class="mt-12 pt-8 border-t border-green-200 pb-8">
-      <div class="flex justify-center gap-6 text-sm text-green-600">
-        <router-link to="/privacy-policy" class="hover:text-green-900 transition-colors">
+    <footer class="mt-12 pt-8 border-t border-pink-200 pb-8">
+      <div class="flex justify-center gap-6 text-sm text-pink-600">
+        <router-link to="/privacy-policy" class="hover:text-gray-900 transition-colors">
           Privacy Policy
         </router-link>
-        <span class="text-green-300">|</span>
-        <router-link to="/terms-of-service" class="hover:text-green-900 transition-colors">
+        <span class="text-pink-300">|</span>
+        <router-link to="/terms-of-service" class="hover:text-gray-900 transition-colors">
           Terms of Service
         </router-link>
       </div>
-      <p class="text-center text-xs text-green-600 mt-4">
+      <p class="text-center text-xs text-pink-600 mt-4">
         © 2025 Fashion Rec. All rights reserved.
       </p>
     </footer>

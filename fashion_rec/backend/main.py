@@ -1191,7 +1191,7 @@ async def try_on(
         async with httpx.AsyncClient() as client:
             # First, get subscription status to determine resolution
             status_response = await client.get(
-                f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+                f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
                 params={"user_id": user_id},
                 timeout=5.0
             )
@@ -1742,7 +1742,7 @@ async def get_looks(auth: tuple[str, str] = Depends(get_current_user_and_token))
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+                    f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
                     params={"user_id": user_id},
                     timeout=5.0,
                 )
@@ -1832,7 +1832,7 @@ def _resolve_retention_days_for_user(user_id: str, client) -> Optional[int]:
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
     try:
         resp = client.get(
-            f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+            f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
             params={"user_id": user_id},
             timeout=5.0,
         )
@@ -2427,8 +2427,8 @@ async def delete_lv_product(product_id: str):
 # 这些端点保留作为代理，或直接调用 subscription-service
 # 建议前端直接调用 subscription-service
 
-@app.get("/subscription/status")
-async def get_subscription_status(user_id: str = Depends(get_current_user)):
+@app.get("/userinfo")
+async def get_userinfo(user_id: str = Depends(get_current_user)):
     """
     获取用户订阅状态和试穿次数信息（代理到 subscription-service）
     """
@@ -2438,7 +2438,7 @@ async def get_subscription_status(user_id: str = Depends(get_current_user)):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{SUBSCRIPTION_SERVICE_URL}/subscription/status",
+                f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
                 params={"user_id": user_id},
                 timeout=5.0
             )
