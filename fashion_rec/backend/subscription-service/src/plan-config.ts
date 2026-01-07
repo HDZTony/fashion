@@ -54,7 +54,7 @@ export const PRODUCT_ID_TO_PLAN_TYPE: Record<string, PlanType> = {
   // 测试环境产品ID
   'prod_1W4roSJevbLIRwQyb3a8SQ': 'member',
   // 生产环境产品ID
-  'prod_ZcR2OsakU427r5LppdXpe': 'member',
+  'prod_4cVNXwHwb0RWl62USRMmuJ': 'member',
 };
 
 

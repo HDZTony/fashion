@@ -262,6 +262,14 @@ app.get('/config', async (c) => {
 app.get('/plans', async (c) => {
   try {
     const { creem, isTestMode } = getServices(c);
+    
+    // 调试日志：显示当前环境模式
+    console.log('📋 /plans endpoint called:', {
+      isTestMode,
+      CREEM_TEST_MODE: c.env.CREEM_TEST_MODE,
+      environment: isTestMode ? 'TEST' : 'PRODUCTION',
+    });
+    
     const allPlans = getAllPlanConfigs();
     
     // Format plans for frontend consumption
@@ -274,15 +282,26 @@ app.get('/plans', async (c) => {
       
       // Select the correct product ID based on current environment
       // Test environment product IDs: prod_1W4roSJevbLIRwQyb3a8SQ
-      // Production environment product IDs: prod_ZcR2OsakU427r5LppdXpe
+      // Production environment product IDs: prod_4cVNXwHwb0RWl62USRMmuJ
       let productId: string | null = null;
       
       if (isTestMode) {
-        // Test environment: prefer test product IDs
-        productId = allProductIds.find(id => id === 'prod_1W4roSJevbLIRwQyb3a8SQ') || allProductIds[0] || null;
+        // Test environment: use test product ID
+        productId = allProductIds.find(id => id === 'prod_1W4roSJevbLIRwQyb3a8SQ') || null;
       } else {
-        // Production environment: prefer production product IDs
-        productId = allProductIds.find(id => id === 'prod_ZcR2OsakU427r5LppdXpe') || allProductIds[0] || null;
+        // Production environment: use production product ID
+        productId = allProductIds.find(id => id === 'prod_4cVNXwHwb0RWl62USRMmuJ') || null;
+      }
+      
+      // 如果找不到对应的产品ID，记录警告
+      if (!productId) {
+        const expectedId = isTestMode ? 'prod_1W4roSJevbLIRwQyb3a8SQ' : 'prod_4cVNXwHwb0RWl62USRMmuJ';
+        console.error(`❌ Product ID not found for ${isTestMode ? 'test' : 'production'} environment!`, {
+          planType: plan.type,
+          isTestMode,
+          expectedId,
+          availableIds: allProductIds,
+        });
       }
       
       // Log the product ID being used (for debugging)
@@ -1705,18 +1724,23 @@ app.post('/webhook', async (c) => {
     // 获取签名头（根据官方文档）
     const signature = c.req.header('creem-signature');
 
-    // 解析事件数据（用于日志记录）
+    // 解析事件数据（用于调试和日志）
     let eventInfo: any = {};
     try {
       const parsedBody = JSON.parse(rawBody);
       eventInfo = {
         eventId: parsedBody.id,
-        eventType: parsedBody.eventType || parsedBody.type || 'unknown',
+        eventType: parsedBody.eventType || parsedBody.type || parsedBody.event || 'unknown',
         mode: parsedBody.mode || 'unknown',
         hasObject: !!parsedBody.object,
+        hasCheckout: !!parsedBody.checkout,
+        hasCustomer: !!parsedBody.customer,
+        hasSubscription: !!parsedBody.subscription,
+        checkoutMetadata: parsedBody.checkout?.metadata,
       };
+      console.log('📦 Production webhook event details:', eventInfo);
     } catch (e) {
-      // 如果解析失败，继续处理（SDK 会处理）
+      console.warn('⚠️ Could not parse webhook body as JSON');
     }
 
     console.log('🌐 Production webhook received:', {
@@ -1724,28 +1748,30 @@ app.post('/webhook', async (c) => {
       hasBody: !!rawBody,
       bodyLength: rawBody?.length || 0,
       hasSignature: !!signature,
+      headers: Object.keys(c.req.raw.headers),
+      isTestMode,
+      hasWebhookSecret: !!creemWebhookSecret,
+      webhookSecretPrefix: creemWebhookSecret ? creemWebhookSecret.substring(0, 10) + '...' : 'not set',
     });
 
     if (!signature) {
       console.warn('⚠️ Webhook request missing creem-signature header');
       // 根据官方文档，即使缺少签名也要返回 200，但记录警告
       // 实际生产环境应该返回 400，但为了兼容性先返回 200
-      return c.json({ received: false, error: 'Missing signature header' }, 200);
+      return c.json({ received: false, error: 'Missing signature header', environment: 'production' }, 200);
     }
 
     if (!creemWebhookSecret) {
       console.error(`❌ ${isTestMode ? '测试' : '生产'}环境 Webhook Secret 未配置`);
-      // 配置错误时返回 500
+      console.error(`   请检查环境变量: ${isTestMode ? 'CREEM_TEST_WEBHOOK_SECRET' : 'CREEM_PROD_WEBHOOK_SECRET'}`);
       return c.json({ error: 'Webhook secret not configured' }, 500);
     }
-
+    
     // 使用 Creem SDK 处理 webhook 事件（自动验证签名）
-    // SDK 会验证签名并调用相应的 handler
     await creem.webhooks.handleEvents(rawBody, signature, createWebhookHandler(subscriptionService, creem, isTestMode, c.env));
 
-    // 根据官方文档，必须返回 HTTP 200 OK 表示成功接收
-    // Creem 会根据响应状态码决定是否重试
-    return c.json({ received: true, eventType: eventInfo.eventType }, 200);
+    // 根据官方文档，必须返回 HTTP 200 OK
+    return c.json({ received: true, environment: 'production', eventType: eventInfo.eventType }, 200);
   } catch (error: any) {
     console.error('❌ Webhook processing error:', error);
     
@@ -1759,6 +1785,7 @@ app.post('/webhook', async (c) => {
           received: false,
           error: 'Invalid webhook signature',
           message: error.message,
+          environment: 'production',
         },
         200
       );
@@ -1776,6 +1803,7 @@ app.post('/webhook', async (c) => {
         received: false,
         error: 'Webhook processing failed',
         message: error.message || 'Unknown error',
+        environment: 'production',
       },
       200
     );
