@@ -313,7 +313,7 @@ app.get('/plans', async (c) => {
       let desc: string;
       switch (plan.type) {
         case 'member':
-          desc = 'More try-ons and priority';
+          desc = 'Generate 2k try-on images';
           break;
         default:
           desc = '';

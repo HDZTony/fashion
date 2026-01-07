@@ -71,16 +71,22 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-    <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+  <div class="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 via-white to-purple-50 p-4 relative overflow-hidden">
+    <!-- Decorative background elements -->
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute top-0 left-1/4 w-96 h-96 bg-pink-200/20 rounded-full blur-3xl"></div>
+      <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl"></div>
+    </div>
+    
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 text-center border border-pink-100">
       <div v-if="!error">
-        <div class="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p class="text-green-600">Completing sign-in...</p>
+        <div class="w-16 h-16 border-4 border-pink-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p class="text-pink-600 font-medium text-lg">Completing sign-in...</p>
       </div>
       <div v-else class="text-red-600">
-        <p class="font-medium mb-2">{{ error }}</p>
-        <p class="text-sm text-green-500 mt-2">If you just confirmed your email, please try signing in.</p>
-        <p class="text-sm text-green-500 mt-1">Redirecting to login...</p>
+        <p class="font-medium mb-2 text-lg">{{ error }}</p>
+        <p class="text-sm text-pink-600 mt-2">If you just confirmed your email, please try signing in.</p>
+        <p class="text-sm text-pink-600 mt-1">Redirecting to login...</p>
       </div>
     </div>
   </div>

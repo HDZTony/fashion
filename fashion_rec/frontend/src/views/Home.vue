@@ -125,81 +125,214 @@ useHead({
 </script>
 
 <template>
-  <div class="min-h-screen bg-white">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50">
     <!-- Main Content -->
-    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8">
       <!-- Hero Section -->
-      <header class="text-center py-20" aria-label="Hero section">
-        <h1 class="text-4xl font-bold tracking-tight text-green-800 sm:text-6xl">
-          Your Style, Reimagined
-        </h1>
-        <p class="mt-6 text-lg leading-8 text-green-700 max-w-2xl mx-auto">
-          AI-powered virtual try-on and personalized outfit recommendations. Discover your perfect look instantly with Fashion Rec.
-        </p>
-        <div class="mt-10 flex items-center justify-center gap-x-6">
-          <Button
-            @click="handleGetStarted"
-            variant="default"
-            :disabled="isSettingVersion"
-            class="text-xl font-extrabold px-8 py-4 h-auto shadow-2xl hover:shadow-3xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label="Get started with Fashion Rec"
-          >
-            {{ isSettingVersion ? 'Setting up...' : buttonText }}
-          </Button>
+      <header class="relative overflow-hidden pt-20 pb-32 text-center" aria-label="Hero section">
+        <!-- Decorative background elements -->
+        <div class="absolute inset-0 -z-10">
+          <div class="absolute top-0 left-1/4 w-96 h-96 bg-pink-200/20 rounded-full blur-3xl"></div>
+          <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl"></div>
+        </div>
+        
+        <div class="max-w-4xl mx-auto">
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight bg-gradient-to-r from-pink-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-fade-in">
+            Discover Your Perfect Style
+          </h1>
+          <p class="mt-6 text-xl sm:text-2xl leading-8 text-gray-700 max-w-3xl mx-auto font-light">
+            AI-powered virtual try-on and personalized outfit recommendations. 
+            <span class="text-pink-600 font-medium">Try before you buy</span> and find your signature look.
+          </p>
+          <div class="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              @click="handleGetStarted"
+              variant="default"
+              :disabled="isSettingVersion"
+              class="text-lg font-semibold px-10 py-6 h-auto bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
+              aria-label="Get started with Fashion Rec"
+            >
+              {{ isSettingVersion ? 'Setting up...' : buttonText }}
+            </Button>
+            <Button
+              @click="router.push('/pricing')"
+              variant="outline"
+              class="text-lg font-semibold px-10 py-6 h-auto border-2 border-pink-300 text-pink-600 hover:bg-pink-50 transition-all rounded-full"
+            >
+              View Pricing
+            </Button>
+          </div>
+          
+          <!-- Trust indicators -->
+          <div class="mt-16 flex flex-wrap items-center justify-center gap-8 text-sm text-gray-600">
+            <div class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-pink-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span>Free to start</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-pink-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span>No credit card required</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-pink-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span>Instant results</span>
+            </div>
+          </div>
         </div>
       </header>
 
-      <!-- Use Cases Section -->
-      <section class="py-20 bg-green-50/30">
+      <!-- How It Works Section -->
+      <section class="py-24 bg-white">
         <div class="max-w-7xl mx-auto">
-          <h2 class="text-3xl font-bold text-center mb-12 text-green-800">Solve Your Fashion Challenges</h2>
+          <div class="text-center mb-16">
+            <h2 class="text-4xl sm:text-5xl font-bold mb-4 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+              How It Works
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+              Get started in minutes. Your perfect style is just a few clicks away.
+            </p>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
+            <!-- Step 1 -->
+            <div class="relative">
+              <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+                <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold shadow-lg">
+                  1
+                </div>
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Upload Your Photo</h3>
+                <p class="text-gray-600 leading-relaxed">
+                  Simply upload a clear photo of yourself. Our AI works best with front-facing portraits.
+                </p>
+              </div>
+              <div class="hidden md:block absolute top-1/2 -right-4 w-8 h-0.5 bg-gradient-to-r from-pink-300 to-purple-300 transform -translate-y-1/2"></div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="relative">
+              <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+                <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold shadow-lg">
+                  2
+                </div>
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Choose Garments</h3>
+                <p class="text-gray-600 leading-relaxed">
+                  Select from your wardrobe or try on items from online stores. Browse thousands of options.
+                </p>
+              </div>
+              <div class="hidden md:block absolute top-1/2 -right-4 w-8 h-0.5 bg-gradient-to-r from-pink-300 to-purple-300 transform -translate-y-1/2"></div>
+            </div>
+
+            <!-- Step 3 (formerly Step 4) -->
+            <div class="relative">
+              <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+                <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold shadow-lg">
+                  3
+                </div>
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">Get Recommendations</h3>
+                <p class="text-gray-600 leading-relaxed">
+                  Receive personalized outfit suggestions based on your style, occasion, and preferences.
+                </p>
+              </div>
+              <div class="hidden md:block absolute top-1/2 -right-4 w-8 h-0.5 bg-gradient-to-r from-pink-300 to-purple-300 transform -translate-y-1/2"></div>
+            </div>
+
+            <!-- Step 4 (formerly Step 3) -->
+            <div>
+              <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+                <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold shadow-lg">
+                  4
+                </div>
+                <h3 class="text-xl font-semibold mb-3 text-gray-800">AI Magic Happens</h3>
+                <p class="text-gray-600 leading-relaxed">
+                  Our advanced AI creates a realistic virtual try-on in seconds. See how it looks instantly.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Use Cases Section -->
+      <section class="py-24 bg-gradient-to-b from-purple-50 to-pink-50">
+        <div class="max-w-7xl mx-auto">
+          <div class="text-center mb-16">
+            <h2 class="text-4xl sm:text-5xl font-bold mb-4 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+              Solve Your Fashion Challenges
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+              Everything you need to look and feel your best, every single day.
+            </p>
+          </div>
+          
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <!-- Use Case 1: Avoid Duplicate Purchases -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-green-100">
-              <div class="aspect-[5/8] bg-green-50 flex items-center justify-center">
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100 group">
+              <div class="aspect-[5/8] bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center overflow-hidden">
                 <img
                   src="/images/use-cases/duplicate-clothes.png"
                   alt="Person organizing wardrobe to avoid duplicate purchases"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
               </div>
-              <div class="p-6">
-                <h3 class="text-xl font-semibold mb-3 text-green-800">Avoid Duplicate Purchases</h3>
-                <p class="text-green-700">
+              <div class="p-8">
+                <div class="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-500 rounded-xl flex items-center justify-center mb-4">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <h3 class="text-2xl font-bold mb-3 text-gray-800">Avoid Duplicate Purchases</h3>
+                <p class="text-gray-600 leading-relaxed">
                   Keep track of your wardrobe in one place. Our smart wardrobe management helps you remember what you own, preventing you from buying the same clothes twice.
                 </p>
               </div>
             </div>
 
             <!-- Use Case 2: Preview Before Buying -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-green-100">
-              <div class="aspect-[5/8] bg-green-50 flex items-center justify-center">
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100 group">
+              <div class="aspect-[5/8] bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center overflow-hidden">
                 <img
                   src="/images/use-cases/online-preview.png"
                   alt="Person using phone to preview online clothes"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
               </div>
-              <div class="p-6">
-                <h3 class="text-xl font-semibold mb-3 text-green-800">Preview Before Buying</h3>
-                <p class="text-green-700">
+              <div class="p-8">
+                <div class="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-500 rounded-xl flex items-center justify-center mb-4">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                </div>
+                <h3 class="text-2xl font-bold mb-3 text-gray-800">Preview Before Buying</h3>
+                <p class="text-gray-600 leading-relaxed">
                   Unsure how that online purchase will look on you? Try it on virtually first. Our AI virtual try-on lets you see the fit and style before you buy.
                 </p>
               </div>
             </div>
 
             <!-- Use Case 3: Daily Outfit Ideas -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-green-100">
-              <div class="aspect-[5/8] bg-green-50 flex items-center justify-center">
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100 group">
+              <div class="aspect-[5/8] bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center overflow-hidden">
                 <img
                   src="/images/use-cases/daily-outfit.png"
                   alt="Person deciding what to wear today"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
               </div>
-              <div class="p-6">
-                <h3 class="text-xl font-semibold mb-3 text-green-800">Get Daily Outfit Ideas</h3>
-                <p class="text-green-700">
+              <div class="p-8">
+                <div class="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-500 rounded-xl flex items-center justify-center mb-4">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                  </svg>
+                </div>
+                <h3 class="text-2xl font-bold mb-3 text-gray-800">Get Daily Outfit Ideas</h3>
+                <p class="text-gray-600 leading-relaxed">
                   Not sure what to wear today? Get personalized outfit recommendations based on your wardrobe, style preferences, and the occasion.
                 </p>
               </div>
@@ -208,35 +341,79 @@ useHead({
         </div>
       </section>
 
-      <!-- Features Section (示例内容，可以后续扩展) -->
-      <section class="py-20">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div class="text-center">
-            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
-              </svg>
-            </div>
-            <h3 class="text-xl font-semibold mb-2 text-green-800">Personalized Wardrobe</h3>
-            <p class="text-green-700">Manage your closet and keep your outfit history.</p>
+      <!-- Features Section -->
+      <section class="py-24 bg-white">
+        <div class="max-w-7xl mx-auto">
+          <div class="text-center mb-16">
+            <h2 class="text-4xl sm:text-5xl font-bold mb-4 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+              Why Choose Fashion Rec?
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+              Everything you need to discover and express your unique style.
+            </p>
           </div>
-          <div class="text-center">
-            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+              <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center mb-6 shadow-lg">
+                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+                </svg>
+              </div>
+              <h3 class="text-2xl font-bold mb-3 text-gray-800">Personalized Wardrobe</h3>
+              <p class="text-gray-600 leading-relaxed">Manage your closet digitally and keep your complete outfit history. Never forget what you own again.</p>
             </div>
-            <h3 class="text-xl font-semibold mb-2 text-green-800">AI Virtual Try-On</h3>
-            <p class="text-green-700">Advanced AI lets you preview outfits effortlessly.</p>
+            
+            <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+              <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center mb-6 shadow-lg">
+                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <h3 class="text-2xl font-bold mb-3 text-gray-800">AI Virtual Try-On</h3>
+              <p class="text-gray-600 leading-relaxed">Advanced AI technology lets you preview outfits effortlessly. See how clothes look on you before buying.</p>
+            </div>
+            
+            <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-pink-100">
+              <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center mb-6 shadow-lg">
+                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                </svg>
+              </div>
+              <h3 class="text-2xl font-bold mb-3 text-gray-800">Smart Recommendations</h3>
+              <p class="text-gray-600 leading-relaxed">Get outfit picks tailored to your style, preferences, and occasion. Discover new combinations you'll love.</p>
+            </div>
           </div>
-          <div class="text-center">
-            <div class="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-              </svg>
-            </div>
-            <h3 class="text-xl font-semibold mb-2 text-green-800">Smart Recommendations</h3>
-            <p class="text-green-700">Get outfit picks tailored to your style and preferences.</p>
+        </div>
+      </section>
+
+      <!-- Final CTA Section -->
+      <section class="py-24 bg-gradient-to-r from-pink-600 via-purple-600 to-pink-600 relative overflow-hidden">
+        <div class="absolute inset-0 bg-black/10"></div>
+        <div class="relative max-w-4xl mx-auto text-center px-4">
+          <h2 class="text-4xl sm:text-5xl font-bold text-white mb-6">
+            Ready to Transform Your Style?
+          </h2>
+          <p class="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
+            Join thousands of women who have discovered their perfect style with Fashion Rec. Start your journey today.
+          </p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              @click="handleGetStarted"
+              variant="default"
+              :disabled="isSettingVersion"
+              class="text-lg font-semibold px-10 py-6 h-auto bg-white text-pink-600 hover:bg-gray-100 shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
+              aria-label="Get started with Fashion Rec"
+            >
+              {{ isSettingVersion ? 'Setting up...' : buttonText }}
+            </Button>
+            <Button
+              @click="router.push('/pricing')"
+              variant="outline"
+              class="text-lg font-semibold px-10 py-6 h-auto bg-white text-pink-600 hover:bg-gray-100 shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
+            >
+              View Plans
+            </Button>
           </div>
         </div>
       </section>
@@ -244,21 +421,23 @@ useHead({
     </main>
 
     <!-- FAQ Section -->
-    <section class="bg-green-50/30 py-20">
+    <section class="bg-gradient-to-b from-pink-50 to-purple-50 py-24">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-3xl mx-auto">
-          <h2 class="text-3xl font-bold text-center mb-12 text-green-800">Frequently Asked Questions</h2>
+          <h2 class="text-4xl sm:text-5xl font-bold text-center mb-12 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+            Frequently Asked Questions
+          </h2>
           <Accordion type="single" collapsible class="w-full">
             <AccordionItem
               v-for="(faq, index) in faqs"
               :key="index"
               :value="`item-${index}`"
-              class="border-b border-green-200"
+              class="border-b border-pink-200 bg-white rounded-lg mb-2 px-4"
             >
-              <AccordionTrigger class="text-left font-semibold text-green-800 hover:no-underline py-4">
+              <AccordionTrigger class="text-left font-semibold text-gray-800 hover:no-underline py-4 hover:text-pink-600 transition-colors">
                 {{ faq.question }}
               </AccordionTrigger>
-              <AccordionContent class="text-green-700 pb-4 pt-0">
+              <AccordionContent class="text-gray-600 pb-4 pt-0 leading-relaxed">
                 {{ faq.answer }}
               </AccordionContent>
             </AccordionItem>
@@ -268,17 +447,19 @@ useHead({
     </section>
 
     <!-- Social Media Section -->
-    <footer class="bg-white border-t border-green-200 py-12">
+    <footer class="bg-white border-t border-pink-200 py-12">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-4xl mx-auto">
-          <h3 class="text-2xl font-bold text-center mb-8 text-green-800">Follow Us</h3>
+          <h3 class="text-2xl font-bold text-center mb-8 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+            Follow Us
+          </h3>
           <div class="flex justify-center items-center gap-6 flex-wrap">
             <!-- 社交媒体图标 - 使用SVG图标，您也可以替换为图片 -->
             <a
               href="https://x.com/hedongzhouu?s=21"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 hover:from-pink-500 hover:to-purple-500 hover:text-white transition-all duration-300 transform hover:scale-110"
               aria-label="X"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -289,7 +470,7 @@ useHead({
               href="https://www.instagram.com/dongzhouhe?igsh=MXR5cmhpeHlzbHp6dw%3D%3D&utm_source=qr"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 hover:from-pink-500 hover:to-purple-500 hover:text-white transition-all duration-300 transform hover:scale-110"
               aria-label="Instagram"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -300,7 +481,7 @@ useHead({
               href="www.youtube.com/@dongzhouhe"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 hover:from-pink-500 hover:to-purple-500 hover:text-white transition-all duration-300 transform hover:scale-110"
               aria-label="YouTube"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -311,7 +492,7 @@ useHead({
               href="https://discord.gg/7cDGjf6S"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 hover:bg-green-600 hover:text-white transition-colors"
+              class="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 hover:from-pink-500 hover:to-purple-500 hover:text-white transition-all duration-300 transform hover:scale-110"
               aria-label="Discord"
             >
               <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -319,7 +500,7 @@ useHead({
               </svg>
             </a>
           </div>
-          <p class="text-center text-green-700 mt-8 text-sm">
+          <p class="text-center text-gray-600 mt-8 text-sm">
             © 2025 Fashion Rec. All rights reserved.
           </p>
         </div>

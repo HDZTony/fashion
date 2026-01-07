@@ -692,20 +692,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8 flex items-center justify-between">
-      <h1 class="text-3xl font-bold tracking-tight text-green-800">My Wardrobe</h1>
+      <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">My Wardrobe</h1>
     </header>
 
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
       <!-- Upload -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-green-100">
-        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-green-800">
+      <section class="bg-white p-6 rounded-2xl shadow-sm border border-pink-100">
+        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
           <Upload class="w-5 h-5" />
           Add Wardrobe Items
         </h2>
         <div
-          class="border-2 border-dashed border-green-200 rounded-xl p-8 text-center hover:border-green-600 transition-colors cursor-pointer relative bg-green-50 hover:bg-green-100"
+          class="border-2 border-dashed border-pink-200 rounded-xl p-8 text-center hover:border-pink-600 transition-colors cursor-pointer relative bg-pink-50 hover:bg-pink-100"
           @click="triggerFileInput"
         >
           <input
@@ -718,24 +718,24 @@ onUnmounted(() => {
           />
           <div v-if="isUploading && uploadProgress" class="flex flex-col items-center gap-2 pointer-events-none">
             <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-            <span class="text-sm text-green-500">
+            <span class="text-sm text-pink-500">
               Uploading {{ uploadProgress.current }}/{{ uploadProgress.total }}
             </span>
-            <span class="text-xs text-green-400">{{ uploadProgress.currentFile }}</span>
+            <span class="text-xs text-pink-400">{{ uploadProgress.currentFile }}</span>
           </div>
           <div v-else-if="isUploading" class="flex flex-col items-center gap-2 pointer-events-none">
             <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-            <span class="text-sm text-green-500">Analyzing...</span>
+            <span class="text-sm text-pink-500">Analyzing...</span>
           </div>
           <div v-else class="pointer-events-none">
-            <p class="font-medium text-green-700">Click or drag to upload</p>
-            <p class="text-xs text-green-600 mt-2">You can select multiple photos (JPG, PNG, WEBP, AVIF)</p>
+            <p class="font-medium text-gray-700">Click or drag to upload</p>
+            <p class="text-xs text-pink-600 mt-2">You can select multiple photos (JPG, PNG, WEBP, AVIF)</p>
           </div>
         </div>
         
         <!-- URL Upload -->
-        <div class="mt-4 pt-4 border-t border-green-200">
-          <p class="text-sm font-medium text-green-700 mb-2">Or add via URL</p>
+        <div class="mt-4 pt-4 border-t border-pink-200">
+          <p class="text-sm font-medium text-gray-700 mb-2">Or add via URL</p>
           <div class="flex gap-2">
             <input
               v-model="imageUrlInput"
@@ -748,7 +748,7 @@ onUnmounted(() => {
             <button
               @click="handleUrlUpload"
               :disabled="isUploadingUrl || isUploading || !imageUrlInput.trim()"
-              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span v-if="isUploadingUrl">Uploading...</span>
               <span v-else>Upload</span>
@@ -759,12 +759,12 @@ onUnmounted(() => {
       </section>
 
       <!-- Wardrobe Grid -->
-      <section class="bg-white p-6 rounded-2xl shadow-sm border border-green-100 min-h-[400px]">
+      <section class="bg-white p-6 rounded-2xl shadow-sm border border-pink-100 min-h-[400px]">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold flex items-center gap-2 text-green-800">
+          <h2 class="text-lg font-semibold flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
             <Shirt class="w-5 h-5" />
             My Wardrobe
-            <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-green-600 ml-2">
+            <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-pink-600 ml-2">
               ({{ uploadedItems.length }} items)
             </span>
           </h2>
@@ -772,7 +772,7 @@ onUnmounted(() => {
             <button
               @click="loadUserItems"
               :disabled="isLoadingItems"
-              class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-green-600 hover:border-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-pink-600 hover:border-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
               title="Refresh data"
             >
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoadingItems }" />
@@ -781,7 +781,7 @@ onUnmounted(() => {
             <button
               @click="toggleSelectionMode"
               class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
-              :class="isSelectionMode ? 'bg-green-600 text-white border-green-600' : 'border-green-200 text-green-600 hover:border-green-600'"
+              :class="isSelectionMode ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border-pink-600' : 'border-pink-200 text-pink-600 hover:border-pink-600'"
             >
               {{ isSelectionMode ? 'Cancel selection' : 'Bulk select' }}
             </button>
@@ -799,11 +799,11 @@ onUnmounted(() => {
         <div v-if="isSelectionMode" class="mb-4 flex items-center gap-2">
           <button
             @click="toggleSelectAll"
-            class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-green-600 hover:border-black transition-colors"
+            class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-pink-600 hover:border-black transition-colors"
           >
             {{ isAllSelected ? 'Unselect all' : 'Select all' }}
           </button>
-          <span class="text-sm text-green-500">Selected {{ selectedCount }} / {{ filteredItems.length }} items</span>
+          <span class="text-sm text-pink-500">Selected {{ selectedCount }} / {{ filteredItems.length }} items</span>
         </div>
         <div class="flex flex-wrap gap-2 mb-4">
           <button
@@ -811,7 +811,7 @@ onUnmounted(() => {
             :key="filter"
             @click="selectedFilter = filter"
             class="px-3 py-1 text-sm rounded-full border transition-colors"
-            :class="selectedFilter === filter ? 'bg-black text-white border-black' : 'border-gray-200 text-green-600 hover:border-black'"
+            :class="selectedFilter === filter ? 'bg-black text-white border-black' : 'border-gray-200 text-pink-600 hover:border-black'"
           >
             {{ filter }}
           </button>
@@ -822,7 +822,7 @@ onUnmounted(() => {
             :key="item.id"
             @click="isSelectionMode ? toggleItemSelection(String(item.id), $event) : openImageViewer(index, $event)"
             class="group relative rounded-xl overflow-hidden border aspect-[3/4] cursor-pointer transition-all hover:shadow-md"
-            :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'border-green-500 border-2 ring-2 ring-green-200' : 'border-green-200'"
+            :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'border-pink-500 border-2 ring-2 ring-pink-200' : 'border-pink-200'"
           >
             <!-- Selection checkbox -->
             <div
@@ -832,7 +832,7 @@ onUnmounted(() => {
             >
               <div
                 class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
-                :class="selectedItemIds.has(String(item.id)) ? 'bg-green-500 border-green-500' : 'bg-white/90 border-green-300'"
+                :class="selectedItemIds.has(String(item.id)) ? 'bg-pink-500 border-pink-500' : 'bg-white/90 border-pink-300'"
               >
                 <svg
                   v-if="selectedItemIds.has(String(item.id))"
@@ -853,7 +853,7 @@ onUnmounted(() => {
               :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'opacity-75' : ''"
               alt="Clothing item"
             />
-            <div v-else class="absolute inset-0 bg-gray-100 flex items-center justify-center text-green-400">
+            <div v-else class="absolute inset-0 bg-gray-100 flex items-center justify-center text-pink-400">
               <span class="text-xs">{{ item.features.type }}</span>
             </div>
 
@@ -866,7 +866,7 @@ onUnmounted(() => {
               v-if="!isSelectionMode"
               @click.stop="toggleOutfitSelection(String(item.id), $event)"
               class="absolute top-2 right-2 z-10 p-1 rounded-full transition-all duration-200"
-              :class="isOutfitSelected(String(item.id)) ? 'bg-green-600 text-white opacity-100 shadow-md' : 'bg-white/80 text-green-400 opacity-0 group-hover:opacity-100 hover:text-green-900 hover:bg-white'"
+              :class="isOutfitSelected(String(item.id)) ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white opacity-100 shadow-md' : 'bg-white/80 text-pink-400 opacity-0 group-hover:opacity-100 hover:text-pink-700 hover:bg-white'"
               title="Add to Outfit Generator"
             >
               <CheckCircle v-if="isOutfitSelected(String(item.id))" class="w-5 h-5 fill-current" />
@@ -876,7 +876,7 @@ onUnmounted(() => {
 
           <div
             v-if="filteredItems.length === 0"
-            class="col-span-full flex flex-col items-center justify-center text-green-600 py-12"
+            class="col-span-full flex flex-col items-center justify-center text-pink-600 py-12"
           >
             <Shirt class="w-12 h-12 mb-2 opacity-20" />
             <p class="text-sm" v-if="uploadedItems.length === 0">No items yet.</p>
@@ -894,7 +894,7 @@ onUnmounted(() => {
         <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
           <div class="p-6 border-b border-gray-200">
             <h3 class="text-xl font-bold">Multiple Items Detected</h3>
-            <p class="text-sm text-green-500 mt-1">Please review and select the items you want to add to your wardrobe.</p>
+            <p class="text-sm text-pink-500 mt-1">Please review and select the items you want to add to your wardrobe.</p>
           </div>
 
           <div class="flex-1 overflow-y-auto p-6">
@@ -914,9 +914,9 @@ onUnmounted(() => {
                   <div class="flex-1">
                     <div class="flex items-center gap-2 mb-2">
                       <h4 class="font-semibold">{{ formatFeatureValue(item.features.type) }}</h4>
-                      <span class="text-sm text-green-500">{{ formatFeatureValue(item.features.color) }}</span>
+                      <span class="text-sm text-pink-500">{{ formatFeatureValue(item.features.color) }}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-2 text-xs text-green-600">
+                    <div class="grid grid-cols-2 gap-2 text-xs text-pink-600">
                       <div><span class="font-medium">Style:</span> {{ formatFeatureValue(item.features.style) }}</div>
                       <div><span class="font-medium">Occasion:</span> {{ formatFeatureValue(item.features.occasion) }}</div>
                       <div><span class="font-medium">Pattern:</span> {{ formatFeatureValue(item.features.pattern) }}</div>
@@ -937,20 +937,20 @@ onUnmounted(() => {
           <div class="p-6 border-t border-gray-200 flex justify-end gap-3">
             <button
               @click="cancelAddItems"
-              class="px-4 py-2 text-green-700 hover:bg-gray-100 rounded-lg transition-colors"
+              class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               @click="confirmAddItems"
               :disabled="isConfirming"
-              class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-6 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span>{{ isConfirming ? 'Adding...' : `Add Selected (${pendingItems.filter(i => i.selected).length})` }}</span>
               <span v-if="isConfirming" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             </button>
           </div>
-          <p v-if="isConfirming" class="text-sm text-green-500 text-center pb-4">
+          <p v-if="isConfirming" class="text-sm text-pink-500 text-center pb-4">
             Uploading items… hang tight, this may take a few seconds.
           </p>
         </div>

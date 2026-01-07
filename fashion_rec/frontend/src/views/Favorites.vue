@@ -243,10 +243,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
-      <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2 text-green-800">
-        <Heart class="w-6 h-6 text-green-600 fill-current" />
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+        <Heart class="w-6 h-6 text-pink-600 fill-current" />
         My Favorites
       </h1>
     </header>
@@ -256,8 +256,8 @@ onUnmounted(() => {
         v-if="isLoading"
         class="py-12 flex flex-col items-center justify-center"
       >
-        <div class="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-green-700">Loading favorites...</p>
+        <div class="w-8 h-8 border-2 border-pink-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-pink-700 font-medium">Loading favorites...</p>
       </div>
 
       <div v-else-if="error" class="py-8 text-center text-red-600 text-sm">
@@ -265,16 +265,16 @@ onUnmounted(() => {
       </div>
 
       <div v-else-if="!favorites.length" class="py-12 text-center">
-        <Heart class="w-16 h-16 mx-auto mb-4 text-green-300" />
-        <p class="text-green-700 text-sm mb-2">No try-on results saved yet</p>
-        <p class="text-green-600 text-xs">After you try on looks, tap Favorite to save what you like.</p>
+        <Heart class="w-16 h-16 mx-auto mb-4 text-pink-300" />
+        <p class="text-gray-700 text-sm mb-2 font-medium">No try-on results saved yet</p>
+        <p class="text-pink-600 text-xs">After you try on looks, tap Favorite to save what you like.</p>
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
           v-for="(favorite, index) in favorites"
           :key="favorite.id"
-          class="bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+          class="bg-white border border-pink-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
         >
           <!-- Image -->
           <div
@@ -293,30 +293,30 @@ onUnmounted(() => {
           <div class="p-4">
             <div class="flex items-start justify-between gap-2 mb-2">
               <div class="flex-1">
-                <p class="text-xs text-green-400 mb-1">
+                <p class="text-xs text-pink-400 mb-1">
                   {{ formatDate(favorite.created_at) }}
                 </p>
-                <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-green-500">
+                <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-pink-500">
                   {{ favorite.garment_urls.length }} item(s)
                 </p>
-                <p v-if="favorite.scene_image_url" class="text-xs text-green-600 mt-1">
+                <p v-if="favorite.scene_image_url" class="text-xs text-pink-600 mt-1">
                   包含场景
                 </p>
               </div>
               <div class="flex items-center gap-1">
                 <button
                   @click.stop="restoreFavorite(favorite)"
-                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-green-50 flex items-center justify-center transition-colors group"
+                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-pink-50 flex items-center justify-center transition-colors group"
                   title="恢复到此试穿"
                 >
-                  <RotateCcw class="w-4 h-4 text-green-400 group-hover:text-green-600 transition-colors" />
+                  <RotateCcw class="w-4 h-4 text-pink-400 group-hover:text-pink-600 transition-colors" />
                 </button>
                 <button
                   @click.stop="deleteFavorite(favorite.id)"
                   class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
                   title="删除收藏"
                 >
-                  <X class="w-4 h-4 text-green-400 group-hover:text-red-500 transition-colors" />
+                  <X class="w-4 h-4 text-pink-400 group-hover:text-red-500 transition-colors" />
                 </button>
               </div>
             </div>

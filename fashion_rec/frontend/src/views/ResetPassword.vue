@@ -88,17 +88,25 @@ const handleResetPassword = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-    <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-      <h1 class="text-3xl font-bold mb-2 text-center">Reset Password</h1>
-      <p class="text-green-500 mb-8 text-center">Enter your new password</p>
+  <div class="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 via-white to-purple-50 p-4 relative overflow-hidden">
+    <!-- Decorative background elements -->
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute top-0 left-1/4 w-96 h-96 bg-pink-200/20 rounded-full blur-3xl"></div>
+      <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-200/20 rounded-full blur-3xl"></div>
+    </div>
+    
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 border border-pink-100">
+      <h1 class="text-4xl font-bold mb-2 text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+        Reset Password
+      </h1>
+      <p class="text-gray-600 mb-8 text-center text-lg">Enter your new password</p>
       
       <div v-if="isValidToken" class="space-y-4">
         <input
           v-model="password"
           type="password"
           placeholder="Enter new password (min 6 characters)"
-          class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
+          class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleResetPassword"
         />
         
@@ -106,27 +114,27 @@ const handleResetPassword = async () => {
           v-model="confirmPassword"
           type="password"
           placeholder="Confirm new password"
-          class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
+          class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleResetPassword"
         />
         
         <button 
           @click="handleResetPassword"
           :disabled="isLoading"
-          class="w-full bg-black text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-3 rounded-full font-semibold hover:from-pink-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
         >
           {{ isLoading ? 'Resetting...' : 'Reset password' }}
         </button>
 
-        <p v-if="message" class="text-sm text-center" :class="message.toLowerCase().includes('successful') ? 'text-green-600' : 'text-red-600'">
+        <p v-if="message" class="text-sm text-center font-medium" :class="message.toLowerCase().includes('successful') ? 'text-pink-600' : 'text-red-600'">
           {{ message }}
         </p>
       </div>
       
       <div v-else class="text-center">
-        <div class="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p class="text-red-600 mb-2">{{ message || 'Validating reset link...' }}</p>
-        <p class="text-sm text-green-500">Redirecting to sign-in page</p>
+        <div class="w-16 h-16 border-4 border-pink-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p class="text-red-600 mb-2 font-medium">{{ message || 'Validating reset link...' }}</p>
+        <p class="text-sm text-pink-600">Redirecting to sign-in page</p>
       </div>
     </div>
   </div>

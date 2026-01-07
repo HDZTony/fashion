@@ -431,63 +431,65 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-green-50/20">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50">
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="max-w-4xl mx-auto space-y-8">
         <div>
-          <h1 class="text-3xl font-bold text-green-800">Profile</h1>
-          <p class="text-green-700 mt-2">View your subscription status and remaining credits</p>
+          <h1 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            Profile
+          </h1>
+          <p class="text-xl text-gray-600 mt-2">View your subscription status and remaining credits</p>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
-          <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+          <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-green-800">Subscription</h2>
-              <span class="text-sm text-green-600">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
+              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Subscription</h2>
+              <span class="text-sm text-pink-600 font-medium">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
             </div>
             <div class="space-y-3">
-              <div class="flex justify-between text-sm text-green-700">
+              <div class="flex justify-between text-sm text-gray-700">
                 <span>Current plan</span>
-                <span class="font-semibold text-green-900">{{ planDisplay }}</span>
+                <span class="font-semibold text-gray-900">{{ planDisplay }}</span>
               </div>
-              <div class="flex justify-between text-sm text-green-700">
+              <div class="flex justify-between text-sm text-gray-700">
                 <span>Status</span>
-                <span class="font-semibold text-green-900">{{ status }}</span>
+                <span class="font-semibold text-gray-900">{{ status }}</span>
               </div>
-              <div class="flex justify-between text-sm text-green-700">
+              <div class="flex justify-between text-sm text-gray-700">
                 <span>Remaining free credits</span>
-                <span class="font-semibold text-green-900">
+                <span class="font-semibold text-gray-900">
                   {{ freeRemainingTries }}/3 (Daily limit)
                 </span>
               </div>
-              <div class="flex justify-between text-sm text-green-700">
+              <div class="flex justify-between text-sm text-gray-700">
                 <span>Remaining credits</span>
-                <span class="font-semibold text-green-900">{{ remainingCredits }}</span>
+                <span class="font-semibold text-gray-900">{{ remainingCredits }}</span>
               </div>
-              <div class="flex justify-between text-sm text-green-700" v-if="nextResetDate">
+              <div class="flex justify-between text-sm text-gray-700" v-if="nextResetDate">
                 <span>Next reset</span>
-                <span class="font-semibold text-green-900">{{ nextResetDate }}</span>
+                <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
               </div>
             </div>
             <!-- 退订按钮：只在付费计划且状态为 active/trialing 时显示 -->
-            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-green-200">
+            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-pink-200">
               <Button 
                 variant="outline" 
-                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
                 :disabled="isLoading"
                 @click="cancelSubscription"
               >
               Cancel Subscription
               </Button>
             </div>
-            <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <p v-if="error" class="mt-3 text-sm text-red-600 font-medium">{{ error }}</p>
           </div>
 
-          <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+          <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-green-800">Account</h2>
+              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Account</h2>
             </div>
-            <div class="space-y-3 text-sm text-green-700">
+            <div class="space-y-3 text-sm text-gray-700">
               <p>Sign-in email: <span class="font-semibold">{{ userEmail }}</span></p>
               <p v-if="userinfo?.subscriptionId">Billing period: <span class="font-semibold">Monthly</span></p>
               <p v-if="userinfo?.period">Credits reset period: <span class="font-semibold">{{ userinfo.period }}</span></p>
@@ -500,29 +502,29 @@ onMounted(async () => {
         </div>
 
         <!-- Subscription Plans -->
-        <div class="bg-white rounded-2xl border border-green-100 shadow-sm p-6 space-y-4">
+        <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-green-800">Subscription Plans</h2>
-            <span class="text-sm text-green-600">Monthly recurring</span>
+            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Subscription Plans</h2>
+            <span class="text-sm text-pink-600 font-medium">Monthly recurring</span>
           </div>
           <div class="grid gap-4 md:grid-cols-1">
             <div
               v-for="plan in plans"
               :key="plan.slug"
-              class="border rounded-xl p-4 space-y-3"
-              :class="plan.slug === planSlug ? 'border-green-500 bg-green-50/50' : 'border-green-200'"
+              class="border-2 rounded-xl p-4 space-y-3 transition-all"
+              :class="plan.slug === planSlug ? 'border-pink-500 bg-gradient-to-br from-pink-50 to-purple-50 shadow-lg' : 'border-pink-200 hover:border-pink-300 hover:shadow-md'"
             >
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="font-semibold text-green-900">{{ plan.name }}</p>
-                  <p class="text-sm text-green-600">{{ plan.price }}</p>
+                  <p class="font-semibold text-gray-900">{{ plan.name }}</p>
+                  <p class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">{{ plan.price }}</p>
                 </div>
                 <span
                   v-if="plan.slug === planSlug"
-                  class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700"
+                  class="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold shadow-md"
                 >Current</span>
               </div>
-              <p class="text-sm text-green-600">{{ plan.desc }}</p>
+              <p class="text-sm text-gray-600">{{ plan.desc }}</p>
               <Button
                 class="w-full"
                 :class="plan.slug === planSlug && planSlug !== 'free' && (status === 'Active' || status === 'Trialing') 
@@ -539,32 +541,32 @@ onMounted(async () => {
         </div>
 
         <!-- Credits (One-time Purchase) -->
-        <div class="bg-white rounded-2xl border border-blue-100 shadow-sm p-6 space-y-4">
+        <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-blue-800">Credits</h2>
-            <span class="text-sm text-blue-600">One-time purchase</span>
+            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Credits</h2>
+            <span class="text-sm text-pink-600 font-medium">One-time purchase</span>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
             <div
               v-for="credit in creditsData"
               :key="credit.id"
-              class="border rounded-xl p-4 space-y-3 border-blue-200 hover:border-blue-400 transition-colors"
+              class="border-2 rounded-xl p-4 space-y-3 border-pink-200 hover:border-pink-400 hover:shadow-lg transition-all transform hover:-translate-y-1"
             >
               <div class="flex items-center justify-between">
                 <div class="flex-1">
-                  <p class="font-semibold text-blue-900">{{ credit.name }}</p>
+                  <p class="font-semibold text-gray-900">{{ credit.name }}</p>
                   <div v-if="getCreditDiscountInfo(credit)" class="flex items-center gap-2 mt-1">
                     <span class="text-xs line-through text-gray-400">${{ getCreditDiscountInfo(credit)!.originalPrice.toFixed(2) }}</span>
-                    <span class="text-sm font-bold text-blue-600">${{ credit.price.toFixed(2) }}</span>
+                    <span class="text-sm font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">${{ credit.price.toFixed(2) }}</span>
                     <span class="px-1.5 py-0.5 bg-red-500 text-white text-xs font-bold rounded">-{{ ((1 - getCreditDiscountInfo(credit)!.discount) * 100).toFixed(0) }}%</span>
                   </div>
-                  <p v-else class="text-sm text-blue-600">${{ credit.price.toFixed(2) }}</p>
+                  <p v-else class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">${{ credit.price.toFixed(2) }}</p>
                 </div>
               </div>
-              <p class="text-sm text-blue-700">{{ credit.credits }} try-ons</p>
-              <p class="text-sm text-blue-600">One-time purchase, credits never expire</p>
+              <p class="text-sm text-gray-700 font-medium">{{ credit.credits }} credits</p>
+              <p class="text-sm text-gray-600">One-time purchase, credits never expire</p>
               <Button
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl rounded-full"
                 :disabled="isLoading"
                 @click="purchaseCredits(credit.id)"
               >

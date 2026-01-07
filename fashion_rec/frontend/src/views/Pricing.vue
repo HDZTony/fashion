@@ -1,10 +1,12 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-green-50/30 to-white py-12 px-4">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 py-12 px-4">
     <div class="max-w-7xl mx-auto">
       <!-- Header -->
       <div class="text-center mb-12">
-        <h1 class="text-4xl font-bold text-green-800 mb-4">Choose the plan that fits you</h1>
-        <p class="text-lg text-green-700">Unlock more virtual try-on power</p>
+        <h1 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-4">
+          Choose the plan that fits you
+        </h1>
+        <p class="text-xl text-gray-600">Unlock more virtual try-on power</p>
       </div>
 
       <!-- Subscription Plan -->
@@ -12,11 +14,11 @@
         <div
           v-for="plan in plansData"
           :key="plan.slug"
-          class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-xl border-2 border-green-500 p-8 text-white relative transform hover:scale-105 transition-all"
+          class="bg-gradient-to-br from-pink-600 via-purple-600 to-pink-600 rounded-2xl shadow-xl border-2 border-pink-300 p-8 text-white relative transform hover:scale-105 hover:shadow-2xl transition-all"
         >
           <!-- Popular Badge -->
           <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
-            <span class="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold">Recommended</span>
+            <span class="bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-4 py-1 rounded-full text-sm font-bold shadow-lg">Recommended</span>
           </div>
           
           <div class="text-center">
@@ -26,25 +28,25 @@
             </div>
             <ul class="text-left space-y-4 mb-8">
               <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
                 <span>{{ plan.tries }}</span>
               </li>
               <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
                 <span>3 free tries per day (first 3 tries are free for all users)</span>
               </li>
               <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
                 <span>Priority processing</span>
               </li>
               <li class="flex items-start">
-                <svg class="w-6 h-6 text-yellow-300 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
                 <span>Unlimited history</span>
@@ -54,10 +56,10 @@
               @click="selectPlan('member')"
               :disabled="isLoading"
               :class="[
-                'w-full py-3 px-6 rounded-lg font-semibold transition-all',
+                'w-full py-3 px-6 rounded-full font-semibold transition-all shadow-lg',
                 isLoading
-                  ? 'bg-white/80 text-green-600 cursor-wait'
-                  : 'bg-white text-green-600 hover:bg-green-50'
+                  ? 'bg-white/80 text-pink-600 cursor-wait'
+                  : 'bg-white text-pink-600 hover:bg-gray-50 hover:shadow-xl'
               ]"
             >
               {{ isLoading ? 'Processing...' : 'Subscribe now' }}
@@ -69,22 +71,24 @@
       <!-- Credits (One-time Purchase) -->
       <div class="mb-12">
         <div class="text-center mb-8">
-          <h2 class="text-3xl font-bold text-blue-800 mb-2">Or Purchase Credits</h2>
-          <p class="text-lg text-blue-700">One-time purchase, credits never expire</p>
+          <h2 class="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            Or Purchase Credits
+          </h2>
+          <p class="text-xl text-gray-600">One-time purchase, credits never expire</p>
         </div>
         <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
           <div
             v-for="credit in creditsData"
             :key="credit.id"
-            class="bg-white rounded-2xl shadow-lg border-2 border-blue-200 p-8 hover:border-blue-400 transition-all"
+            class="bg-white rounded-2xl shadow-lg border-2 border-pink-200 p-8 hover:border-pink-400 hover:shadow-xl transition-all transform hover:-translate-y-2"
           >
             <div class="text-center">
-              <h3 class="text-2xl font-bold text-blue-800 mb-2">{{ credit.name }}</h3>
+              <h3 class="text-2xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">{{ credit.name }}</h3>
               <div class="mb-6 relative">
                 <div v-if="getCreditDiscountInfo(credit)" class="flex flex-col items-center">
                   <div class="flex items-center gap-2 mb-1">
                     <span class="text-3xl line-through text-gray-400">${{ getCreditDiscountInfo(credit)!.originalPrice.toFixed(2) }}</span>
-                    <span class="text-5xl font-bold text-blue-800">${{ credit.price.toFixed(2) }}</span>
+                    <span class="text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">${{ credit.price.toFixed(2) }}</span>
                     <span class="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">-{{ ((1 - getCreditDiscountInfo(credit)!.discount) * 100).toFixed(0) }}%</span>
                   </div>
                   <span class="text-sm text-blue-600 font-semibold">{{ getCreditDiscountInfo(credit)!.discountText }}</span>
@@ -93,33 +97,33 @@
               </div>
               <ul class="text-left space-y-4 mb-8">
                 <li class="flex items-start">
-                  <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-6 h-6 text-pink-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                   </svg>
-                  <span class="text-blue-700">{{ credit.credits }} virtual try-ons</span>
+                  <span class="text-gray-700">{{ credit.credits }} virtual try-ons</span>
                 </li>
                 <li class="flex items-start">
                   <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                   </svg>
-                  <span class="text-blue-700">One-time purchase</span>
+                  <span class="text-gray-700">One-time purchase</span>
                 </li>
                 <li class="flex items-start">
-                  <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-6 h-6 text-pink-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                   </svg>
-                  <span class="text-blue-700">Credits never expire</span>
+                  <span class="text-gray-700">Credits never expire</span>
                 </li>
               </ul>
               <button
                 @click="purchaseCredits(credit.id)"
                 :disabled="isLoading"
-                :class="[
-                  'w-full py-3 px-6 rounded-lg font-semibold transition-all',
-                  isLoading
-                    ? 'bg-blue-200 text-blue-600 cursor-wait'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                ]"
+              :class="[
+                'w-full py-3 px-6 rounded-full font-semibold transition-all shadow-lg',
+                isLoading
+                  ? 'bg-gradient-to-r from-pink-300 to-purple-300 text-white cursor-wait'
+                  : 'bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:from-pink-700 hover:to-purple-700 hover:shadow-xl'
+              ]"
               >
                 {{ isLoading ? 'Processing...' : 'Purchase' }}
               </button>
@@ -130,8 +134,8 @@
 
       <!-- Error Message -->
       <div v-if="error" class="mt-6 max-w-4xl mx-auto">
-        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p class="text-red-800">{{ error }}</p>
+        <div class="bg-red-50 border-2 border-red-300 rounded-xl p-4 shadow-lg">
+          <p class="text-red-700 font-medium">{{ error }}</p>
         </div>
       </div>
     </div>

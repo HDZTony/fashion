@@ -235,11 +235,11 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-green-50/20 font-sans text-green-900">
+  <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2 text-green-800">
-          <History class="w-6 h-6 text-green-600" />
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+          <History class="w-6 h-6 text-pink-600" />
           Try-On History
         </h1>
       </div>
@@ -250,8 +250,8 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
         v-if="isLoading"
         class="py-12 flex flex-col items-center justify-center"
       >
-        <div class="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-green-700">Loading try-on history...</p>
+        <div class="w-8 h-8 border-2 border-pink-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-pink-700 font-medium">Loading try-on history...</p>
       </div>
 
       <div v-else-if="error" class="py-8 text-center text-red-600 text-sm">
@@ -259,14 +259,14 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
       </div>
 
       <div v-else-if="!historyItems.length" class="py-12 text-center">
-        <History class="w-16 h-16 mx-auto mb-4 text-green-300" />
-        <p class="text-green-700 text-sm mb-2">No try-on history yet</p>
-        <p class="text-green-600 text-xs">After you try on looks, results will be saved here automatically.</p>
+        <History class="w-16 h-16 mx-auto mb-4 text-pink-300" />
+        <p class="text-gray-700 text-sm mb-2 font-medium">No try-on history yet</p>
+        <p class="text-pink-600 text-xs">After you try on looks, results will be saved here automatically.</p>
       </div>
 
       <div v-else>
         <!-- Statistics -->
-        <div v-if="totalItems > 0" class="mb-4 text-sm text-green-700">
+        <div v-if="totalItems > 0" class="mb-4 text-sm text-pink-700 font-medium">
           Showing {{ historyItems.length }} of {{ totalItems }} item(s)
         </div>
         
@@ -275,7 +275,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
           <div
             v-for="(item, index) in historyItems"
             :key="item.id"
-            class="bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
+            class="bg-white border border-pink-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
           >
           <!-- Image -->
           <div
@@ -289,7 +289,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             />
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
             <!-- Days remaining badge -->
-            <div class="absolute top-2 right-2 bg-green-500/90 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+            <div class="absolute top-2 right-2 bg-gradient-to-r from-pink-500 to-purple-500/90 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm font-medium">
               Expires in {{ getDaysRemaining(item.expires_at) }} days
             </div>
           </div>
@@ -298,30 +298,30 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
           <div class="p-4">
             <div class="flex items-start justify-between gap-2 mb-2">
               <div class="flex-1">
-                <p class="text-xs text-green-400 mb-1">
+                <p class="text-xs text-pink-400 mb-1">
                   {{ formatDate(item.created_at) }}
                 </p>
-                <p v-if="item.garment_urls && item.garment_urls.length > 0" class="text-xs text-green-500">
+                <p v-if="item.garment_urls && item.garment_urls.length > 0" class="text-xs text-pink-500">
                   {{ item.garment_urls.length }} item(s)
                 </p>
-                <p v-if="item.scene_image_url" class="text-xs text-green-600 mt-1">
+                <p v-if="item.scene_image_url" class="text-xs text-pink-600 mt-1">
                   Includes scene
                 </p>
               </div>
               <div class="flex items-center gap-1">
                 <button
                   @click.stop="restoreTryOnHistory(item)"
-                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-green-50 flex items-center justify-center transition-colors group"
+                  class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-pink-50 flex items-center justify-center transition-colors group"
                   title="Restore to this fitting"
                 >
-                  <RotateCcw class="w-4 h-4 text-green-400 group-hover:text-green-600 transition-colors" />
+                  <RotateCcw class="w-4 h-4 text-pink-400 group-hover:text-pink-600 transition-colors" />
                 </button>
                 <button
                   @click.stop="deleteHistoryItem(item.id)"
                   class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
                   title="Clear History"
                 >
-                  <X class="w-4 h-4 text-green-400 group-hover:text-red-500 transition-colors" />
+                  <X class="w-4 h-4 text-pink-400 group-hover:text-red-500 transition-colors" />
                 </button>
               </div>
             </div>
@@ -334,17 +334,17 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
           <button
             @click="loadHistory(currentPage - 1)"
             :disabled="currentPage === 1 || isLoading"
-            class="px-4 py-2 border border-green-300 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed text-green-700 transition-colors"
+            class="px-4 py-2 border border-pink-300 rounded-lg hover:bg-pink-50 disabled:opacity-50 disabled:cursor-not-allowed text-pink-700 transition-colors font-medium"
           >
             Previous
           </button>
-          <span class="px-4 py-2 text-green-700 text-sm">
+          <span class="px-4 py-2 text-pink-700 text-sm font-medium">
             Page {{ currentPage }} of {{ totalPages }}
           </span>
           <button
             @click="loadHistory(currentPage + 1)"
             :disabled="currentPage === totalPages || isLoading"
-            class="px-4 py-2 border border-green-300 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed text-green-700 transition-colors"
+            class="px-4 py-2 border border-pink-300 rounded-lg hover:bg-pink-50 disabled:opacity-50 disabled:cursor-not-allowed text-pink-700 transition-colors font-medium"
           >
             Next
           </button>
