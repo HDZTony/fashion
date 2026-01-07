@@ -1222,7 +1222,7 @@ const createWebhookHandler = (
       // 结账完成事件 - 处理 credits 购买（onetime 产品）
       onCheckoutCompleted: async (data: any) => {
         console.log('✅ Checkout completed:', {
-          eventType: data.eventType || 'checkout.completed',
+          eventType: data.eventType,
           checkoutId: data.checkout?.id || data.object?.id,
           customerEmail: data.customer?.email,
           customerId: data.customer?.id,
@@ -1230,29 +1230,76 @@ const createWebhookHandler = (
           metadata: data.checkout?.metadata,
         });
 
-        // 尝试多种方式获取 userId（优先使用 checkout metadata）
+        // 尝试多种方式获取 userId（优先使用 object.metadata，因为 Creem 的 checkout.completed 事件中数据在 object 字段）
         let userId = 
-          data.checkout?.metadata?.userId ||
-          data.checkout?.metadata?.user_id ||
           data.object?.metadata?.userId ||
           data.object?.metadata?.user_id ||
+          data.checkout?.metadata?.userId ||
+          data.checkout?.metadata?.user_id ||
           data.metadata?.userId ||
           data.metadata?.user_id;
 
+        // 如果 metadata 中没有 userId，尝试通过 email 从 Supabase auth 查找用户
         if (!userId) {
-          console.warn('⚠️ Could not find userId in checkout.completed event metadata');
+          const customerEmail = data.object?.customer?.email || data.customer?.email;
+          if (customerEmail) {
+            console.log(`🔍 Trying to find userId by email: ${customerEmail}`);
+            try {
+              // 使用 Supabase Admin API 通过 email 查找用户
+              const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY, {
+                auth: {
+                  persistSession: false,
+                  autoRefreshToken: false,
+                },
+              });
+              
+              // 使用 Admin API 通过 email 查找用户
+              // 注意：Supabase JS SDK 的 admin API 需要通过 REST API 调用
+              // 这里使用 listUsers 并过滤，或者直接调用 REST API
+              const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+              
+              if (!authError && authData?.users) {
+                const user = authData.users.find(u => u.email === customerEmail);
+                if (user) {
+                  userId = user.id;
+                  console.log(`✅ Found userId ${userId} for email ${customerEmail} in Supabase auth`);
+                } else {
+                  console.warn(`⚠️ User not found in Supabase auth for email: ${customerEmail}`);
+                }
+              } else {
+                console.warn('⚠️ Error querying Supabase auth by email:', authError?.message);
+              }
+            } catch (emailDbError: any) {
+              console.warn('⚠️ Error finding user by email:', emailDbError.message);
+            }
+          }
+        }
+
+        if (!userId) {
+          console.warn('⚠️ Could not find userId in checkout.completed event', {
+            customerEmail: data.object?.customer?.email || data.customer?.email,
+            hasMetadata: !!(data.object?.metadata || data.checkout?.metadata || data.metadata),
+            metadataKeys: data.object?.metadata ? Object.keys(data.object.metadata) : [],
+          });
           return;
         }
 
-        // 获取产品ID（从 checkout 或 object 中）
+        // 获取产品ID（从 checkout 或 object 中，包括 items 数组）
         const productId = data.checkout?.product?.id
           || data.checkout?.productId
+          || data.checkout?.items?.[0]?.productId
           || data.object?.product?.id
           || data.object?.productId
+          || data.object?.items?.[0]?.productId
           || data.product?.id;
 
         if (!productId) {
-          console.warn('⚠️ Could not find productId in checkout.completed event');
+          console.warn('⚠️ Could not find productId in checkout.completed event', {
+            hasCheckout: !!data.checkout,
+            hasObject: !!data.object,
+            checkoutKeys: data.checkout ? Object.keys(data.checkout) : [],
+            objectKeys: data.object ? Object.keys(data.object) : [],
+          });
           return;
         }
 
