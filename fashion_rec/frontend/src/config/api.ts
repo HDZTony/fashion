@@ -49,10 +49,20 @@ export const API_URL = (() => {
 
 /**
  * Subscription Service API URL
+ * 
+ * IMPORTANT: Subscription requests should go through Cloudflare Router for version routing.
+ * - Development: Use API_URL (goes through local Cloudflare Router)
+ * - Production: Use API_URL (goes through production Cloudflare Router)
+ * 
+ * The Router will automatically route subscription requests to the correct version:
+ * - v2 users → V2_SUBSCRIPTION_SERVICE_URL
+ * - stable users → STABLE_SUBSCRIPTION_SERVICE_URL
+ * 
+ * Direct subscription service URL (only for testing/debugging):
  * - Development: http://localhost:3001
  * - Production: https://fashion-rec-subscription-service.954504788.workers.dev
  */
-export const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || 'http://localhost:3001'
+export const SUBSCRIPTION_API_URL = import.meta.env.VITE_SUBSCRIPTION_API_URL || API_URL
 
 /**
  * Check if running in development mode

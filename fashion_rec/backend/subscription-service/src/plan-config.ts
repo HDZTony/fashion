@@ -65,19 +65,38 @@ export const PRODUCT_ID_TO_PLAN_TYPE: Record<string, PlanType> = {
 export function getPlanTypeFromProductId(
   productId: string | undefined
 ): PlanType {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:65',message:'getPlanTypeFromProductId called',data:{productId,productIdType:typeof productId,productIdLength:productId?.length,hasMapping:!!PRODUCT_ID_TO_PLAN_TYPE,availableIds:Object.keys(PRODUCT_ID_TO_PLAN_TYPE)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})}).catch(()=>{});
+  // #endregion
+  
   if (!productId) {
     throw new Error('productId is required to determine plan type');
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:72',message:'Before mapping lookup',data:{productId,productIdJSON:JSON.stringify(productId),mappingKeys:Object.keys(PRODUCT_ID_TO_PLAN_TYPE),mappingValues:Object.values(PRODUCT_ID_TO_PLAN_TYPE),directLookup:PRODUCT_ID_TO_PLAN_TYPE[productId]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D'})}).catch(()=>{});
+  // #endregion
+
   // 直接从映射表查找
   const planType = PRODUCT_ID_TO_PLAN_TYPE[productId];
   
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:75',message:'After mapping lookup',data:{productId,planType,found:!!planType,allMappings:PRODUCT_ID_TO_PLAN_TYPE},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  
   if (!planType) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:78',message:'Mapping not found - throwing error',data:{productId,availableIds:Object.keys(PRODUCT_ID_TO_PLAN_TYPE),productIdCharCodes:productId.split('').map(c=>c.charCodeAt(0)),expectedCharCodes:'prod_ZcR2OsakU427r5LppdXpe'.split('').map(c=>c.charCodeAt(0))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     throw new Error(
       `No plan type found for productId: ${productId}. ` +
       `Available product IDs: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).join(', ')}`
     );
   }
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:85',message:'Returning plan type',data:{productId,planType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   
   return planType;
 }

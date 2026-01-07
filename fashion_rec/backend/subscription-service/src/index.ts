@@ -613,6 +613,9 @@ app.get('/userinfo', async (c) => {
     
     // 获取产品ID：只使用 subscription.product.id（当前订阅的产品）
     const productId = getProductIdFromSubscription(subscription);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:622',message:'Extracted productId from subscription',data:{productId,productIdType:typeof productId,subscriptionProduct:subscription.product,subscriptionKeys:Object.keys(subscription)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     
     if (!productId) {
       console.error('No product ID found in Creem subscription response', {
@@ -650,7 +653,13 @@ app.get('/userinfo', async (c) => {
       console.log(`Using cached plan from database: ${plan} for subscriptionId: ${subscriptionId}`);
     } else {
       // 需要调用API确定plan类型（订阅ID不匹配或数据库中没有记录）
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:659',message:'Calling getPlanFromProductId',data:{productId,productIdType:typeof productId,hasSubscriptionData:!!subscriptionData,subscriptionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       plan = getPlanFromProductId(productId);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:662',message:'getPlanFromProductId returned',data:{productId,plan},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     }
 
     // 如果计划类型、状态或周期结束时间发生变化，更新数据库
