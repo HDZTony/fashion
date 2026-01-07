@@ -66,7 +66,7 @@ export function getPlanTypeFromProductId(
   productId: string | undefined
 ): PlanType {
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:65',message:'getPlanTypeFromProductId called',data:{productId,productIdType:typeof productId,productIdLength:productId?.length,hasMapping:!!PRODUCT_ID_TO_PLAN_TYPE,availableIds:Object.keys(PRODUCT_ID_TO_PLAN_TYPE)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})}).catch(()=>{});
+  console.log('[DEBUG] getPlanTypeFromProductId called', { productId, productIdType: typeof productId, productIdLength: productId?.length, hasMapping: !!PRODUCT_ID_TO_PLAN_TYPE, availableIds: Object.keys(PRODUCT_ID_TO_PLAN_TYPE) });
   // #endregion
   
   if (!productId) {
@@ -74,14 +74,14 @@ export function getPlanTypeFromProductId(
   }
 
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:72',message:'Before mapping lookup',data:{productId,productIdJSON:JSON.stringify(productId),mappingKeys:Object.keys(PRODUCT_ID_TO_PLAN_TYPE),mappingValues:Object.values(PRODUCT_ID_TO_PLAN_TYPE),directLookup:PRODUCT_ID_TO_PLAN_TYPE[productId]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D'})}).catch(()=>{});
+  console.log('[DEBUG] Before mapping lookup', { productId, productIdJSON: JSON.stringify(productId), mappingKeys: Object.keys(PRODUCT_ID_TO_PLAN_TYPE), mappingValues: Object.values(PRODUCT_ID_TO_PLAN_TYPE), directLookup: PRODUCT_ID_TO_PLAN_TYPE[productId] });
   // #endregion
 
   // 直接从映射表查找
   const planType = PRODUCT_ID_TO_PLAN_TYPE[productId];
   
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:75',message:'After mapping lookup',data:{productId,planType,found:!!planType,allMappings:PRODUCT_ID_TO_PLAN_TYPE},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  console.log('[DEBUG] After mapping lookup', { productId, planType, found: !!planType, allMappings: PRODUCT_ID_TO_PLAN_TYPE });
   // #endregion
   
   if (!planType) {
@@ -100,7 +100,6 @@ export function getPlanTypeFromProductId(
       allMappings: PRODUCT_ID_TO_PLAN_TYPE
     };
     console.error('[DEBUG] Mapping not found:', JSON.stringify(debugInfo, null, 2));
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:78',message:'Mapping not found - throwing error',data:debugInfo,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
     throw new Error(
       `No plan type found for productId: ${productId}. ` +
@@ -110,7 +109,7 @@ export function getPlanTypeFromProductId(
   }
   
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:85',message:'Returning plan type',data:{productId,planType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  console.log('[DEBUG] Returning plan type', { productId, planType });
   // #endregion
   
   return planType;
