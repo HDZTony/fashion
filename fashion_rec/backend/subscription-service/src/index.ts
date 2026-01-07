@@ -39,14 +39,6 @@ function getServices(c: { env: Env }) {
     const subscriptionService = new SubscriptionService(SUPABASE_URL, SUPABASE_KEY);
 
     const isTestMode = c.env.CREEM_TEST_MODE === 'true';
-    // #region agent log
-    console.log('[DEBUG] getServices - Environment check', { 
-      CREEM_TEST_MODE: c.env.CREEM_TEST_MODE, 
-      isTestMode,
-      hasTestKey: !!c.env.CREEM_TEST_API_KEY,
-      hasProdKey: !!c.env.CREEM_PROD_API_KEY 
-    });
-    // #endregion
     const creemApiKey = isTestMode 
       ? c.env.CREEM_TEST_API_KEY 
       : c.env.CREEM_PROD_API_KEY;
@@ -270,9 +262,6 @@ app.get('/config', async (c) => {
 app.get('/plans', async (c) => {
   try {
     const { creem, isTestMode } = getServices(c);
-    // #region agent log
-    console.log('[DEBUG] /plans endpoint called', { isTestMode, allMappings: PRODUCT_ID_TO_PLAN_TYPE });
-    // #endregion
     const allPlans = getAllPlanConfigs();
     
     // Format plans for frontend consumption
@@ -299,15 +288,9 @@ app.get('/plans', async (c) => {
       // Log the product ID being used (for debugging)
       if (productId) {
         console.log(`✅ Using product ID ${productId} for plan "${plan.name}" (${plan.type}), isTestMode: ${isTestMode}`);
-        // #region agent log
-        console.log('[DEBUG] Product ID selected for plan', { planName: plan.name, planType: plan.type, productId, isTestMode, allProductIds });
-        // #endregion
       } else {
         console.warn(`⚠️ No product ID configured for plan "${plan.name}" (${plan.type}). Available mappings:`, 
           Object.entries(PRODUCT_ID_TO_PLAN_TYPE).filter(([_, planType]) => planType === plan.type));
-        // #region agent log
-        console.log('[DEBUG] No product ID found for plan', { planName: plan.name, planType: plan.type, isTestMode, allProductIds, availableMappings: Object.entries(PRODUCT_ID_TO_PLAN_TYPE).filter(([_, planType]) => planType === plan.type) });
-        // #endregion
       }
       
       // Format price
@@ -504,6 +487,7 @@ app.get('/diagnostics', async (c) => {
  * 需要 user_id 查询参数或从 Authorization header 解析
  */
 app.get('/userinfo', async (c) => {
+  console.log('[Subscription Service] /userinfo endpoint called', { query: c.req.query() });
   try {
     const { subscriptionService, creem, isTestMode, env } = getServices(c);
     // 优先从查询参数获取 user_id
@@ -623,9 +607,6 @@ app.get('/userinfo', async (c) => {
     
     // 获取产品ID：只使用 subscription.product.id（当前订阅的产品）
     const productId = getProductIdFromSubscription(subscription);
-    // #region agent log
-    console.log('[DEBUG] Extracted productId from subscription', { productId, productIdType: typeof productId, subscriptionProduct: subscription.product, subscriptionKeys: Object.keys(subscription) });
-    // #endregion
     
     if (!productId) {
       console.error('No product ID found in Creem subscription response', {
@@ -663,13 +644,7 @@ app.get('/userinfo', async (c) => {
       console.log(`Using cached plan from database: ${plan} for subscriptionId: ${subscriptionId}`);
     } else {
       // 需要调用API确定plan类型（订阅ID不匹配或数据库中没有记录）
-      // #region agent log
-      console.log('[DEBUG] Calling getPlanFromProductId', { productId, productIdType: typeof productId, hasSubscriptionData: !!subscriptionData, subscriptionId });
-      // #endregion
       plan = getPlanFromProductId(productId);
-      // #region agent log
-      console.log('[DEBUG] getPlanFromProductId returned', { productId, plan });
-      // #endregion
     }
 
     // 如果计划类型、状态或周期结束时间发生变化，更新数据库
@@ -690,6 +665,8 @@ app.get('/userinfo', async (c) => {
         periodEnd,
         lastTransactionId
       );
+    } else {
+      console.log(`Skipping database update: no changes detected for user ${userId}`);
     }
 
     // 获取更新后的数据库状态（包含试穿次数等信息）

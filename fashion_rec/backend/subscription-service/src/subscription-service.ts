@@ -447,6 +447,20 @@ export class SubscriptionService {
     
 
       if (data) {
+        // 优化：检查数据是否真的改变了，避免不必要的数据库更新
+        const hasChanges = 
+          data.plan !== subscriptionData.plan ||
+          data.creem_subscription_id !== subscriptionData.creem_subscription_id ||
+          data.creem_customer_id !== subscriptionData.creem_customer_id ||
+          data.status !== subscriptionData.status ||
+          data.period_end !== subscriptionData.period_end ||
+          (subscriptionData.last_transaction_id && data.last_transaction_id !== subscriptionData.last_transaction_id);
+        
+        if (!hasChanges) {
+          console.log('⏭️ Skipping database update: no changes detected');
+          return;
+        }
+        
         // 更新现有订阅
         console.log('🔄 Updating existing subscription...');
         const { data: updateData, error: updateError } = await this.table

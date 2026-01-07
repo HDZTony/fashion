@@ -374,14 +374,25 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Debug: Log all subscription service URLs on first request (only log once per worker instance)
     if (!(globalThis as any).__env_logged) {
-      console.log('[Router] Environment variables check:', {
+      const envCheck = {
         V2_SUBSCRIPTION_SERVICE_URL: env.V2_SUBSCRIPTION_SERVICE_URL || 'NOT SET',
         STABLE_SUBSCRIPTION_SERVICE_URL: env.STABLE_SUBSCRIPTION_SERVICE_URL || 'NOT SET',
         V2_BACKEND_URL: env.V2_BACKEND_URL || 'NOT SET',
         STABLE_BACKEND_URL: env.STABLE_BACKEND_URL || 'NOT SET',
         V2_FRONTEND_HOST: env.V2_FRONTEND_HOST || 'NOT SET',
         STABLE_FRONTEND_HOST: env.STABLE_FRONTEND_HOST || 'NOT SET',
-      })
+      }
+      console.log('[Router] Environment variables check:', envCheck)
+      
+      // Warn if subscription service URLs are not set
+      if (!env.V2_SUBSCRIPTION_SERVICE_URL || !env.STABLE_SUBSCRIPTION_SERVICE_URL) {
+        console.error('[Router] ⚠️ WARNING: Subscription service URLs are not configured!')
+        console.error('[Router] For local development, ensure .dev.vars file exists in cloudflare-router directory with:')
+        console.error('[Router]   STABLE_SUBSCRIPTION_SERVICE_URL=http://127.0.0.1:3001')
+        console.error('[Router]   V2_SUBSCRIPTION_SERVICE_URL=http://127.0.0.1:3001')
+        console.error('[Router] Then restart wrangler dev to load the environment variables.')
+      }
+      
       ;(globalThis as any).__env_logged = true
     }
     try {
@@ -531,14 +542,17 @@ export default {
 
       // Extract user ID from cookie
       const userId = extractUserIdFromCookie(request)
-      
+            
       // Determine user's version
       let version = 'stable' // Default to stable
       
       // If user is authenticated, check their version (from KV cache or database)
       // This ensures all requests use the version determined when they first accessed /studio
       if (userId) {
+        const versionStartTime = Date.now()
         version = await getUserVersion(userId, env)
+        const versionDuration = Date.now() - versionStartTime
+      } else {
       }
 
       // Check if this is an API request
@@ -582,10 +596,29 @@ export default {
               ? env.V2_SUBSCRIPTION_SERVICE_URL
               : env.STABLE_SUBSCRIPTION_SERVICE_URL
             
-            // Fallback: if URL is undefined, use stable as default
+            // Fallback: if URL is undefined, return error instead of using localhost
+            // Cloudflare Workers cannot connect to localhost, so we should fail fast with clear error
             if (!backendUrl) {
-              console.warn(`[Router] ⚠️ [${path}] ${version} subscription service URL is undefined, falling back to STABLE`)
-              backendUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL || env.V2_SUBSCRIPTION_SERVICE_URL || 'http://localhost:3001'
+              console.error(`[Router] ❌ [${path}] ${version} subscription service URL is undefined`)
+              console.error(`[Router] Environment variables check: V2_SUBSCRIPTION_SERVICE_URL=${env.V2_SUBSCRIPTION_SERVICE_URL || 'NOT SET'}, STABLE_SUBSCRIPTION_SERVICE_URL=${env.STABLE_SUBSCRIPTION_SERVICE_URL || 'NOT SET'}`)
+              
+              const origin = request.headers.get('Origin')
+              const corsHeaders = getCorsHeaders(origin)
+              
+              return new Response(JSON.stringify({
+                error: 'Configuration error',
+                detail: `Subscription service URL is not configured for version '${version}'. Please set ${version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'} environment variable.\n\nFor local development:\n1. Ensure .dev.vars file exists in cloudflare-router directory\n2. Restart wrangler dev after adding environment variables\n3. Check that subscription service is running on the configured port`,
+                path: path,
+                version: version,
+                missingEnvVar: version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'
+              }), {
+                status: 500,
+                statusText: 'Internal Server Error',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...corsHeaders
+                }
+              })
             }
             
             console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} to: ${backendUrl} (version: ${version}, userId: ${userId || 'null'})`)
@@ -624,6 +657,7 @@ export default {
         const isTryOnRequest = path === '/try-on'
         const isUploadRequest = path === '/upload'
         const timeoutMs = (isTryOnRequest || isUploadRequest) ? 240000 : 25000 // 4 minutes for try-on/upload, 25 seconds for others
+        
         const abortController = new AbortController()
         const timeoutId = setTimeout(() => {
           abortController.abort()
@@ -632,14 +666,24 @@ export default {
         let response: Response
         try {
           // Create a new request with abort signal
+          // Note: For local development, wrangler dev may have issues connecting to another wrangler dev instance
+          // If this fails, consider using remote URLs or a different connection method
           const requestWithSignal = new Request(backendRequest, {
             signal: abortController.signal
           })
           
-          response = await fetch(requestWithSignal)
+          // Try to fetch with error handling
+          try {
+            response = await fetch(requestWithSignal)
+          } catch (fetchErr: any) {
+            throw fetchErr
+          }
           
           // Clear timeout if request completed successfully
           clearTimeout(timeoutId)
+          
+          // Log response details for debugging
+          console.log(`[Router] Backend response: status ${response.status} ${response.statusText} for ${path}`)
         } catch (fetchError: any) {
           // Clear timeout in case of error
           clearTimeout(timeoutId)
@@ -647,6 +691,7 @@ export default {
           const errorDuration = Date.now() - fetchStartTime
           console.error(`[Router] Backend fetch failed for ${backendRequest.url} after ${errorDuration}ms:`, fetchError)
           console.error(`[Router] Error details - name: ${fetchError?.name}, message: ${fetchError?.message}, stack: ${fetchError?.stack}`)
+          console.error(`[Router] Error type: ${fetchError?.constructor?.name}, cause: ${fetchError?.cause}`)
           
           // Determine error type and status code
           let errorDetail = fetchError.message || 'Request timeout or connection error'
@@ -683,6 +728,19 @@ Troubleshooting steps:
             statusCode = 502
             statusText = 'Bad Gateway'
             console.error(`[Router] DNS resolution failed for backend ${backendHost}`)
+          } else if (fetchError.message?.includes('internal error')) {
+            errorDetail = `Cloudflare Worker internal error when connecting to ${backendHost}. This may occur when wrangler dev cannot connect to another local wrangler dev instance. 
+
+Possible solutions:
+1. Use a different approach: Instead of routing through Cloudflare Router, connect directly to the subscription service
+2. Check if subscription service is accessible: Test with curl http://127.0.0.1:3001/health
+3. Consider using remote URLs for local development instead of localhost connections
+4. Check wrangler dev logs for more details about the internal error
+
+Error reference: ${fetchError.message}`
+            statusCode = 502
+            statusText = 'Bad Gateway'
+            console.error(`[Router] Internal error connecting to backend ${backendHost}: ${fetchError.message}`)
           }
           
           // Return error response with CORS headers

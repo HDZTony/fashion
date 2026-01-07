@@ -65,52 +65,19 @@ export const PRODUCT_ID_TO_PLAN_TYPE: Record<string, PlanType> = {
 export function getPlanTypeFromProductId(
   productId: string | undefined
 ): PlanType {
-  // #region agent log
-  console.log('[DEBUG] getPlanTypeFromProductId called', { productId, productIdType: typeof productId, productIdLength: productId?.length, hasMapping: !!PRODUCT_ID_TO_PLAN_TYPE, availableIds: Object.keys(PRODUCT_ID_TO_PLAN_TYPE) });
-  // #endregion
-  
   if (!productId) {
     throw new Error('productId is required to determine plan type');
   }
 
-  // #region agent log
-  console.log('[DEBUG] Before mapping lookup', { productId, productIdJSON: JSON.stringify(productId), mappingKeys: Object.keys(PRODUCT_ID_TO_PLAN_TYPE), mappingValues: Object.values(PRODUCT_ID_TO_PLAN_TYPE), directLookup: PRODUCT_ID_TO_PLAN_TYPE[productId] });
-  // #endregion
-
   // 直接从映射表查找
   const planType = PRODUCT_ID_TO_PLAN_TYPE[productId];
   
-  // #region agent log
-  console.log('[DEBUG] After mapping lookup', { productId, planType, found: !!planType, allMappings: PRODUCT_ID_TO_PLAN_TYPE });
-  // #endregion
-  
   if (!planType) {
-    // #region agent log
-    const debugInfo = {
-      productId,
-      productIdType: typeof productId,
-      productIdLength: productId?.length,
-      productIdCharCodes: productId?.split('').map((c: string) => c.charCodeAt(0)),
-      expectedProductId: 'prod_ZcR2OsakU427r5LppdXpe',
-      expectedCharCodes: 'prod_ZcR2OsakU427r5LppdXpe'.split('').map((c: string) => c.charCodeAt(0)),
-      availableIds: Object.keys(PRODUCT_ID_TO_PLAN_TYPE),
-      mappingSize: Object.keys(PRODUCT_ID_TO_PLAN_TYPE).length,
-      hasMapping: PRODUCT_ID_TO_PLAN_TYPE.hasOwnProperty(productId),
-      directAccess: PRODUCT_ID_TO_PLAN_TYPE[productId],
-      allMappings: PRODUCT_ID_TO_PLAN_TYPE
-    };
-    console.error('[DEBUG] Mapping not found:', JSON.stringify(debugInfo, null, 2));
-    // #endregion
     throw new Error(
       `No plan type found for productId: ${productId}. ` +
-      `Available product IDs: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).join(', ')}. ` +
-      `[DEBUG] Mapping size: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).length}, hasMapping: ${PRODUCT_ID_TO_PLAN_TYPE.hasOwnProperty(productId)}`
+      `Available product IDs: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).join(', ')}.`
     );
   }
-  
-  // #region agent log
-  console.log('[DEBUG] Returning plan type', { productId, planType });
-  // #endregion
   
   return planType;
 }
