@@ -4,7 +4,7 @@ import { logger } from 'hono/logger';
 import { createCreem } from 'creem_io';
 import { createClient } from '@supabase/supabase-js';
 import { SubscriptionService } from './subscription-service';
-import { getPlanTypeFromProductId, PlanType, getAllPlanConfigs, PRODUCT_NAME_TO_PLAN_TYPE } from './plan-config';
+import { getPlanTypeFromProductId, PlanType, getAllPlanConfigs, PRODUCT_ID_TO_PLAN_TYPE } from './plan-config';
 
 // Define environment variables interface for Cloudflare Workers
 interface Env {
@@ -280,25 +280,19 @@ app.get('/plans', async (c) => {
     }
     
     // Format plans for frontend consumption
-    // Product name mapping: Creem product names may differ from plan names
-    // e.g., plan.name is "Member" but Creem product name is "Fashion Rec Member"
+    // Use product ID mapping to find matching products
     const formattedPlans = allPlans.map((plan) => {
-      // First try direct match by plan.name
-      let matchingProduct = recurringProducts.find((p) => p.name === plan.name);
+      // Find product by matching plan type using PRODUCT_ID_TO_PLAN_TYPE reverse lookup
+      const matchingProductId = Object.keys(PRODUCT_ID_TO_PLAN_TYPE).find(
+        (productId) => PRODUCT_ID_TO_PLAN_TYPE[productId] === plan.type
+      );
       
-      // If direct match fails, try using PRODUCT_NAME_TO_PLAN_TYPE mapping
-      if (!matchingProduct) {
-        // Find product by matching plan type using reverse lookup
-        const expectedProductName = Object.keys(PRODUCT_NAME_TO_PLAN_TYPE).find(
-          (productName) => PRODUCT_NAME_TO_PLAN_TYPE[productName] === plan.type
-        );
-        
-        if (expectedProductName) {
-          matchingProduct = recurringProducts.find((p) => p.name === expectedProductName);
-        }
-      }
+      // Find the actual product object from the API response
+      const matchingProduct = matchingProductId 
+        ? recurringProducts.find((p) => p.id === matchingProductId)
+        : null;
       
-      const productId = matchingProduct?.id || null;
+      const productId = matchingProduct?.id || matchingProductId || null;
       
       // Log warning if product not found (for debugging)
       if (!productId) {
@@ -656,7 +650,7 @@ app.get('/userinfo', async (c) => {
       console.log(`Using cached plan from database: ${plan} for subscriptionId: ${subscriptionId}`);
     } else {
       // 需要调用API确定plan类型（订阅ID不匹配或数据库中没有记录）
-      plan = await getPlanFromProductId(productId, isTestMode, creem);
+      plan = getPlanFromProductId(productId);
     }
 
     // 如果计划类型、状态或周期结束时间发生变化，更新数据库
@@ -843,14 +837,12 @@ function toISOString(date: Date | string | number | null | undefined): string | 
 
 /**
  * 根据产品ID确定套餐类型
- * 使用配置模块中的函数，通过 Creem API 动态获取产品列表
+ * 使用配置模块中的函数，通过产品ID直接映射
  */
-async function getPlanFromProductId(
-  productId: string | undefined,
-  isTestMode: boolean,
-  creem: ReturnType<typeof createCreem>
-): Promise<PlanType> {
-  return await getPlanTypeFromProductId(productId, isTestMode, creem);
+function getPlanFromProductId(
+  productId: string | undefined
+): PlanType {
+  return getPlanTypeFromProductId(productId);
 }
 
 // ==================== Webhook Routes ====================
@@ -983,7 +975,7 @@ async function handleSubscriptionEvent(
         || (data as any)?.subscription?.productId;
     }
     
-    const plan = await getPlanFromProductId(productId, isTestMode, creem);
+    const plan = getPlanFromProductId(productId);
     
     // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
     const periodEnd = subscription.currentPeriodEndDate 
@@ -1140,7 +1132,7 @@ async function updateSubscriptionFromWebhook(
         return;
       }
       // 使用从 API 获取的数据
-      const plan = await getPlanFromProductId(fetchedProductId, isTestMode, creem);
+      const plan = getPlanFromProductId(fetchedProductId);
       const periodEnd = subscription.currentPeriodEndDate 
         ? toISOString(subscription.currentPeriodEndDate)
         : null;
@@ -1164,7 +1156,7 @@ async function updateSubscriptionFromWebhook(
       return;
     }
 
-    const plan = await getPlanFromProductId(productId, isTestMode, creem);
+    const plan = getPlanFromProductId(productId);
     
     // 从 eventObject 中获取 period_end（根据官方示例，字段名可能是 snake_case 或 camelCase）
     const periodEnd = eventObject.current_period_end_date || eventObject.currentPeriodEndDate
@@ -1256,7 +1248,7 @@ const createWebhookHandler = (
                 || (context.subscription as any)?.productId;
             }
             
-            const plan = await getPlanFromProductId(productId, isTestMode, creem);
+            const plan = getPlanFromProductId(productId);
             
             await subscriptionService.updateSubscription(
               userId,
@@ -1513,7 +1505,7 @@ const createWebhookHandler = (
               || (data as any)?.object?.items?.[0]?.product_id;
           }
           
-          const plan = await getPlanFromProductId(productId, isTestMode, creem);
+          const plan = getPlanFromProductId(productId);
           
           console.log('📅 Subscription period end:', periodEnd);
           console.log('📦 Plan determined from product ID:', { productId, plan });
@@ -1658,7 +1650,7 @@ const createWebhookHandler = (
               : (data as any)?.object?.product?.id;
           }
           
-          const plan = await getPlanFromProductId(productId, isTestMode, creem);
+          const plan = getPlanFromProductId(productId);
           
           // 获取 period_end（使用 Creem SDK 的 currentPeriodEndDate 字段）
           const periodEnd = subscription.currentPeriodEndDate 
@@ -2023,7 +2015,7 @@ app.post('/subscriptions/:subscriptionId/upgrade', async (c) => {
         // 获取产品ID和计划类型
         const productId = getProductIdFromSubscription(upgradedSubscription);
         if (productId) {
-          const plan = await getPlanFromProductId(productId, isTestMode, creem);
+          const plan = getPlanFromProductId(productId);
           const periodEnd = toISOString(upgradedSubscription.currentPeriodEndDate);
           const customerId: string | null = typeof upgradedSubscription.customer === 'string' 
             ? upgradedSubscription.customer 
@@ -2202,7 +2194,7 @@ app.post('/subscriptions/:subscriptionId/cancel', async (c) => {
           productId = getProductIdFromSubscription(canceledSubscription);
         }
         
-        const plan = await getPlanFromProductId(productId, isTestMode, creem);
+        const plan = getPlanFromProductId(productId);
         
         console.log('📅 Subscription period end:', periodEnd);
         console.log('📦 Plan determined from product ID:', { productId, plan });
@@ -2524,7 +2516,7 @@ app.post('/subscription/sync-from-checkout', async (c) => {
         productId = checkout.product.id;
       }
       
-      const plan = await getPlanFromProductId(productId, isTestMode, creem);
+      const plan = getPlanFromProductId(productId);
       console.log('📦 Plan determined from product ID:', { productId, plan });
 
       // 获取 period_end（使用类型定义中的 currentPeriodEndDate）
@@ -2794,7 +2786,7 @@ app.post('/subscription/sync-from-subscription', async (c) => {
       productId = subscription.product.id;
     }
     
-    const plan = await getPlanFromProductId(productId, isTestMode, creem);
+    const plan = getPlanFromProductId(productId);
     
     console.log('📅 Subscription period end:', periodEnd);
     console.log('📦 Plan determined from product ID:', { productId, plan });
