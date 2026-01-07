@@ -1219,7 +1219,7 @@ const createWebhookHandler = (
   env: Env
 ) => {
   return {
-      // 结账完成事件 - 只打印日志
+      // 结账完成事件 - 处理 credits 购买（onetime 产品）
       onCheckoutCompleted: async (data: any) => {
         console.log('✅ Checkout completed:', {
           eventType: data.eventType || 'checkout.completed',
@@ -1229,6 +1229,52 @@ const createWebhookHandler = (
           subscriptionId: data.subscription?.id,
           metadata: data.checkout?.metadata,
         });
+
+        // 尝试多种方式获取 userId（优先使用 checkout metadata）
+        let userId = 
+          data.checkout?.metadata?.userId ||
+          data.checkout?.metadata?.user_id ||
+          data.object?.metadata?.userId ||
+          data.object?.metadata?.user_id ||
+          data.metadata?.userId ||
+          data.metadata?.user_id;
+
+        if (!userId) {
+          console.warn('⚠️ Could not find userId in checkout.completed event metadata');
+          return;
+        }
+
+        // 获取产品ID（从 checkout 或 object 中）
+        const productId = data.checkout?.product?.id
+          || data.checkout?.productId
+          || data.object?.product?.id
+          || data.object?.productId
+          || data.product?.id;
+
+        if (!productId) {
+          console.warn('⚠️ Could not find productId in checkout.completed event');
+          return;
+        }
+
+        console.log(`🔍 Processing checkout.completed for credits purchase:`, {
+          userId,
+          productId,
+          checkoutId: data.checkout?.id || data.object?.id,
+        });
+
+        // 检查是否是 credits 购买并处理
+        const isCreditsPurchase = await handleCreditsPurchase(
+          userId,
+          productId,
+          subscriptionService,
+          creem
+        );
+
+        if (isCreditsPurchase) {
+          console.log(`✅ Credits purchase processed successfully in checkout.completed event`);
+        } else {
+          console.log(`ℹ️ Not a credits purchase, skipping credits processing`);
+        }
       },
 
       // 授予访问权限事件
@@ -1325,7 +1371,7 @@ const createWebhookHandler = (
         });
       },
 
-      // 订阅已支付事件 - 处理 credits 购买或更新订阅
+      // 订阅已支付事件 - 更新订阅
       onSubscriptionPaid: async (data: any) => {
         console.log('💰 Subscription paid:', {
           eventType: data.eventType || 'subscription.paid',
@@ -1336,68 +1382,7 @@ const createWebhookHandler = (
           periodEnd: data.object?.current_period_end_date,
         });
 
-        const eventObject = data.object || data.subscription || data;
-        const subscriptionId = eventObject.id || data.subscription?.id || data.id;
-        
-        if (!subscriptionId) {
-          console.error('❌ No subscription ID found in paid event');
-          return;
-        }
-
-        // 尝试多种方式获取 userId
-        let userId = 
-          eventObject.metadata?.userId ||
-          eventObject.metadata?.user_id ||
-          data.checkout?.metadata?.userId || 
-          data.checkout?.metadata?.user_id ||
-          data.metadata?.userId || 
-          data.metadata?.user_id ||
-          data.subscription?.metadata?.userId ||
-          data.subscription?.metadata?.user_id;
-
-        // 如果 metadata 中没有 userId，从数据库查找
-        if (!userId) {
-          try {
-            const { data: subscriptionData, error: queryError } = await subscriptionService['table']
-              .select('user_id')
-              .eq('creem_subscription_id', subscriptionId)
-              .single();
-
-            if (!queryError && subscriptionData?.user_id) {
-              userId = subscriptionData.user_id;
-            }
-          } catch (dbError: any) {
-            console.warn(`⚠️ Error querying database for paid event:`, dbError.message);
-          }
-        }
-
-        if (!userId) {
-          console.warn(`⚠️ Could not find userId for paid event, subscriptionId: ${subscriptionId}`);
-          return;
-        }
-
-        // 获取产品ID
-        const productId = eventObject.product?.id 
-          || eventObject.items?.[0]?.productId
-          || (data.subscription as any)?.product?.id
-          || (data.subscription as any)?.items?.[0]?.productId;
-
-        if (productId) {
-          // 先检查是否是 credits 购买
-          const isCreditsPurchase = await handleCreditsPurchase(
-            userId,
-            productId,
-            subscriptionService,
-            creem
-          );
-
-          // 如果是 credits 购买，直接返回，不需要更新订阅
-          if (isCreditsPurchase) {
-            return;
-          }
-        }
-
-        // 如果不是 credits 购买，更新订阅数据库内容
+        // 更新订阅数据库内容
         await updateSubscriptionFromWebhook(
           data,
           subscriptionService,
