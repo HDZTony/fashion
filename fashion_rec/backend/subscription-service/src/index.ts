@@ -261,43 +261,36 @@ app.get('/config', async (c) => {
 // Note: free is not included in the plans list (it's the default state)
 app.get('/plans', async (c) => {
   try {
-    const { creem } = getServices(c);
+    const { creem, isTestMode } = getServices(c);
     const allPlans = getAllPlanConfigs();
-    let recurringProducts: Array<{ id: string; name: string; billingType: string }> = [];
-
-    // Get products from Creem API to map plan names to product IDs.
-    // If the external call fails, fall back to local plan configs so the frontend still works.
-    try {
-      const productsResponse = await creem.products.list({
-        page: 1,
-        limit: 100,
-      });
-      const allProducts = productsResponse.items || [];
-      recurringProducts = allProducts.filter((p) => p.billingType === 'recurring');
-    } catch (err: any) {
-      console.error('Failed to fetch products from Creem API, returning plans without productId', err?.message || err);
-      recurringProducts = [];
-    }
     
     // Format plans for frontend consumption
-    // Use product ID mapping to find matching products
+    // Use product ID mapping based on current environment (test/production)
     const formattedPlans = allPlans.map((plan) => {
-      // Find product by matching plan type using PRODUCT_ID_TO_PLAN_TYPE reverse lookup
-      const matchingProductId = Object.keys(PRODUCT_ID_TO_PLAN_TYPE).find(
+      // Find all product IDs that map to this plan type
+      const allProductIds = Object.keys(PRODUCT_ID_TO_PLAN_TYPE).filter(
         (productId) => PRODUCT_ID_TO_PLAN_TYPE[productId] === plan.type
       );
       
-      // Find the actual product object from the API response
-      const matchingProduct = matchingProductId 
-        ? recurringProducts.find((p) => p.id === matchingProductId)
-        : null;
+      // Select the correct product ID based on current environment
+      // Test environment product IDs: prod_1W4roSJevbLIRwQyb3a8SQ
+      // Production environment product IDs: prod_ZcR2OsakU427r5LppdXpe
+      let productId: string | null = null;
       
-      const productId = matchingProduct?.id || matchingProductId || null;
+      if (isTestMode) {
+        // Test environment: prefer test product IDs
+        productId = allProductIds.find(id => id === 'prod_1W4roSJevbLIRwQyb3a8SQ') || allProductIds[0] || null;
+      } else {
+        // Production environment: prefer production product IDs
+        productId = allProductIds.find(id => id === 'prod_ZcR2OsakU427r5LppdXpe') || allProductIds[0] || null;
+      }
       
-      // Log warning if product not found (for debugging)
-      if (!productId) {
-        console.warn(`⚠️ Product not found for plan "${plan.name}" (${plan.type}). Available products:`, 
-          recurringProducts.map(p => ({ name: p.name, id: p.id })));
+      // Log the product ID being used (for debugging)
+      if (productId) {
+        console.log(`✅ Using product ID ${productId} for plan "${plan.name}" (${plan.type}), isTestMode: ${isTestMode}`);
+      } else {
+        console.warn(`⚠️ No product ID configured for plan "${plan.name}" (${plan.type}). Available mappings:`, 
+          Object.entries(PRODUCT_ID_TO_PLAN_TYPE).filter(([_, planType]) => planType === plan.type));
       }
       
       // Format price

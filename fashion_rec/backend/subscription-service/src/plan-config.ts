@@ -86,11 +86,26 @@ export function getPlanTypeFromProductId(
   
   if (!planType) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:78',message:'Mapping not found - throwing error',data:{productId,availableIds:Object.keys(PRODUCT_ID_TO_PLAN_TYPE),productIdCharCodes:productId.split('').map(c=>c.charCodeAt(0)),expectedCharCodes:'prod_ZcR2OsakU427r5LppdXpe'.split('').map(c=>c.charCodeAt(0))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    const debugInfo = {
+      productId,
+      productIdType: typeof productId,
+      productIdLength: productId?.length,
+      productIdCharCodes: productId?.split('').map((c: string) => c.charCodeAt(0)),
+      expectedProductId: 'prod_ZcR2OsakU427r5LppdXpe',
+      expectedCharCodes: 'prod_ZcR2OsakU427r5LppdXpe'.split('').map((c: string) => c.charCodeAt(0)),
+      availableIds: Object.keys(PRODUCT_ID_TO_PLAN_TYPE),
+      mappingSize: Object.keys(PRODUCT_ID_TO_PLAN_TYPE).length,
+      hasMapping: PRODUCT_ID_TO_PLAN_TYPE.hasOwnProperty(productId),
+      directAccess: PRODUCT_ID_TO_PLAN_TYPE[productId],
+      allMappings: PRODUCT_ID_TO_PLAN_TYPE
+    };
+    console.error('[DEBUG] Mapping not found:', JSON.stringify(debugInfo, null, 2));
+    fetch('http://127.0.0.1:7242/ingest/a26e042c-3ee7-44f0-bb50-a1b971ea28f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'plan-config.ts:78',message:'Mapping not found - throwing error',data:debugInfo,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
     throw new Error(
       `No plan type found for productId: ${productId}. ` +
-      `Available product IDs: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).join(', ')}`
+      `Available product IDs: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).join(', ')}. ` +
+      `[DEBUG] Mapping size: ${Object.keys(PRODUCT_ID_TO_PLAN_TYPE).length}, hasMapping: ${PRODUCT_ID_TO_PLAN_TYPE.hasOwnProperty(productId)}`
     );
   }
   

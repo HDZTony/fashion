@@ -331,7 +331,7 @@ function isApiRequest(url: URL, request: Request): boolean {
     return false
   }
   
-  // List of all API endpoints from backend (main.py)
+  // List of all API endpoints from backend (main.py) and subscription service
   // This ensures all API requests are routed to backend, not frontend
   // NOTE: Root path '/' should route to frontend, not backend
   const isApi = path.startsWith('/api/') || 
@@ -350,6 +350,16 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/subscription') ||
          path.startsWith('/cleanup-expired-files') ||
          path === '/userinfo' ||
+         path === '/plans' ||
+         path === '/credits' ||
+         path === '/config' ||
+         path === '/products' ||
+         path === '/checkouts' ||
+         path === '/customers' ||
+         path.startsWith('/subscriptions/') ||
+         path.startsWith('/checkouts/') ||
+         path.startsWith('/products/') ||
+         path.startsWith('/customers/') ||
          path === '/webhook' ||
          path === '/test-webhook'
   
@@ -362,6 +372,18 @@ function isApiRequest(url: URL, request: Request): boolean {
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Debug: Log all subscription service URLs on first request (only log once per worker instance)
+    if (!(globalThis as any).__env_logged) {
+      console.log('[Router] Environment variables check:', {
+        V2_SUBSCRIPTION_SERVICE_URL: env.V2_SUBSCRIPTION_SERVICE_URL || 'NOT SET',
+        STABLE_SUBSCRIPTION_SERVICE_URL: env.STABLE_SUBSCRIPTION_SERVICE_URL || 'NOT SET',
+        V2_BACKEND_URL: env.V2_BACKEND_URL || 'NOT SET',
+        STABLE_BACKEND_URL: env.STABLE_BACKEND_URL || 'NOT SET',
+        V2_FRONTEND_HOST: env.V2_FRONTEND_HOST || 'NOT SET',
+        STABLE_FRONTEND_HOST: env.STABLE_FRONTEND_HOST || 'NOT SET',
+      })
+      ;(globalThis as any).__env_logged = true
+    }
     try {
       const url = new URL(request.url)
       const path = url.pathname
@@ -383,8 +405,27 @@ export default {
         return headers
       }
 
-      // Handle CORS preflight for router API endpoints and webhooks
-      if ((path === '/api/router/get-version' || path === '/api/router/set-version' || path === '/webhook' || path === '/test-webhook') && request.method === 'OPTIONS') {
+      // Handle CORS preflight for all API endpoints (router endpoints, webhooks, and subscription service endpoints)
+      const isSubscriptionServicePath = path.startsWith('/subscription') || 
+                                       path === '/userinfo' ||
+                                       path === '/plans' ||
+                                       path === '/credits' ||
+                                       path === '/config' ||
+                                       path === '/health' ||
+                                       path === '/products' ||
+                                       path === '/checkouts' ||
+                                       path === '/customers' ||
+                                       path.startsWith('/subscriptions/') ||
+                                       path.startsWith('/checkouts/') ||
+                                       path.startsWith('/products/') ||
+                                       path.startsWith('/customers/')
+      
+      if ((path === '/api/router/get-version' || 
+           path === '/api/router/set-version' || 
+           path === '/webhook' || 
+           path === '/test-webhook' ||
+           isSubscriptionServicePath) && 
+          request.method === 'OPTIONS') {
         const origin = request.headers.get('Origin')
         return new Response(null, {
           status: 204,
@@ -508,6 +549,16 @@ export default {
         // Check if this is a subscription-service request
         const isSubscriptionRequest = path.startsWith('/subscription') || 
                                       path === '/userinfo' ||
+                                      path === '/plans' ||
+                                      path === '/credits' ||
+                                      path === '/config' ||
+                                      path === '/products' ||
+                                      path === '/checkouts' ||
+                                      path === '/customers' ||
+                                      path.startsWith('/subscriptions/') ||
+                                      path.startsWith('/checkouts/') ||
+                                      path.startsWith('/products/') ||
+                                      path.startsWith('/customers/') ||
                                       path === '/webhook' ||
                                       path === '/test-webhook'
         
@@ -524,10 +575,20 @@ export default {
             console.log(`[Router] Routing webhook to stable subscription-service: ${backendUrl}`)
           } else {
             // Route subscription requests based on user version (stable/v2)
+            // Debug: Log environment variables
+            console.log(`[Router] 🔍 [${path}] Environment check - V2_SUBSCRIPTION_SERVICE_URL: ${env.V2_SUBSCRIPTION_SERVICE_URL}, STABLE_SUBSCRIPTION_SERVICE_URL: ${env.STABLE_SUBSCRIPTION_SERVICE_URL}, version: ${version}`)
+            
             backendUrl = version === 'v2'
               ? env.V2_SUBSCRIPTION_SERVICE_URL
               : env.STABLE_SUBSCRIPTION_SERVICE_URL
-            console.log(`[Router] Routing subscription request ${request.method} ${path} to subscription-service: ${backendUrl} (version: ${version}, userId: ${userId || 'null'})`)
+            
+            // Fallback: if URL is undefined, use stable as default
+            if (!backendUrl) {
+              console.warn(`[Router] ⚠️ [${path}] ${version} subscription service URL is undefined, falling back to STABLE`)
+              backendUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL || env.V2_SUBSCRIPTION_SERVICE_URL || 'http://localhost:3001'
+            }
+            
+            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} to: ${backendUrl} (version: ${version}, userId: ${userId || 'null'})`)
           }
         } else {
           backendUrl = version === 'v2' 
