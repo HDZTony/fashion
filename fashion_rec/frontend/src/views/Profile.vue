@@ -35,13 +35,13 @@ const creditsData = ref<Array<{
 
 // 获取 credits 的原价和折扣信息
 const getCreditDiscountInfo = (credit: { credits: number; price: number }) => {
-  if (credit.credits === 200) {
+  if (credit.credits === 800) {
     return {
       originalPrice: 20,
       discount: 0.9,
       discountText: '10% OFF'
     }
-  } else if (credit.credits === 500) {
+  } else if (credit.credits === 2000) {
     return {
       originalPrice: 50,
       discount: 0.85,

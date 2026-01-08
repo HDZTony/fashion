@@ -9,8 +9,53 @@
         <p class="text-xl text-gray-600">Unlock more virtual try-on power</p>
       </div>
 
-      <!-- Subscription Plan -->
-      <div class="max-w-md mx-auto mb-16">
+      <!-- Plans (Free + Paid) -->
+      <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
+        <!-- Free Plan -->
+        <div
+          class="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-8 relative transform hover:shadow-xl transition-all"
+        >
+          <div class="text-center">
+            <h2 class="text-2xl font-bold mb-2 text-gray-900">Free</h2>
+            <div class="mb-6">
+              <span class="text-5xl font-bold text-gray-900">$0</span>
+            </div>
+            <ul class="text-left space-y-4 mb-8">
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span class="text-gray-900">3 free tries per day</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span class="text-gray-900">Basic virtual try-on features</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-6 h-6 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span class="text-gray-900">Try-on history</span>
+              </li>
+            </ul>
+            <div
+              v-if="!hasActivePaidSubscription()"
+              class="w-full py-3 px-6 rounded-full font-semibold bg-gray-100 text-gray-600 border-2 border-gray-300"
+            >
+              Current Plan
+            </div>
+            <div
+              v-else
+              class="w-full py-3 px-6 rounded-full font-semibold bg-gray-200 text-gray-500 cursor-not-allowed"
+            >
+              Already on a paid plan
+            </div>
+          </div>
+        </div>
+
+        <!-- Subscription Plan -->
         <div
           v-for="plan in plansData"
           :key="plan.slug"
@@ -31,19 +76,13 @@
                 <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>{{ plan.tries }}</span>
+                <span>{{ plan.desc}}</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
-                <span>3 free tries per day (first 3 tries are free for all users)</span>
-              </li>
-              <li class="flex items-start">
-                <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>Priority processing</span>
+                <span>Generate 2k try-on images</span>
               </li>
               <li class="flex items-start">
                 <svg class="w-6 h-6 text-pink-200 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -100,7 +139,7 @@
                   <svg class="w-6 h-6 text-pink-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                   </svg>
-                  <span class="text-gray-700">{{ credit.credits }} virtual try-ons</span>
+                  <span class="text-gray-700">{{ credit.credits }} credits </span>
                 </li>
                 <li class="flex items-start">
                   <svg class="w-6 h-6 text-blue-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,13 +205,13 @@ const creditsData = ref<Array<{
 
 // 获取 credits 的原价和折扣信息
 const getCreditDiscountInfo = (credit: { credits: number; price: number }) => {
-  if (credit.credits === 200) {
+  if (credit.credits === 800) {
     return {
       originalPrice: 20,
       discount: 0.9,
       discountText: '10% OFF'
     }
-  } else if (credit.credits === 500) {
+  } else if (credit.credits === 2000) {
     return {
       originalPrice: 50,
       discount: 0.85,
@@ -186,9 +225,8 @@ const plansData = ref<Array<{
   slug: string
   name: string
   price: string
-  tries: string
   desc: string
-  productId?: string
+  productId: string
 }>>([])
 
 // 从后端加载 credits 商品数据
