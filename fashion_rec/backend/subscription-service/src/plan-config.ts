@@ -1,47 +1,20 @@
 /**
  * 套餐配置模块
- * 解耦套餐信息，方便移植到其他项目
- * 
- * 使用方式：
- * 1. 修改此文件中的套餐配置
- * 2. 所有套餐相关的逻辑会自动使用新的配置
+ * 仅保留产品ID到计划类型的映射
+ * 所有产品信息（名称、价格等）都从 Creem API 获取
  */
 
 export type PlanType = 'member';
 
-export interface PlanConfig {
-  /** 套餐类型标识 */
-  type: PlanType;
-  /** 套餐显示名称 */
-  name: string;
-  /** 套餐价格（美元） */
-  price: number;
-}
-
 /**
- * 套餐配置
- * 修改此配置即可调整所有套餐信息
+ * 根据计划类型获取显示名称
+ * 注意：实际产品信息应从 Creem API 获取，此函数仅用于业务逻辑中的默认值
  */
-export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
-  member: {
-    type: 'member',
-    name: 'Member',
-    price: 4.9,
-  },
-};
-
-/**
- * 根据套餐类型获取配置
- */
-export function getPlanConfig(plan: PlanType): PlanConfig {
-  return PLAN_CONFIGS[plan];
-}
-
-/**
- * 获取所有套餐配置
- */
-export function getAllPlanConfigs(): PlanConfig[] {
-  return Object.values(PLAN_CONFIGS);
+export function getPlanName(plan: PlanType): string {
+  const nameMap: Record<PlanType, string> = {
+    member: 'Member',
+  };
+  return nameMap[plan] || plan;
 }
 
 /**

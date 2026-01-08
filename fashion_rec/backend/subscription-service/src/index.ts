@@ -4,7 +4,7 @@ import { logger } from 'hono/logger';
 import { createCreem } from 'creem_io';
 import { createClient } from '@supabase/supabase-js';
 import { SubscriptionService } from './subscription-service';
-import { getPlanTypeFromProductId, PlanType, getAllPlanConfigs, PRODUCT_ID_TO_PLAN_TYPE } from './plan-config';
+import { getPlanTypeFromProductId, PlanType, PRODUCT_ID_TO_PLAN_TYPE } from './plan-config';
 
 // Define environment variables interface for Cloudflare Workers
 interface Env {
@@ -259,6 +259,7 @@ app.get('/config', async (c) => {
 
 // Get all subscription plans (for frontend)
 // Note: free is not included in the plans list (it's the default state)
+// Now fetches plans from Creem API instead of static config
 app.get('/plans', async (c) => {
   try {
     const { creem, isTestMode } = getServices(c);
@@ -270,70 +271,66 @@ app.get('/plans', async (c) => {
       environment: isTestMode ? 'TEST' : 'PRODUCTION',
     });
     
-    const allPlans = getAllPlanConfigs();
-    
-    // Format plans for frontend consumption
-    // Use product ID mapping based on current environment (test/production)
-    const formattedPlans = allPlans.map((plan) => {
-      // Find all product IDs that map to this plan type
-      const allProductIds = Object.keys(PRODUCT_ID_TO_PLAN_TYPE).filter(
-        (productId) => PRODUCT_ID_TO_PLAN_TYPE[productId] === plan.type
-      );
-      
-      // Select the correct product ID based on current environment
-      // Test environment product IDs: prod_1W4roSJevbLIRwQyb3a8SQ
-      // Production environment product IDs: prod_4cVNXwHwb0RWl62USRMmuJ
-      let productId: string | null = null;
-      
-      if (isTestMode) {
-        // Test environment: use test product ID
-        productId = allProductIds.find(id => id === 'prod_1W4roSJevbLIRwQyb3a8SQ') || null;
-      } else {
-        // Production environment: use production product ID
-        productId = allProductIds.find(id => id === 'prod_4cVNXwHwb0RWl62USRMmuJ') || null;
-      }
-      
-      // 如果找不到对应的产品ID，记录警告
-      if (!productId) {
-        const expectedId = isTestMode ? 'prod_1W4roSJevbLIRwQyb3a8SQ' : 'prod_4cVNXwHwb0RWl62USRMmuJ';
-        console.error(`❌ Product ID not found for ${isTestMode ? 'test' : 'production'} environment!`, {
-          planType: plan.type,
-          isTestMode,
-          expectedId,
-          availableIds: allProductIds,
-        });
-      }
-      
-      // Log the product ID being used (for debugging)
-      if (productId) {
-        console.log(`✅ Using product ID ${productId} for plan "${plan.name}" (${plan.type}), isTestMode: ${isTestMode}`);
-      } else {
-        console.warn(`⚠️ No product ID configured for plan "${plan.name}" (${plan.type}). Available mappings:`, 
-          Object.entries(PRODUCT_ID_TO_PLAN_TYPE).filter(([_, planType]) => planType === plan.type));
-      }
-      
-      // Format price
-      const priceDisplay = `$${plan.price} / mo`;
-          
-      // Format description
-      let desc: string;
-      switch (plan.type) {
-        case 'member':
-          desc = 'Generate 2k try-on images';
-          break;
-        default:
-          desc = '';
-      }
-      
-      return {
-        slug: plan.type,
-        name: plan.name,
-        price: priceDisplay,
-        desc,
-        productId, // Include productId for checkout/upgrade operations
-        // Frontend will set action based on user's current subscription status
-      };
+    // 从 Creem API 获取所有产品（与 credits 端点使用相同的数据源）
+    const productsResponse = await creem.products.list({
+      page: 1,
+      limit: 100,
     });
+    
+    const products = productsResponse.items || [];
+    
+    // 过滤出订阅计划产品（非 onetime 类型）
+    // credits 产品：billingType === 'onetime' && name.includes('Credits')
+    // 订阅计划：billingType !== 'onetime'（通常是 recurring 类型）
+    const subscriptionProducts = products.filter(
+      (p) => p.billingType !== 'onetime'
+    );
+    
+    // 格式化订阅计划数据
+    const formattedPlans = subscriptionProducts
+      .map((p) => {
+        // 通过产品ID映射到计划类型
+        const planType = PRODUCT_ID_TO_PLAN_TYPE[p.id];
+        
+        // 如果产品ID不在映射表中，跳过（可能是其他类型的产品）
+        if (!planType) {
+          console.log(`⚠️ Product ${p.id} (${p.name}) not in PLAN_TYPE mapping, skipping`);
+          return null;
+        }
+        
+        // 格式化价格（从 cents 转换为 dollars）
+        const priceInDollars = (p.price || 0) / 100;
+        const priceDisplay = `$${priceInDollars.toFixed(2)} / mo`;
+        
+        // 从 API 获取描述，如果没有则使用默认描述
+        let desc: string = p.description || '';
+        // 如果没有描述，根据计划类型生成默认描述
+        if (!desc) {
+          switch (planType) {
+            case 'member':
+              desc = 'Generate 2k try-on images';
+              break;
+            default:
+              desc = '';
+          }
+        }
+        
+        return {
+          slug: planType,
+          name: p.name, // 直接从 API 获取产品名称
+          price: priceDisplay,
+          desc,
+          productId: p.id, // 使用实际的产品ID
+        };
+      })
+      .filter((plan) => plan !== null) // 过滤掉 null 值
+      .sort((a, b) => {
+        // 按计划类型排序（保持原有顺序）
+        const order: Record<string, number> = { member: 1 };
+        return (order[a!.slug] || 999) - (order[b!.slug] || 999);
+      });
+    
+    console.log(`✅ Found ${formattedPlans.length} subscription plans from Creem API`);
     
     return c.json({ plans: formattedPlans });
   } catch (error: any) {
@@ -1182,11 +1179,15 @@ async function updateSubscriptionFromWebhook(
     const lastTransactionId = eventObject.last_transaction_id || eventObject.lastTransactionId || null;
     
     const customerId = eventObject.customer?.id || data.customer?.id;
+    
+    // 从 eventObject 中获取实际状态（支持 snake_case 和 camelCase，默认为 'active'）
+    const rawStatus = eventObject.status || (data.subscription as any)?.status || 'active';
 
     console.log(`💰 Processing ${eventType} event for user: ${userId}`, {
       subscriptionId,
       productId,
       plan,
+      status: rawStatus,
       periodEnd,
       lastTransactionId,
     });
@@ -1197,7 +1198,7 @@ async function updateSubscriptionFromWebhook(
       plan,
       subscriptionId,
       customerId || null,
-      'active',
+      rawStatus,
       periodEnd,
       lastTransactionId
     );
@@ -1449,13 +1450,24 @@ const createWebhookHandler = (
         });
       },
 
-      // 订阅更新事件 - 只打印日志
+      // 订阅更新事件 - 更新数据库订阅内容
       onSubscriptionUpdated: async (data: any) => {
-        console.log('🔄 Subscription updated (log only):', {
+        console.log('🔄 Subscription updated:', {
           eventType: data.eventType,
           subscriptionId: data.object?.id || data.subscription?.id || data.id,
           customerId: data.object?.customer?.id || data.customer?.id,
+          status: data.object?.status || data.subscription?.status,
+          periodEnd: data.object?.current_period_end_date || data.object?.currentPeriodEndDate,
         });
+
+        // 更新订阅数据库内容
+        await updateSubscriptionFromWebhook(
+          data,
+          subscriptionService,
+          creem,
+          isTestMode,
+          'subscription.update'
+        );
       },
 
       // 订阅取消事件

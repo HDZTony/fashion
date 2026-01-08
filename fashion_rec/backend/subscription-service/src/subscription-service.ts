@@ -6,7 +6,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { 
   PlanType, 
-  getPlanConfig, 
+  getPlanName, 
 } from './plan-config';
 
 const TABLE_NAME = 'user_subscriptions';
@@ -150,7 +150,6 @@ export class SubscriptionService {
           throw new Error(`Plan is missing for user ${userId}`);
         }
         const plan: PlanType = sub.plan;
-        const planConfig = getPlanConfig(plan);
         const today = this.getTodayDateString();
         
         // 检查并重置每日免费次数
@@ -185,7 +184,7 @@ export class SubscriptionService {
               const DAILY_FREE_TRIES = 3; // 每天免费次数
               const nextReset = this.addDays(lastReset, RESET_PERIOD_DAYS);
               const actualNextReset = periodEnd < nextReset ? periodEnd : nextReset;
-              console.log(`✅ ${planConfig.name} subscription canceled but still active until ${periodEnd.toISOString()}`);
+              console.log(`✅ ${getPlanName(plan)} subscription canceled but still active until ${periodEnd.toISOString()}`);
               
               const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
               
@@ -193,7 +192,7 @@ export class SubscriptionService {
               const currentRemaining = sub.credits ?? 0;
               
               return {
-                planName: planConfig.name,
+                planName: getPlanName(plan),
                 credits: currentRemaining,
                 period: 'daily',
                 nextResetDate: actualNextReset.toISOString(),
@@ -203,10 +202,10 @@ export class SubscriptionService {
                 dailyFreeTriesRemaining,
               };
             } else {
-              console.log(`⚠️ ${planConfig.name} subscription period ended at ${periodEnd.toISOString()}`);
+              console.log(`⚠️ ${getPlanName(plan)} subscription period ended at ${periodEnd.toISOString()}`);
             }
           } else {
-            console.log(`⚠️ ${planConfig.name} subscription canceled but no period_end found`);
+            console.log(`⚠️ ${getPlanName(plan)} subscription canceled but no period_end found`);
           }
           
           // 计费周期已结束，保持当前 plan 但状态为 expired
@@ -219,7 +218,7 @@ export class SubscriptionService {
           const currentRemaining = sub.credits ?? 0;
           
           return {
-            planName: planConfig.name,
+            planName: getPlanName(plan),
             credits: currentRemaining,
             period: 'daily',
             nextResetDate: nextReset.toISOString(),
@@ -244,7 +243,7 @@ export class SubscriptionService {
           const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
           
           return {
-            planName: planConfig.name,
+            planName: getPlanName(plan),
             credits: newRemaining, // 订阅不影响次数
             period: 'daily',
             nextResetDate: this.addDays(lastReset, RESET_PERIOD_DAYS).toISOString(),
@@ -258,7 +257,7 @@ export class SubscriptionService {
           const dailyFreeTriesRemaining = Math.max(0, DAILY_FREE_TRIES - dailyFreeTriesUsed);
           
           return {
-            planName: planConfig.name,
+            planName: getPlanName(plan),
             credits: sub.credits ?? 0, // 订阅和次数无关，直接使用现有次数
             period: 'daily',
             nextResetDate: nextReset.toISOString(),
@@ -272,7 +271,6 @@ export class SubscriptionService {
         // 新用户，插入新记录（数据库默认 credits 为 100）
         const now = new Date().toISOString();
         const today = this.getTodayDateString();
-        const memberConfig = getPlanConfig('member');
         
         // 插入新记录，依赖数据库默认值 credits = 100
         const { data: newRecord } = await this.table.insert({
@@ -291,7 +289,7 @@ export class SubscriptionService {
         const nextReset = this.addDays(new Date(), RESET_PERIOD_DAYS);
         
         return {
-          planName: memberConfig.name,
+          planName: getPlanName('member'),
           credits: newRecord?.credits ?? INITIAL_CREDITS,
           period: 'daily',
           nextResetDate: nextReset.toISOString(),
@@ -304,10 +302,9 @@ export class SubscriptionService {
     } catch (error: any) {
       console.error('Error getting subscription status:', error);
       // 返回默认 member plan（直接创建账号时默认给100次）
-      const memberConfig = getPlanConfig('member');
       const DAILY_FREE_TRIES = 3; // 每天免费次数
       return {
-        planName: memberConfig.name,
+        planName: getPlanName('member'),
         credits: INITIAL_CREDITS,
         period: 'daily',
         nextResetDate: null,
@@ -346,7 +343,6 @@ export class SubscriptionService {
         throw new Error(`Plan is missing for user ${userId}`);
       }
       const plan: PlanType = record.plan;
-      const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
 
       // 检查并重置每日免费次数（如果日期已变更）
@@ -428,7 +424,6 @@ export class SubscriptionService {
       console.log('📋 Existing subscription data:', data ? 'Found' : 'Not found (will create new)');
 
       const now = new Date().toISOString();
-      const planConfig = getPlanConfig(plan);
       const today = this.getTodayDateString();
 
       const subscriptionData: any = {
@@ -545,7 +540,6 @@ export class SubscriptionService {
       if (!data) {
         const now = new Date().toISOString();
         const today = this.getTodayDateString();
-        const memberConfig = getPlanConfig('member');
 
         await this.table.insert({
           user_id: userId,
