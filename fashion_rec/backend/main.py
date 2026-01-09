@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Disable SSL warnings for requests with verify=False
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from services.recognition import analyze_image
-from services.vector_db import add_to_wardrobe, search_similar, get_user_items, get_items_by_urls
+from services.vector_db import add_to_wardrobe, search_similar, get_user_items, get_items_by_urls, get_user_items_with_embedding
 from services.try_on import generate_try_on
 from auth import get_current_user, get_current_user_token, get_current_user_and_token
 from fastapi import Depends
@@ -641,7 +641,12 @@ async def add_item(
             shutil.copyfileobj(file.file, buffer)
 
         # Analyze image
-        features = await analyze_image(temp_path)
+        features_list = await analyze_image(temp_path)
+        
+        # Handle single item (for this endpoint, we expect single item)
+        if not features_list or len(features_list) == 0:
+            raise HTTPException(status_code=500, detail="图片分析返回空结果")
+        features = features_list[0] if isinstance(features_list, list) else features_list
 
         # Upload to R2 and get URL
         from services.storage import upload_file_to_r2
@@ -650,7 +655,9 @@ async def add_item(
             url = await upload_file_to_r2(f, file.filename, file.content_type or "image/jpeg")
 
         # Add to vector database
-        item_id = await add_to_wardrobe(url, features, user_id)
+        # Extract gender from features if present
+        gender = features.get("gender") if isinstance(features, dict) else None
+        item_id = await add_to_wardrobe(url, features, user_id, gender=gender)
 
         # Clean up temp file
         temp_path.unlink()
@@ -658,7 +665,7 @@ async def add_item(
         return {
             "id": item_id,
             "url": url,
-            "features": features,
+            "features": features if isinstance(features, dict) else features_list[0] if features_list else {},
         }
     except Exception as e:
         print(f"Error adding item: {e}")
@@ -969,7 +976,9 @@ async def upload_image(
             
             # Add to vector database
             logger.info("Adding item to wardrobe database...")
-            item_id = await add_to_wardrobe(final_url, features, user_id)
+            # Extract gender from features if present
+            gender = features.get("gender")
+            item_id = await add_to_wardrobe(final_url, features, user_id, gender=gender)
             logger.info(f"Step 4/4: Item added to wardrobe with ID: {item_id}")
             logger.info("===== URL upload process completed successfully =====")
             
@@ -1023,10 +1032,15 @@ async def batch_add_items(
             if "error" in item_data.get("features", {}):
                 continue  # Skip items with errors
 
+            # Extract gender from features if present
+            features = item_data.get("features", {})
+            gender = features.get("gender") if isinstance(features, dict) else None
+            
             item_id = await add_to_wardrobe(
                 item_data["url"],
-                item_data["features"],
+                features,
                 user_id,
+                gender=gender,
             )
             added_items.append(
                 {
@@ -1064,6 +1078,62 @@ async def get_items(user_id: str = Depends(get_current_user)):
 
 class DeleteItemsRequest(BaseModel):
     item_ids: List[str]
+
+
+EXAMPLE_USER_EMAIL = "954504788@qq.com"
+
+
+async def get_user_id_by_email(email: str) -> Optional[str]:
+    """
+    通过邮箱获取 Supabase 用户 ID。
+    需要使用 SERVICE_ROLE_KEY 权限查询 auth.users 表。
+    """
+    try:
+        import httpx
+        from services.supabase_client import create_supabase_client
+        
+        # Use service role key to query auth.users
+        # Supabase Admin API endpoint
+        supabase_url = os.getenv("SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not service_role_key:
+            logger.error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set")
+            return None
+        
+        # Use Supabase Admin API to list users and find by email
+        # Note: Supabase Admin API uses GET /auth/v1/admin/users with query params
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers={
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                params={"page": 1, "per_page": 1000},  # Get up to 1000 users
+            )
+            
+            if response.status_code == 200:
+                users_data = response.json()
+                users = users_data.get("users", [])
+                
+                # Find user by email
+                for user in users:
+                    if user.get("email") == email:
+                        return user.get("id")
+                
+                logger.warning(f"User with email {email} not found")
+                return None
+            else:
+                logger.error(f"Failed to query users: {response.status_code} - {response.text}")
+                return None
+                
+    except Exception as e:
+        logger.error(f"Failed to get user_id by email {email}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 @app.post("/items/delete")
@@ -1109,6 +1179,127 @@ async def delete_items(
         "message": f"Deletion started for {len(request.item_ids)} item(s)",
         "status": "accepted"
     }
+
+
+@app.post("/items/import-examples")
+async def import_example_items(
+    gender: str = Form(...),  # "male", "female", 或 "both"
+    user_id: str = Depends(get_current_user),
+):
+    """
+    从示例账号导入单品到当前用户衣橱。
+    支持按性别筛选：Man's, Women's, Unisex。
+    会复制原 embedding，避免重新生成。
+    """
+    if gender not in ["Man's", "Women's", "Unisex"]:
+        raise HTTPException(status_code=400, detail="gender 必须是 Man's, Women's 或 Unisex")
+    
+    try:
+        # 1. 获取示例账号的 user_id
+        example_user_id = await get_user_id_by_email(EXAMPLE_USER_EMAIL)
+        if not example_user_id:
+            raise HTTPException(status_code=404, detail=f"示例账号 {EXAMPLE_USER_EMAIL} 不存在")
+        
+        logger.info(f"[Import Examples] Example user_id: {example_user_id}, Target gender: {gender}")
+        
+        # 2. 获取示例账号的所有单品（包括 embedding）
+        example_items = get_user_items_with_embedding(example_user_id)
+        
+        if not example_items:
+            return {
+                "message": "示例账号没有单品数据",
+                "imported_count": 0,
+                "skipped_count": 0
+            }
+        
+        logger.info(f"[Import Examples] Found {len(example_items)} items in example account")
+        
+        # 3. 按性别筛选
+        filtered_items = [
+            item for item in example_items 
+            if item.get("gender", "Unisex") == gender or item.get("gender", "Unisex") == "Unisex"
+        ]
+        
+        if not filtered_items:
+            gender_label = "男装" if gender == "Man's" else "女装" if gender == "Women's" else "中性装"
+            return {
+                "message": f"示例账号没有 {gender_label} 单品",
+                "imported_count": 0,
+                "skipped_count": 0
+            }
+        
+        logger.info(f"[Import Examples] Filtered to {len(filtered_items)} items matching gender {gender}")
+        
+        # 4. 检查当前用户是否已有相同 image_url 的单品（去重）
+        existing_items = get_user_items(user_id)
+        existing_urls = {item.get("path") or item.get("image_url") for item in existing_items if item.get("path") or item.get("image_url")}
+        
+        logger.info(f"[Import Examples] Found {len(existing_urls)} existing items in target user's wardrobe")
+        
+        # 5. 批量导入到当前用户（复制 embedding）
+        imported_count = 0
+        skipped_count = 0
+        
+        for item in filtered_items:
+            image_url = item.get("image_url")
+            
+            # 跳过已存在的单品
+            if image_url in existing_urls:
+                skipped_count += 1
+                continue
+            
+            # 重建 features 字典
+            features = {
+                "type": item.get("type"),
+                "color": item.get("color"),
+                "style": item.get("style"),
+                "occasion": item.get("occasion"),
+                "pattern": item.get("pattern"),
+                "material": item.get("material"),
+                "description": item.get("description"),
+                "gender": item.get("gender", "Unisex"),
+            }
+            
+            # 获取原 embedding
+            embedding = item.get("embedding")
+            
+            # 添加到当前用户（使用原 embedding）
+            try:
+                await add_to_wardrobe(
+                    image_path=image_url,
+                    features=features,
+                    user_id=user_id,
+                    gender=item.get("gender", "Unisex"),
+                    embedding=embedding  # 使用原 embedding
+                )
+                imported_count += 1
+                logger.debug(f"[Import Examples] Imported item {item.get('id')}: {item.get('type')}")
+            except Exception as e:
+                logger.error(f"[Import Examples] Failed to import item {item.get('id')}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        gender_label = "男装" if gender == "Man's" else "女装" if gender == "Women's" else "中性装"
+        message = f"成功导入 {imported_count} 件{gender_label}"
+        if skipped_count > 0:
+            message += f"，跳过 {skipped_count} 件重复单品"
+        
+        logger.info(f"[Import Examples] Import completed: {imported_count} imported, {skipped_count} skipped")
+        
+        return {
+            "message": message,
+            "imported_count": imported_count,
+            "skipped_count": skipped_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Import Examples] Failed to import example items: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
 
 
 @app.post("/outfit")

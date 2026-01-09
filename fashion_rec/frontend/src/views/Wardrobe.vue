@@ -23,6 +23,11 @@ const uploadedFileSignatures = new Set<string>()
 const pendingUploadSignatures = new Set<string>()
 const imageUrlInput = ref('')
 const isUploadingUrl = ref(false)
+const isImporting = ref(false)
+
+// Gender constants for import example items
+const GENDER_WOMENS = "Women's"
+const GENDER_MENS = "Man's"
 
 // Persistent selection for outfit generation (synced with Studio.vue)
 const selectedForOutfitIds = ref<Set<string>>(new Set())
@@ -420,6 +425,36 @@ const cancelAddItems = () => {
   showConfirmDialog.value = false
 }
 
+const importExampleItems = async (gender: string) => {
+  isImporting.value = true
+  try {
+    const formData = new FormData()
+    formData.append('gender', gender)
+    
+    const response = await apiClient.post<{ message: string; imported_count: number; skipped_count: number }>(
+      '/items/import-examples',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    )
+    
+    const genderLabel = gender === GENDER_MENS ? '男装' : gender === GENDER_WOMENS ? '女装' : '中性装'
+    alert(`${genderLabel}示例导入成功！\n${response.data.message}`)
+    
+    // 刷新衣橱列表
+    await loadUserItems()
+  } catch (error: any) {
+    console.error('导入示例数据失败:', error)
+    const errorMessage = error?.response?.data?.detail || error?.message || '导入失败'
+    alert(`导入失败: ${errorMessage}`)
+  } finally {
+    isImporting.value = false
+  }
+}
+
 const formatFeatureValue = (value: string | string[] | undefined): string => {
   if (!value) return 'Unknown'
   if (Array.isArray(value)) {
@@ -753,6 +788,31 @@ onUnmounted(() => {
               <span v-if="isUploadingUrl">Uploading...</span>
               <span v-else>Upload</span>
               <div v-if="isUploadingUrl" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            </button>
+          </div>
+        </div>
+        
+        <!-- 导入示例数据 -->
+        <div class="mt-4 pt-4 border-t border-pink-200">
+          <p class="text-sm font-medium text-gray-700 mb-2">Or import sample products</p>
+          <div class="flex gap-2">
+            <button
+              @click="importExampleItems(GENDER_WOMENS)"
+              :disabled="isImporting"
+              class="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <span v-if="isImporting">Importing...</span>
+              <span v-else>Import Women's sample</span>
+              <div v-if="isImporting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            </button>
+            <button
+              @click="importExampleItems(GENDER_MENS)"
+              :disabled="isImporting"
+              class="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <span v-if="isImporting">Importing...</span>
+              <span v-else>Import Men's sample</span>
+              <div v-if="isImporting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             </button>
           </div>
         </div>

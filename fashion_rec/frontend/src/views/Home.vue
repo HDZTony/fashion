@@ -467,7 +467,7 @@ useHead({
               </svg>
             </a>
             <a
-              href="https://www.instagram.com/dongzhouhe?igsh=MXR5cmhpeHlzbHp6dw%3D%3D&utm_source=qr"
+              href="https://www.instagram.com/dongzhou_he?igsh=aWJxamZ6aG5nemM3&utm_source=qr"
               target="_blank"
               rel="noopener noreferrer"
               class="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 hover:from-pink-500 hover:to-purple-500 hover:text-white transition-all duration-300 transform hover:scale-110"
