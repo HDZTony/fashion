@@ -8,3 +8,4 @@ alwaysApply: true
 1.用uv add 添加第三方库。
 2.使用uv 命令执行python文件。
 3.用pyproject.toml控制python库的版本。
+4.用最强大脑修改代码。

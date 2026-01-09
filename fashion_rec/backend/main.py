@@ -1136,6 +1136,54 @@ async def get_user_id_by_email(email: str) -> Optional[str]:
         return None
 
 
+@app.put("/items/{item_id}")
+async def update_item(
+    item_id: str,
+    request: Dict[str, Any],
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Update the features (type, color, style, etc.) of a wardrobe item.
+    
+    This endpoint only updates metadata fields and does NOT regenerate the embedding.
+    Therefore, vector search results will remain unchanged, as vector search
+    uses the image embedding which is based on visual features of the image itself,
+    not the text metadata.
+    
+    Accepts a JSON body with the fields to update:
+    {
+        "features": {
+            "type": "T-shirt",
+            "color": "Blue",
+            "style": "Casual",
+            "pattern": "Solid",
+            "occasion": "Daily",
+            "material": "Cotton"
+        }
+    }
+    """
+    from services.vector_db import update_item_features
+    
+    if "features" not in request:
+        raise HTTPException(status_code=400, detail="Missing 'features' field in request body")
+    
+    features = request["features"]
+    
+    try:
+        success = await update_item_features(item_id, user_id, features)
+        
+        if success:
+            return {
+                "message": "Item updated successfully",
+                "item_id": item_id
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Item not found or does not belong to user")
+    except Exception as e:
+        logger.error(f"[Update Item] Error updating item {item_id} for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/items/delete")
 async def delete_items(
     request: DeleteItemsRequest,
@@ -1834,7 +1882,7 @@ async def upload_model_image(
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
-    Upload a model image to R2 (with 7-day expiration) and save it to user's history.
+    Upload a model image to R2 (no expiration - permanent storage) and save it to user's history.
     """
     from services.storage import upload_file_to_r2
     from services.user_images import save_user_image
@@ -1842,9 +1890,9 @@ async def upload_model_image(
     user_id, user_token = auth
 
     try:
-        # Upload to R2 with 7-day expiration
+        # Upload to R2 without expiration (permanent storage for model images)
         public_url = await upload_file_to_r2(
-            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=7
+            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=None
         )
         
         # Extract R2 filename from URL for deletion purposes

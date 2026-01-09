@@ -6,6 +6,8 @@ export interface ItemFeatures {
   pattern?: string | string[];
   occasion?: string | string[];
   material?: string | string[];
+  gender?: string;
+  description?: string;
 }
 
 export interface Item {

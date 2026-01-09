@@ -459,12 +459,26 @@ def get_user_items(user_id: str) -> List[Dict[str, Any]]:
     
     try:
         response = supabase.table("wardrobe_items").select(
-            "id, image_url, type, color, style, occasion, pattern, material, gender, created_at"
+            "id, image_url, type, color, style, occasion, pattern, material, gender, description, created_at"
         ).eq("user_id", user_id).execute()
         
         formatted_results = []
         if response.data:
             for item in response.data:
+                # Debug: log first item to check database values
+                if len(formatted_results) == 0:
+                    print(f"[Vector DB] First item from database (raw): {item}")
+                    print(f"[Vector DB] Gender in item: {'gender' in item}, value: {item.get('gender')}, type: {type(item.get('gender'))}")
+                    print(f"[Vector DB] Description in item: {'description' in item}, value: {item.get('description')}, type: {type(item.get('description'))}")
+                
+                # Get gender value - if None or missing, default to "Unisex"
+                gender_value = item.get("gender")
+                if gender_value is None:
+                    gender_value = "Unisex"
+                
+                # Get description value - if None, keep as None (will be serialized as null)
+                description_value = item.get("description")
+                
                 formatted_results.append({
                     "id": str(item.get("id")),
                     "path": item.get("image_url"),
@@ -474,7 +488,8 @@ def get_user_items(user_id: str) -> List[Dict[str, Any]]:
                     "occasion": item.get("occasion"),
                     "pattern": item.get("pattern"),
                     "material": item.get("material"),
-                    "gender": item.get("gender", "Unisex"),  # Default to 'Unisex' for existing data
+                    "gender": gender_value,  # Always include, defaults to "Unisex" if None
+                    "description": description_value,  # Include even if None (will be null in JSON)
                 })
         
         print(f"[Vector DB] Retrieved {len(formatted_results)} items for user {user_id}")
@@ -659,4 +674,114 @@ def get_user_items_with_embedding(user_id: str) -> List[Dict[str, Any]]:
         error_trace = traceback.format_exc()
         print(f"[Vector DB] Error getting user items with embedding for {user_id}: {e}")
         print(f"[Vector DB] Traceback:\n{error_trace}")
+        raise
+
+
+def _update_item_features_sync(
+    item_id: str,
+    user_id: str,
+    features: Dict[str, Any]
+) -> bool:
+    """
+    Synchronous helper function for updating item features.
+    This is executed in a thread pool to avoid blocking the event loop.
+    """
+    if not supabase:
+        raise Exception("Supabase client not initialized")
+    
+    try:
+        # First verify the item belongs to the user
+        verify_response = supabase.table("wardrobe_items").select("id").eq("id", item_id).eq("user_id", user_id).execute()
+        
+        if not verify_response.data or len(verify_response.data) == 0:
+            print(f"[Vector DB] Item {item_id} not found or does not belong to user {user_id}")
+            return False
+        
+        # Helper function to normalize values
+        def normalize_value(value):
+            """Convert array values to comma-separated string, keep strings as-is"""
+            if isinstance(value, list):
+                return ", ".join(str(v) for v in value) if value else None
+            return str(value) if value else None
+        
+        # Prepare updates
+        updates = {}
+        
+        # Only update fields that are present in features
+        if "type" in features:
+            updates["type"] = normalize_value(features["type"])
+        if "color" in features:
+            updates["color"] = normalize_value(features["color"])
+        if "style" in features:
+            updates["style"] = normalize_value(features["style"])
+        if "pattern" in features:
+            updates["pattern"] = normalize_value(features["pattern"])
+        if "occasion" in features:
+            updates["occasion"] = normalize_value(features["occasion"])
+        if "material" in features:
+            updates["material"] = normalize_value(features["material"])
+        if "gender" in features:
+            # Validate gender value
+            gender_value = normalize_value(features["gender"])
+            if gender_value and gender_value in ["Man's", "Women's", "Unisex"]:
+                updates["gender"] = gender_value
+        if "description" in features:
+            # Description is a string, not an array
+            desc_value = features["description"]
+            updates["description"] = str(desc_value) if desc_value else None
+        
+        if not updates:
+            print(f"[Vector DB] No valid fields to update for item {item_id}")
+            return False
+        
+        # Update the item
+        response = supabase.table("wardrobe_items").update(updates).eq("id", item_id).eq("user_id", user_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            print(f"[Vector DB] Successfully updated item {item_id}")
+            return True
+        else:
+            print(f"[Vector DB] Update failed for item {item_id}")
+            return False
+            
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[Vector DB] Error updating item {item_id}: {e}")
+        print(f"[Vector DB] Traceback:\n{error_trace}")
+        raise
+
+
+async def update_item_features(
+    item_id: str,
+    user_id: str,
+    features: Dict[str, Any]
+) -> bool:
+    """
+    Update the features (type, color, style, etc.) of an item.
+    This does NOT update the embedding, so vector search will remain unaffected.
+    
+    Args:
+        item_id: The ID of the item to update
+        user_id: User ID who owns this item (for authorization)
+        features: Dictionary containing features to update (type, color, style, pattern, occasion, material)
+    
+    Returns:
+        True if update was successful, False otherwise
+    """
+    try:
+        # Run synchronous Supabase operation in thread pool with timeout
+        # Timeout set to 20 seconds to prevent hanging requests
+        success = await asyncio.wait_for(
+            asyncio.to_thread(_update_item_features_sync, item_id, user_id, features),
+            timeout=20.0
+        )
+        return success
+    except asyncio.TimeoutError:
+        print(f"[Vector DB] Error updating item {item_id}: Operation timed out after 20 seconds")
+        raise Exception("Update operation timed out. Please try again.")
+    except Exception as e:
+        print(f"[Vector DB] Error updating item {item_id}: {e}")
+        import traceback
+        traceback.print_exc()
         raise

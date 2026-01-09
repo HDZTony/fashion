@@ -1,11 +1,18 @@
 <script setup lang="ts">
 defineOptions({ name: 'Wardrobe' })
 import { ref, onMounted, onUnmounted, onActivated, watch, computed } from 'vue'
-import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle } from 'lucide-vue-next'
+import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle, Info, Edit2, Save } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
-import type { Item, PendingItem } from '../types'
+import type { Item, PendingItem, ItemFeatures } from '../types'
 import { apiClient, uploadApiClient, longUploadApiClient } from '../lib/api-client'
 import { API_URL } from '../config/api'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 
 const route = useRoute()
 
@@ -16,6 +23,7 @@ const selectedFilter = ref('All')
 const isUploading = ref(false)
 const uploadProgress = ref<{ current: number; total: number; currentFile: string } | null>(null)
 const pendingItems = ref<PendingItem[]>([])
+const selectedPendingIndex = ref<number | null>(null)
 const showConfirmDialog = ref(false)
 const isConfirming = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -23,6 +31,7 @@ const uploadedFileSignatures = new Set<string>()
 const pendingUploadSignatures = new Set<string>()
 const imageUrlInput = ref('')
 const isUploadingUrl = ref(false)
+const urlUploadProgress = ref<{ current: number; total: number; currentUrl: string } | null>(null)
 const isImporting = ref(false)
 
 // Gender constants for import example items
@@ -136,19 +145,44 @@ const loadUserItems = async () => {
       uploadedItems.value = []
       return
     }
-    uploadedItems.value = response.data.items.map((item) => ({
-      id: item.id,
-      url: item.path || item.url || '',
-      features: {
-        path: item.path || item.url || '',
-        type: item.type || 'Unknown',
-        color: item.color || 'Unknown',
-        style: item.style || 'Unknown',
-        pattern: item.pattern,
-        occasion: item.occasion,
-        material: item.material,
-      },
-    }))
+    uploadedItems.value = response.data.items.map((item, index) => {
+      // Debug: log first item to check data structure
+      if (index === 0) {
+        console.log('[Wardrobe] First item data from backend (full):', JSON.parse(JSON.stringify(item)))
+        console.log('[Wardrobe] Gender value:', item.gender, 'Type:', typeof item.gender, 'Has key:', 'gender' in item)
+        console.log('[Wardrobe] Description value:', item.description, 'Type:', typeof item.description, 'Has key:', 'description' in item)
+      }
+      // Always include gender and description fields, even if they are null/undefined from backend
+      // Backend should always return these fields, but handle cases where they might be missing
+      // Note: Backend defaults gender to "Unisex" if None, so it should always have a value
+      const genderValue = (item.gender !== undefined && item.gender !== null && item.gender !== '') 
+        ? item.gender 
+        : (item.gender === null || item.gender === undefined ? "Unisex" : null)  // Default to "Unisex" like backend
+      const descriptionValue = (item.description !== undefined && item.description !== null && item.description !== '') 
+        ? item.description 
+        : null
+      
+      // Debug: log if fields are missing
+      if (index === 0) {
+        console.log('[Wardrobe] Mapping item - gender:', genderValue, 'description:', descriptionValue)
+      }
+      
+      return {
+        id: item.id,
+        url: item.path || item.url || '',
+        features: {
+          path: item.path || item.url || '',
+          type: item.type || 'Unknown',
+          color: item.color || 'Unknown',
+          style: item.style || 'Unknown',
+          pattern: item.pattern,
+          occasion: item.occasion,
+          material: item.material,
+          gender: genderValue,  // Always include, defaults to "Unisex" if missing
+          description: descriptionValue,  // Always include, will be null if not present
+        },
+      }
+    })
     hasLoadedItems.value = true
     // Save to sessionStorage for persistence across component recreations
     saveItemsToCache()
@@ -263,7 +297,6 @@ const handleFileUpload = async (event: Event) => {
         // Collect pending items instead of immediately showing dialog
         const pending: PendingItem[] = response.data.items.map((item) => ({
           ...item,
-          selected: true,
         }))
         allPendingItems.push(...pending)
       }
@@ -281,6 +314,8 @@ const handleFileUpload = async (event: Event) => {
   // Show confirmation dialog only after all files are processed
   if (allPendingItems.length > 0) {
     pendingItems.value.push(...allPendingItems)
+    // Default to first item selected for single selection
+    selectedPendingIndex.value = 0
     showConfirmDialog.value = true
   }
 
@@ -312,104 +347,202 @@ const handleFileUpload = async (event: Event) => {
 }
 
 const handleUrlUpload = async () => {
-  const url = imageUrlInput.value.trim()
+  const inputText = imageUrlInput.value.trim()
   
-  if (!url) {
-    alert('Please enter an image URL')
+  if (!inputText) {
+    alert('Please enter at least one image URL')
     return
   }
   
-  // Validate URL format
-  try {
-    new URL(url)
-  } catch {
-    alert('Invalid URL. Please enter a valid http:// or https:// link.')
+  // Parse multiple URLs (split by newlines)
+  const urlLines = inputText.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+  
+  if (urlLines.length === 0) {
+    alert('Please enter at least one valid URL')
     return
   }
   
-  // Check if URL is already uploaded
-  if (uploadedFileSignatures.has(url) || pendingUploadSignatures.has(url)) {
-    alert('This URL was already uploaded.')
+  // Validate all URLs
+  const validUrls: string[] = []
+  const invalidUrls: string[] = []
+  
+  for (const url of urlLines) {
+    try {
+      new URL(url)
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        invalidUrls.push(`${url} (must start with http:// or https://)`)
+        continue
+      }
+      validUrls.push(url)
+    } catch {
+      invalidUrls.push(`${url} (invalid URL format)`)
+    }
+  }
+  
+  if (invalidUrls.length > 0) {
+    alert(`Invalid URLs:\n${invalidUrls.join('\n')}\n\nPlease fix these URLs and try again.`)
+    return
+  }
+  
+  // Check for duplicate URLs in input
+  const uniqueUrls = Array.from(new Set(validUrls))
+  if (uniqueUrls.length !== validUrls.length) {
+    const duplicates = validUrls.length - uniqueUrls.length
+    if (!confirm(`Found ${duplicates} duplicate URL(s) in your input. Continue with unique URLs only?`)) {
+      return
+    }
+  }
+  
+  // Check for already uploaded URLs
+  const newUrls: string[] = []
+  const alreadyUploadedUrls: string[] = []
+  
+  for (const url of uniqueUrls) {
+    if (uploadedFileSignatures.has(url) || pendingUploadSignatures.has(url)) {
+      alreadyUploadedUrls.push(url)
+    } else {
+      newUrls.push(url)
+    }
+  }
+  
+  if (alreadyUploadedUrls.length > 0) {
+    const message = `The following URL(s) were already uploaded:\n${alreadyUploadedUrls.slice(0, 5).join('\n')}${alreadyUploadedUrls.length > 5 ? `\n... and ${alreadyUploadedUrls.length - 5} more` : ''}\n\nContinue with remaining URLs?`
+    if (!confirm(message)) {
+      return
+    }
+  }
+  
+  if (newUrls.length === 0) {
+    alert('All URLs have already been uploaded.')
     return
   }
   
   isUploadingUrl.value = true
-  pendingUploadSignatures.add(url)
-  
-  try {
-    const formData = new FormData()
-    formData.append('image_url', url)
-    
-    // Use long timeout client for URL uploads (download + upload to R2 + analysis)
-    // Large images or slow networks may need up to 10 minutes
-    const response = await longUploadApiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
-    
-    if (response.data.auto_added) {
-      await loadUserItems()
-      alert(`Added ${response.data.items.length} item(s) successfully.`)
-    } else {
-      const pending: PendingItem[] = response.data.items.map((item) => ({
-        ...item,
-        selected: true,
-      }))
-      pendingItems.value.push(...pending)
-      showConfirmDialog.value = true
-    }
-    uploadedFileSignatures.add(url)
-    imageUrlInput.value = ''
-  } catch (error: any) {
-    console.error(`URL upload failed:`, error)
-    console.error('Error response:', error?.response?.data)
-    let errorMessage = 'Upload failed'
-    
-    // Handle connection refused error specifically
-    if (error?.code === 'ERR_CONNECTION_REFUSED' || error?.message?.includes('Connection refused') || error?.message?.includes('ERR_CONNECTION_REFUSED')) {
-      errorMessage = `Cannot reach backend (${API_URL}).\n\nIf the backend is down:\n1) Ensure it is running\n2) Check backend logs for errors\n3) Restart the backend`
-    } else if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error') || error?.message?.includes('ERR_CONNECTION_RESET')) {
-      errorMessage = 'Network error or connection reset.\n\nPossible causes:\n1) Image too large, processing takes too long\n2) Unstable network\n3) Backend timed out\n\nTry:\n- Use a smaller image\n- Check your connection\n- Retry later\n- For large images, upload the file instead of URL'
-    } else if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
-      errorMessage = 'Request timed out (waited 10 minutes).\n\nPossible causes:\n1) Image too large; download or processing is slow\n2) Slow network\n3) Server responding slowly\n\nTry:\n- Use a smaller image URL\n- Upload the image file directly (often faster)\n- Check your network\n- Retry later'
-    } else if (error?.response?.status === 500) {
-      // 500 Internal Server Error - show backend error details
-      const backendError = error?.response?.data?.detail || error?.response?.data?.message || 'Server internal error'
-      errorMessage = `Server error (500): ${backendError}\n\nCheck backend logs for details, or try again later.`
-    } else if (error?.response?.data?.detail) {
-      errorMessage = error.response.data.detail
-    } else if (error?.response?.data?.message) {
-      errorMessage = error.response.data.message
-    } else if (error?.message) {
-      errorMessage = error.message
-    }
-    
-    alert(`Upload failed: ${errorMessage}`)
-  } finally {
-    isUploadingUrl.value = false
-    pendingUploadSignatures.delete(url)
+  urlUploadProgress.value = {
+    current: 0,
+    total: newUrls.length,
+    currentUrl: newUrls[0] || '',
   }
+  
+  const successfulUploads: Item[] = []
+  const failedUploads: { url: string; error: string }[] = []
+  const allPendingItems: PendingItem[] = []
+  
+  for (let i = 0; i < newUrls.length; i++) {
+    const url = newUrls[i]
+    
+    urlUploadProgress.value = {
+      current: i + 1,
+      total: newUrls.length,
+      currentUrl: url,
+    }
+    
+    pendingUploadSignatures.add(url)
+    
+    try {
+      const formData = new FormData()
+      formData.append('image_url', url)
+      
+      // Use long timeout client for URL uploads (download + upload to R2 + analysis)
+      // Large images or slow networks may need up to 10 minutes
+      const response = await longUploadApiClient.post<{ auto_added: boolean; items: Item[] }>('/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      
+      if (response.data.auto_added) {
+        successfulUploads.push(...response.data.items)
+      } else {
+        // Collect pending items instead of immediately showing dialog
+        const pending: PendingItem[] = response.data.items.map((item) => ({
+          ...item,
+        }))
+        allPendingItems.push(...pending)
+      }
+      uploadedFileSignatures.add(url)
+    } catch (error: any) {
+      console.error(`URL upload failed for ${url}:`, error)
+      let errorMessage = 'Upload failed'
+      
+      // Handle connection refused error specifically
+      if (error?.code === 'ERR_CONNECTION_REFUSED' || error?.message?.includes('Connection refused') || error?.message?.includes('ERR_CONNECTION_REFUSED')) {
+        errorMessage = `Cannot reach backend (${API_URL})`
+      } else if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error') || error?.message?.includes('ERR_CONNECTION_RESET')) {
+        errorMessage = 'Network error or connection reset'
+      } else if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+        errorMessage = 'Request timed out (waited 10 minutes)'
+      } else if (error?.response?.status === 500) {
+        const backendError = error?.response?.data?.detail || error?.response?.data?.message || 'Server internal error'
+        errorMessage = `Server error (500): ${backendError}`
+      } else if (error?.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+      
+      failedUploads.push({ url, error: errorMessage })
+    } finally {
+      pendingUploadSignatures.delete(url)
+    }
+  }
+  
+  // Show confirmation dialog only after all URLs are processed
+  if (allPendingItems.length > 0) {
+    pendingItems.value.push(...allPendingItems)
+    // Default to first item selected for single selection
+    selectedPendingIndex.value = 0
+    showConfirmDialog.value = true
+  }
+  
+  // Refresh data if there were successful uploads
+  if (successfulUploads.length > 0) {
+    await loadUserItems()
+  }
+  
+  // Show success/failure messages
+  if (successfulUploads.length > 0 && failedUploads.length === 0 && allPendingItems.length === 0) {
+    console.log(`Successfully uploaded ${successfulUploads.length} URL(s)`)
+  } else if (successfulUploads.length > 0 && failedUploads.length > 0) {
+    alert(
+      `Uploaded ${successfulUploads.length} URL(s) successfully.\n\nFailed:\n${failedUploads
+        .map((f) => `${f.url}: ${f.error}`)
+        .join('\n')}`,
+    )
+  } else if (failedUploads.length > 0 && successfulUploads.length === 0 && allPendingItems.length === 0) {
+    alert(
+      `All uploads failed:\n${failedUploads
+        .map((f) => `${f.url}: ${f.error}`)
+        .join('\n')}`,
+    )
+  }
+  
+  imageUrlInput.value = ''
+  isUploadingUrl.value = false
+  urlUploadProgress.value = null
 }
 
 const confirmAddItems = async () => {
-  const selectedItems = pendingItems.value.filter((item) => item.selected)
-
-  if (selectedItems.length === 0) {
-    alert('Please select at least one item to add')
+  if (selectedPendingIndex.value === null || selectedPendingIndex.value < 0 || selectedPendingIndex.value >= pendingItems.value.length) {
+    alert('Please select an item to add')
     return
   }
+
+  const selectedItem = pendingItems.value[selectedPendingIndex.value]
 
   try {
     isConfirming.value = true
     // Use uploadApiClient for batch operations as they may take longer
-    await uploadApiClient.post<{ items: Item[] }>('/items/batch', selectedItems)
+    await uploadApiClient.post<{ items: Item[] }>('/items/batch', [selectedItem])
     
     // Refresh data to ensure consistency
     await loadUserItems()
-    console.log(`Added ${selectedItems.length} item(s) to wardrobe`)
+    console.log(`Added 1 item to wardrobe`)
 
     pendingItems.value = []
+    selectedPendingIndex.value = null
     showConfirmDialog.value = false
   } catch (error: any) {
     console.error('Failed to add items:', error)
@@ -422,6 +555,7 @@ const confirmAddItems = async () => {
 
 const cancelAddItems = () => {
   pendingItems.value = []
+  selectedPendingIndex.value = null
   showConfirmDialog.value = false
 }
 
@@ -455,12 +589,17 @@ const importExampleItems = async (gender: string) => {
   }
 }
 
-const formatFeatureValue = (value: string | string[] | undefined): string => {
-  if (!value) return 'Unknown'
+const formatFeatureValue = (value: string | string[] | undefined | null): string => {
+  if (!value && value !== '') return 'Unknown'
   if (Array.isArray(value)) {
     return value.join(', ')
   }
-  return value
+  return String(value)
+}
+
+// Helper to check if a value exists (including empty string)
+const hasValue = (value: any): boolean => {
+  return value !== null && value !== undefined && value !== ''
 }
 
 const getTypeCandidates = (typeValue: string | string[] | undefined) => {
@@ -574,6 +713,12 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
+// Sheet for displaying item details
+const showItemDetailsSheet = ref(false)
+const isEditingItem = ref(false)
+const editedFeatures = ref<Partial<ItemFeatures>>({})
+const isUpdatingItem = ref(false)
+
 // Image viewer functions
 const openImageViewer = (index: number, event?: Event) => {
   // Don't open viewer if in selection mode
@@ -613,6 +758,8 @@ const closeImageViewer = () => {
   showImageViewer.value = false
   imageViewerImages.value = []
   currentImageIndex.value = 0
+  // Also close the item details sheet when closing image viewer
+  showItemDetailsSheet.value = false
 }
 
 const nextImage = () => {
@@ -631,6 +778,118 @@ const prevImage = () => {
   }
 }
 
+// Get current item based on current image index
+const currentItem = computed(() => {
+  if (!showImageViewer.value || imageViewerImages.value.length === 0) {
+    return null
+  }
+  
+  const currentImageUrl = imageViewerImages.value[currentImageIndex.value]
+  if (!currentImageUrl) return null
+  
+  // Find the item that matches the current image URL
+  const item = filteredItems.value.find(
+    item => (item.url || item.features.path) === currentImageUrl
+  ) || null
+  
+  // Debug: log item data to check gender and description
+  if (item) {
+    console.log('[Wardrobe] Current item data:', {
+      id: item.id,
+      gender: item.features.gender,
+      description: item.features.description,
+      allFeatures: item.features
+    })
+  }
+  
+  return item
+})
+
+// Open item details sheet
+const openItemDetailsSheet = () => {
+  if (currentItem.value) {
+    showItemDetailsSheet.value = true
+    isEditingItem.value = false
+    // Initialize edited features with current item features
+    editedFeatures.value = {
+      type: currentItem.value.features.type,
+      color: currentItem.value.features.color,
+      style: currentItem.value.features.style,
+      pattern: currentItem.value.features.pattern,
+      occasion: currentItem.value.features.occasion,
+      material: currentItem.value.features.material,
+      gender: currentItem.value.features.gender,
+      description: currentItem.value.features.description,
+    }
+  }
+}
+
+// Start editing item
+const startEditingItem = () => {
+  if (currentItem.value) {
+    isEditingItem.value = true
+  }
+}
+
+// Cancel editing
+const cancelEditingItem = () => {
+  if (currentItem.value) {
+    // Restore original values
+    editedFeatures.value = {
+      type: currentItem.value.features.type,
+      color: currentItem.value.features.color,
+      style: currentItem.value.features.style,
+      pattern: currentItem.value.features.pattern,
+      occasion: currentItem.value.features.occasion,
+      material: currentItem.value.features.material,
+      gender: currentItem.value.features.gender,
+      description: currentItem.value.features.description,
+    }
+    isEditingItem.value = false
+  }
+}
+
+// Save item updates
+const saveItemUpdates = async () => {
+  if (!currentItem.value || !currentItem.value.id) {
+    alert('无法保存：物品ID不存在')
+    return
+  }
+
+  isUpdatingItem.value = true
+  try {
+    await apiClient.put<{ message: string; item_id: string }>(
+      `/items/${currentItem.value.id}`,
+      {
+        features: editedFeatures.value
+      }
+    )
+
+    // Update local state optimistically
+    if (currentItem.value) {
+      Object.assign(currentItem.value.features, editedFeatures.value)
+    }
+    
+    // Update in uploadedItems array
+    const itemIndex = uploadedItems.value.findIndex(item => item.id === currentItem.value?.id)
+    if (itemIndex !== -1) {
+      Object.assign(uploadedItems.value[itemIndex].features, editedFeatures.value)
+      saveItemsToCache()
+    }
+
+    isEditingItem.value = false
+  } catch (error: any) {
+    console.error('Failed to update item:', error)
+    const errorMessage = error?.response?.data?.detail || error?.message || 'Update failed'
+    alert(`Update failed: ${errorMessage}`)
+    // Restore original values on error
+    cancelEditingItem()
+  } finally {
+    isUpdatingItem.value = false
+  }
+}
+
+
 // Keyboard navigation for image viewer
 const handleKeyDown = (event: KeyboardEvent) => {
   if (!showImageViewer.value) return
@@ -648,9 +907,28 @@ const handleKeyDown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
-  // Try to restore items from sessionStorage on mount
-  if (uploadedItems.value.length === 0) {
-    restoreItemsFromCache()
+  // Detect if this is a page refresh (manual reload)
+  const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
+  const isPageRefresh = navigation?.type === 'reload' || 
+    (typeof (performance as any).navigation !== 'undefined' && (performance as any).navigation.type === 1)
+  
+  if (isPageRefresh) {
+    // Manual page refresh: clear cache and force reload from server
+    console.log('[Wardrobe] Page refresh detected, clearing cache and loading fresh data from server...')
+    try {
+      sessionStorage.removeItem('wardrobe_items_cache')
+      sessionStorage.removeItem('wardrobe_load_attempted')
+    } catch (e) {
+      console.warn('[Wardrobe] Failed to clear cache:', e)
+    }
+    hasLoadedItems.value = false
+    uploadedItems.value = []
+    loadUserItems()
+  } else {
+    // Normal mount: try to restore from cache first
+    if (uploadedItems.value.length === 0) {
+      restoreItemsFromCache()
+    }
   }
   loadOutfitSelection()
   window.addEventListener('keydown', handleKeyDown)
@@ -770,25 +1048,35 @@ onUnmounted(() => {
         
         <!-- URL Upload -->
         <div class="mt-4 pt-4 border-t border-pink-200">
-          <p class="text-sm font-medium text-gray-700 mb-2">Or add via URL</p>
-          <div class="flex gap-2">
-            <input
+          <p class="text-sm font-medium text-gray-700 mb-2">Or add via URL (one URL per line)</p>
+          <div class="space-y-2">
+            <textarea
               v-model="imageUrlInput"
-              type="text"
-              placeholder="Enter a public image URL (http:// or https://)"
-              class="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+              placeholder="Enter one or more image URLs, one per line:&#10;https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+              rows="4"
+              class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent resize-y font-mono text-sm"
               :disabled="isUploadingUrl || isUploading"
-              @keyup.enter="handleUrlUpload"
-            />
-            <button
-              @click="handleUrlUpload"
-              :disabled="isUploadingUrl || isUploading || !imageUrlInput.trim()"
-              class="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <span v-if="isUploadingUrl">Uploading...</span>
-              <span v-else>Upload</span>
-              <div v-if="isUploadingUrl" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            </button>
+            ></textarea>
+            <div v-if="isUploadingUrl && urlUploadProgress" class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-sm text-pink-500">
+                  Uploading {{ urlUploadProgress.current }}/{{ urlUploadProgress.total }}
+                </span>
+              </div>
+              <span class="text-xs text-pink-400 truncate">{{ urlUploadProgress.currentUrl }}</span>
+            </div>
+            <div class="flex gap-2">
+              <button
+                @click="handleUrlUpload"
+                :disabled="isUploadingUrl || isUploading || !imageUrlInput.trim()"
+                class="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <span v-if="isUploadingUrl">Uploading...</span>
+                <span v-else>Upload URL(s)</span>
+                <div v-if="isUploadingUrl" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              </button>
+            </div>
           </div>
         </div>
         
@@ -954,7 +1242,7 @@ onUnmounted(() => {
         <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
           <div class="p-6 border-b border-gray-200">
             <h3 class="text-xl font-bold">Multiple Items Detected</h3>
-            <p class="text-sm text-pink-500 mt-1">Please review and select the items you want to add to your wardrobe.</p>
+            <p class="text-sm text-pink-500 mt-1">Please review and select one item you want to add to your wardrobe.</p>
           </div>
 
           <div class="flex-1 overflow-y-auto p-6">
@@ -962,14 +1250,17 @@ onUnmounted(() => {
               <div
                 v-for="(item, index) in pendingItems"
                 :key="index"
-                class="border border-gray-200 rounded-xl p-4 hover:border-black transition-colors"
-                :class="{ 'bg-gray-50': item.selected }"
+                class="border border-gray-200 rounded-xl p-4 hover:border-black transition-colors cursor-pointer"
+                :class="{ 'bg-gray-50 border-black': selectedPendingIndex === index }"
+                @click="selectedPendingIndex = index"
               >
                 <div class="flex items-start gap-4">
                   <input
-                    type="checkbox"
-                    v-model="item.selected"
-                    class="mt-1 w-4 h-4 text-black border-gray-300 rounded focus:ring-black"
+                    type="radio"
+                    :value="index"
+                    v-model="selectedPendingIndex"
+                    class="mt-1 w-4 h-4 text-black border-gray-300 focus:ring-black"
+                    @click.stop
                   />
                   <div class="flex-1">
                     <div class="flex items-center gap-2 mb-2">
@@ -1003,10 +1294,10 @@ onUnmounted(() => {
             </button>
             <button
               @click="confirmAddItems"
-              :disabled="isConfirming"
+              :disabled="isConfirming || selectedPendingIndex === null"
               class="px-6 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              <span>{{ isConfirming ? 'Adding...' : `Add Selected (${pendingItems.filter(i => i.selected).length})` }}</span>
+              <span>{{ isConfirming ? 'Adding...' : 'Add Selected Item' }}</span>
               <span v-if="isConfirming" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             </button>
           </div>
@@ -1050,6 +1341,16 @@ onUnmounted(() => {
           />
         </div>
         
+        <!-- Info button to show item details -->
+        <button
+          v-if="currentItem"
+          @click="openItemDetailsSheet"
+          class="absolute top-4 left-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
+          title="View item details"
+        >
+          <Info class="w-6 h-6" />
+        </button>
+        
         <!-- Next button -->
         <button
           v-if="imageViewerImages.length > 1"
@@ -1068,6 +1369,189 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    
+    <!-- Item Details Sheet -->
+    <Sheet v-model:open="showItemDetailsSheet">
+      <SheetContent side="right" class="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader v-if="currentItem">
+          <div class="flex items-center justify-between">
+            <div>
+              <SheetTitle>Item Details</SheetTitle>
+              <SheetDescription>
+                {{ isEditingItem ? 'Edit item information' : 'Detailed information about this clothing item' }}
+              </SheetDescription>
+            </div>
+            <div v-if="!isEditingItem" class="flex gap-2">
+              <button
+                @click="startEditingItem"
+                class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Edit item"
+              >
+                <Edit2 class="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </SheetHeader>
+        
+        <div v-if="currentItem" class="mt-6 space-y-6">
+          <!-- Item Image -->
+          <div class="flex justify-center">
+            <img
+              :src="currentItem.url || currentItem.features.path"
+              :alt="formatFeatureValue(currentItem.features.type)"
+              class="w-full max-w-sm rounded-lg object-cover shadow-lg"
+            />
+          </div>
+          
+          <!-- Item Information -->
+          <div class="space-y-4">
+            <!-- Type -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Type</label>
+              <p v-if="!isEditingItem" class="mt-1 text-base font-semibold text-gray-900">{{ formatFeatureValue(currentItem.features.type) }}</p>
+              <input
+                v-else
+                v-model="editedFeatures.type"
+                @input="editedFeatures.type = ($event.target as HTMLInputElement).value"
+                type="text"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+                placeholder="e.g., T-shirt, Jeans, Dress"
+              />
+            </div>
+            
+            <!-- Color -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Color</label>
+              <p v-if="!isEditingItem" class="mt-1 text-base text-gray-900">{{ formatFeatureValue(currentItem.features.color) }}</p>
+              <input
+                v-else
+                v-model="editedFeatures.color"
+                @input="editedFeatures.color = ($event.target as HTMLInputElement).value"
+                type="text"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+                placeholder="e.g., Blue, Red, Black, White"
+              />
+            </div>
+            
+            <!-- Style -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Style</label>
+              <p v-if="!isEditingItem && currentItem.features.style" class="mt-1 text-base text-gray-900">{{ formatFeatureValue(currentItem.features.style) }}</p>
+              <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
+              <input
+                v-else
+                v-model="editedFeatures.style"
+                @input="editedFeatures.style = ($event.target as HTMLInputElement).value || undefined"
+                type="text"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+                placeholder="e.g., Casual, Formal, Streetwear"
+              />
+            </div>
+            
+            <!-- Pattern -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Pattern</label>
+              <p v-if="!isEditingItem && currentItem.features.pattern" class="mt-1 text-base text-gray-900">{{ formatFeatureValue(currentItem.features.pattern) }}</p>
+              <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
+              <input
+                v-else
+                v-model="editedFeatures.pattern"
+                @input="editedFeatures.pattern = ($event.target as HTMLInputElement).value || undefined"
+                type="text"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+                placeholder="e.g., Solid, Striped, Floral"
+              />
+            </div>
+            
+            <!-- Occasion -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Occasion</label>
+              <p v-if="!isEditingItem && currentItem.features.occasion" class="mt-1 text-base text-gray-900">{{ formatFeatureValue(currentItem.features.occasion) }}</p>
+              <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
+              <input
+                v-else
+                v-model="editedFeatures.occasion"
+                @input="editedFeatures.occasion = ($event.target as HTMLInputElement).value || undefined"
+                type="text"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+                placeholder="e.g., Daily, Work, Formal"
+              />
+            </div>
+            
+            <!-- Material -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Material</label>
+              <p v-if="!isEditingItem && currentItem.features.material" class="mt-1 text-base text-gray-900">{{ formatFeatureValue(currentItem.features.material) }}</p>
+              <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
+              <input
+                v-else
+                v-model="editedFeatures.material"
+                @input="editedFeatures.material = ($event.target as HTMLInputElement).value || undefined"
+                type="text"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+                placeholder="e.g., Cotton, Denim, Silk"
+              />
+            </div>
+            
+            <!-- Gender -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Gender</label>
+              <p v-if="!isEditingItem && hasValue(currentItem.features.gender)" class="mt-1 text-base text-gray-900">{{ currentItem.features.gender }}</p>
+              <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
+              <select
+                v-else
+                v-model="editedFeatures.gender"
+                @change="editedFeatures.gender = ($event.target as HTMLSelectElement).value || undefined"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
+              >
+                <option value="">Select gender</option>
+                <option value="Man's">Man's</option>
+                <option value="Women's">Women's</option>
+                <option value="Unisex">Unisex</option>
+              </select>
+            </div>
+            
+            <!-- Description -->
+            <div class="border-b border-gray-200 pb-3">
+              <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Description</label>
+              <p v-if="!isEditingItem && hasValue(currentItem.features.description)" class="mt-1 text-base text-gray-900 whitespace-pre-wrap">{{ currentItem.features.description }}</p>
+              <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
+              <textarea
+                v-else
+                v-model="editedFeatures.description"
+                @input="editedFeatures.description = ($event.target as HTMLTextAreaElement).value || undefined"
+                rows="4"
+                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base resize-y"
+                placeholder="Enter a detailed description of this clothing item..."
+              ></textarea>
+            </div>
+          </div>
+          
+          <!-- Edit Actions -->
+          <div v-if="isEditingItem" class="flex gap-3 pt-4 border-t border-gray-200">
+            <button
+              @click="cancelEditingItem"
+              :disabled="isUpdatingItem"
+              class="flex-1 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            <button
+              @click="saveItemUpdates"
+              :disabled="isUpdatingItem"
+              class="flex-1 px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Save class="w-4 h-4" />
+              <span>{{ isUpdatingItem ? 'Saving...' : 'Save' }}</span>
+            </button>
+          </div>
+        </div>
+        
+        <div v-else class="mt-6 text-center text-gray-500">
+          <p>No item information available</p>
+        </div>
+      </SheetContent>
+    </Sheet>
   </div>
 </template>
 

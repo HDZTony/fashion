@@ -29,7 +29,8 @@ def save_user_image(user_id: str, image_url: str, image_type: str, user_token: s
         table = client.table(TABLE_NAME)
         
         image_id = str(uuid.uuid4())
-        expires_at = (datetime.utcnow() + timedelta(days=7)).isoformat() + "Z"
+        # Both model and scene images are permanent (no expiration)
+        expires_at = None
         record = {
             "id": image_id,
             "user_id": user_id,
@@ -37,7 +38,7 @@ def save_user_image(user_id: str, image_url: str, image_type: str, user_token: s
             "image_type": image_type,  # "scene" or "model"
             "r2_filename": r2_filename,  # R2 filename for deletion
             "created_at": datetime.utcnow().isoformat() + "Z",
-            "expires_at": expires_at,  # 7 days from creation
+            "expires_at": expires_at,  # None for all images (permanent storage)
         }
         
         # Insert into database
@@ -146,6 +147,9 @@ def delete_user_image(user_id: str, image_id: str, user_token: str) -> bool:
 def cleanup_expired_images():
     """
     Cleanup expired images from the database.
+    Note: Both model and scene images are now permanent (no expiration).
+    This function only cleans up old records that were created before the permanent storage change
+    and still have expires_at set. New images will have expires_at = NULL and will never be deleted.
     This should be called periodically along with R2 cleanup.
     Note: This function uses the global client (anon key) as it's a background task.
     """
@@ -155,7 +159,9 @@ def cleanup_expired_images():
         
         current_time = datetime.utcnow().isoformat() + "Z"
         
-        # Get expired images
+        # Get expired images - only old records that still have expires_at set
+        # New images have expires_at = NULL and will never match this query
+        # This is for backward compatibility with old records created before permanent storage
         response = _table.select("*").lt("expires_at", current_time).execute()
         
         if not response.data:
