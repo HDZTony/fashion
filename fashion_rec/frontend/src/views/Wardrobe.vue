@@ -13,6 +13,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const route = useRoute()
 
@@ -576,14 +583,14 @@ const importExampleItems = async (gender: string) => {
     )
     
     const genderLabel = gender === GENDER_MENS ? '男装' : gender === GENDER_WOMENS ? '女装' : '中性装'
-    alert(`${genderLabel}示例导入成功！\n${response.data.message}`)
+    
     
     // 刷新衣橱列表
     await loadUserItems()
   } catch (error: any) {
     console.error('导入示例数据失败:', error)
-    const errorMessage = error?.response?.data?.detail || error?.message || '导入失败'
-    alert(`导入失败: ${errorMessage}`)
+    const errorMessage = error?.response?.data?.detail || error?.message || 'Import failed'
+    alert(`Import failed: ${errorMessage}`)
   } finally {
     isImporting.value = false
   }
@@ -1498,17 +1505,25 @@ onUnmounted(() => {
               <label class="text-sm font-medium text-gray-500 uppercase tracking-wide">Gender</label>
               <p v-if="!isEditingItem && hasValue(currentItem.features.gender)" class="mt-1 text-base text-gray-900">{{ currentItem.features.gender }}</p>
               <p v-else-if="!isEditingItem" class="mt-1 text-base text-gray-400 italic">Not specified</p>
-              <select
+              <Select
                 v-else
                 v-model="editedFeatures.gender"
-                @change="editedFeatures.gender = ($event.target as HTMLSelectElement).value || undefined"
-                class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base"
               >
-                <option value="">Select gender</option>
-                <option value="Man's">Man's</option>
-                <option value="Women's">Women's</option>
-                <option value="Unisex">Unisex</option>
-              </select>
+                <SelectTrigger class="mt-1 w-full">
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Man's">
+                    Man's
+                  </SelectItem>
+                  <SelectItem value="Women's">
+                    Women's
+                  </SelectItem>
+                  <SelectItem value="Unisex">
+                    Unisex
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             
             <!-- Description -->

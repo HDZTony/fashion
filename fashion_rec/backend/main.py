@@ -645,7 +645,7 @@ async def add_item(
         
         # Handle single item (for this endpoint, we expect single item)
         if not features_list or len(features_list) == 0:
-            raise HTTPException(status_code=500, detail="图片分析返回空结果")
+            raise HTTPException(status_code=500, detail="Image analysis returned empty result")
         features = features_list[0] if isinstance(features_list, list) else features_list
 
         # Upload to R2 and get URL
@@ -757,34 +757,34 @@ async def upload_image(
                     if e.response and e.response.status_code == 403:
                         raise HTTPException(
                             status_code=403,
-                            detail=f"图片URL访问被拒绝（403 Forbidden）。这通常是因为网站有反爬虫保护。请尝试：1) 使用其他图片URL，2) 直接上传图片文件，或 3) 使用公开可访问的图片URL。"
+                            detail=f"Image URL access denied (403 Forbidden). This is usually due to anti-scraping protection. Please try: 1) Use a different image URL, 2) Upload image file directly, or 3) Use a publicly accessible image URL."
                         )
                     else:
                         raise HTTPException(
                             status_code=400,
-                            detail=f"无法下载图片URL: {str(e)}。HTTP状态码: {e.response.status_code if e.response else 'N/A'}。请检查URL是否正确或网络连接是否正常。"
+                            detail=f"Failed to download image URL: {str(e)}. HTTP status code: {e.response.status_code if e.response else 'N/A'}. Please check if the URL is correct or if the network connection is normal."
                         )
                 except requests.exceptions.Timeout as e:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"下载图片URL超时（连接超时60秒或读取超时300秒）。这可能是因为：\n1. 图片文件太大\n2. 网络连接较慢\n3. 服务器响应慢\n\n建议：\n- 尝试使用其他图片URL\n- 直接上传图片文件\n- 检查网络连接"
+                        detail=f"Image URL download timeout (connection timeout 60s or read timeout 300s). This may be due to: \n1. Image file is too large\n2. Slow network connection\n3. Slow server response\n\nSuggestions:\n- Try using a different image URL\n- Upload image file directly\n- Check network connection"
                     )
                 except requests.exceptions.RequestException as e:
                     error_detail = str(e)
                     # Handle timeout errors specifically
                     if "timeout" in error_detail.lower() or isinstance(e, requests.exceptions.Timeout):
-                        error_detail = "下载图片URL超时。请检查URL是否正确或网络连接是否正常。"
+                        error_detail = "Image URL download timeout. Please check if the URL is correct or if the network connection is normal."
                     raise HTTPException(
                         status_code=400, 
-                        detail=f"无法下载图片URL: {error_detail}。请检查URL是否正确或网络连接是否正常。"
+                        detail=f"Failed to download image URL: {error_detail}. Please check if the URL is correct or if the network connection is normal."
                     )
                 except Exception as e:
                     error_msg = str(e)
                     if "'Timeout' object is not subscriptable" in error_msg or "Timeout" in error_msg:
-                        error_msg = "下载图片URL超时。请检查URL是否正确或网络连接是否正常。"
+                        error_msg = "Image URL download timeout. Please check if the URL is correct or if the network connection is normal."
                     raise HTTPException(
                         status_code=500,
-                        detail=f"处理图片URL时出错: {error_msg}"
+                        detail=f"Error processing image URL: {error_msg}"
                     )
             
             # If direct analysis failed (either exception or returned error), we need to fallback to download approach
@@ -809,14 +809,14 @@ async def upload_image(
                             logger.error(f"Analysis failed after fallback: {error_msg}")
                             raise HTTPException(
                                 status_code=500,
-                                detail=f"图片分析失败: {error_msg}"
+                                detail=f"Image analysis failed: {error_msg}"
                             )
                         logger.info(f"✓ Analysis completed, detected {len(features_list)} item(s)")
                     else:
                         logger.error("Analysis returned empty result after fallback")
                         raise HTTPException(
                             status_code=500,
-                            detail="图片分析返回空结果"
+                            detail="Image analysis returned empty result"
                         )
                 except HTTPException:
                     raise
@@ -824,25 +824,25 @@ async def upload_image(
                     if e.response and e.response.status_code == 403:
                         raise HTTPException(
                             status_code=403,
-                            detail=f"图片URL访问被拒绝（403 Forbidden）。这通常是因为网站有反爬虫保护。请尝试：1) 使用其他图片URL，2) 直接上传图片文件，或 3) 使用公开可访问的图片URL。"
+                            detail=f"Image URL access denied (403 Forbidden). This is usually due to anti-scraping protection. Please try: 1) Use a different image URL, 2) Upload image file directly, or 3) Use a publicly accessible image URL."
                         )
                     else:
                         raise HTTPException(
                             status_code=400,
-                            detail=f"无法下载图片URL: {str(e)}。HTTP状态码: {e.response.status_code if e.response else 'N/A'}。请检查URL是否正确或网络连接是否正常。"
+                            detail=f"Failed to download image URL: {str(e)}. HTTP status code: {e.response.status_code if e.response else 'N/A'}. Please check if the URL is correct or if the network connection is normal."
                         )
                 except requests.exceptions.Timeout as e:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"下载图片URL超时（连接超时60秒或读取超时300秒）。这可能是因为：\n1. 图片文件太大\n2. 网络连接较慢\n3. 服务器响应慢\n\n建议：\n- 尝试使用其他图片URL\n- 直接上传图片文件\n- 检查网络连接"
+                        detail=f"Image URL download timeout (connection timeout 60s or read timeout 300s). This may be due to: \n1. Image file is too large\n2. Slow network connection\n3. Slow server response\n\nSuggestions:\n- Try using a different image URL\n- Upload image file directly\n- Check network connection"
                     )
                 except requests.exceptions.RequestException as e:
                     error_detail = str(e)
                     if "timeout" in error_detail.lower() or isinstance(e, requests.exceptions.Timeout):
-                        error_detail = "下载图片URL超时。请检查URL是否正确或网络连接是否正常。"
+                        error_detail = "Image URL download timeout. Please check if the URL is correct or if the network connection is normal."
                     raise HTTPException(
                         status_code=400, 
-                        detail=f"无法下载图片URL: {error_detail}。请检查URL是否正确或网络连接是否正常。"
+                        detail=f"Failed to download image URL: {error_detail}. Please check if the URL is correct or if the network connection is normal."
                     )
                 except Exception as e:
                     error_msg = str(e)
@@ -851,10 +851,10 @@ async def upload_image(
                     logger.error(f"Fallback process failed: {error_msg}")
                     logger.error(f"Traceback:\n{error_trace}")
                     if "'Timeout' object is not subscriptable" in error_msg or "Timeout" in error_msg:
-                        error_msg = "下载图片URL超时。请检查URL是否正确或网络连接是否正常。"
+                        error_msg = "Image URL download timeout. Please check if the URL is correct or if the network connection is normal."
                     raise HTTPException(
                         status_code=500,
-                        detail=f"处理图片URL时出错: {error_msg}"
+                        detail=f"Error processing image URL: {error_msg}"
                     )
             
             # If direct analysis succeeded, we still need to download and store the image
@@ -882,7 +882,7 @@ async def upload_image(
                         temp_path.unlink()  # Clean up
                         raise HTTPException(
                             status_code=400,
-                            detail=f"文件太大（{file_size / 1024 / 1024:.2f} MB）。最大支持 50MB。请使用较小的图片或压缩图片后再上传。"
+                            detail=f"File too large ({file_size / 1024 / 1024:.2f} MB). Maximum supported size is 50MB. Please use a smaller image or compress the image before uploading."
                         )
                     
                     logger.info(f"File size: {file_size / 1024 / 1024:.2f} MB")
@@ -934,12 +934,12 @@ async def upload_image(
                     
                     raise HTTPException(
                         status_code=500,
-                        detail=f"处理文件失败: {str(e)}"
+                        detail=f"Failed to process file: {str(e)}"
                     )
             else:
                 raise HTTPException(
                     status_code=500,
-                    detail="临时文件不存在，无法上传到存储"
+                    detail="Temporary file does not exist, cannot upload to storage"
                 )
         
         # Check if multiple items detected
@@ -969,10 +969,10 @@ async def upload_image(
                 if "image format is illegal" in error_msg.lower() or "invalid_parameter_error" in error_msg.lower():
                     raise HTTPException(
                         status_code=400,
-                        detail="图片格式不支持。Qwen-VL API不支持AVIF等格式。系统已尝试自动转换，但转换失败。请尝试将图片转换为JPEG或PNG格式后重新上传。"
+                        detail="Image format not supported. Qwen-VL API does not support formats like AVIF. The system has attempted automatic conversion, but it failed. Please try converting the image to JPEG or PNG format before uploading again."
                     )
                 else:
-                    raise HTTPException(status_code=500, detail=f"图片分析失败: {error_msg}")
+                    raise HTTPException(status_code=500, detail=f"Image analysis failed: {error_msg}")
             
             # Add to vector database
             logger.info("Adding item to wardrobe database...")
@@ -1002,17 +1002,17 @@ async def upload_image(
         # Provide more user-friendly error messages
         error_msg = str(e)
         if "'Timeout' object is not subscriptable" in error_msg:
-            error_msg = "下载图片URL超时。请检查URL是否正确或网络连接是否正常。如果图片很大，请尝试使用其他URL或直接上传文件。"
+            error_msg = "Image URL download timeout. Please check if the URL is correct or if the network connection is normal. If the image is large, please try using a different URL or upload the file directly."
         elif "SSL" in error_msg or "SSLError" in error_msg:
-            error_msg = "图片URL访问失败，可能是SSL连接问题。请尝试使用其他图片URL或直接上传文件。"
+            error_msg = "Image URL access failed, possibly due to SSL connection issue. Please try using a different image URL or upload the file directly."
         elif "timeout" in error_msg.lower() or "Connection" in error_msg:
-            error_msg = "图片URL访问超时或连接失败。请检查URL是否正确或网络是否正常。"
+            error_msg = "Image URL access timeout or connection failed. Please check if the URL is correct or if the network is normal."
         elif "seek of closed file" in error_msg.lower():
-            error_msg = "文件处理错误，请重试。"
+            error_msg = "File processing error, please try again."
         elif "Failed to upload to R2" in error_msg:
-            error_msg = f"上传到存储失败：{error_msg}"
+            error_msg = f"Failed to upload to storage: {error_msg}"
         else:
-            error_msg = f"处理图片时出错：{error_msg}"
+            error_msg = f"Error processing image: {error_msg}"
         
         raise HTTPException(status_code=500, detail=error_msg)
 
@@ -1072,7 +1072,7 @@ async def get_items(user_id: str = Depends(get_current_user)):
         print(f"[Get Items] Traceback:\n{error_trace}")
         raise HTTPException(
             status_code=500, 
-            detail=f"获取衣橱数据失败: {str(e)}"
+            detail=f"Failed to get wardrobe data: {str(e)}"
         )
 
 
@@ -1085,8 +1085,8 @@ EXAMPLE_USER_EMAIL = "954504788@qq.com"
 
 async def get_user_id_by_email(email: str) -> Optional[str]:
     """
-    通过邮箱获取 Supabase 用户 ID。
-    需要使用 SERVICE_ROLE_KEY 权限查询 auth.users 表。
+    Get Supabase user ID by email.
+    Requires SERVICE_ROLE_KEY permission to query auth.users table.
     """
     try:
         import httpx
@@ -1231,72 +1231,72 @@ async def delete_items(
 
 @app.post("/items/import-examples")
 async def import_example_items(
-    gender: str = Form(...),  # "male", "female", 或 "both"
+    gender: str = Form(...),  # "male", "female", or "both"
     user_id: str = Depends(get_current_user),
 ):
     """
-    从示例账号导入单品到当前用户衣橱。
-    支持按性别筛选：Man's, Women's, Unisex。
-    会复制原 embedding，避免重新生成。
+    Import items from example account to current user's wardrobe.
+    Supports filtering by gender: Man's, Women's, Unisex.
+    Will copy original embedding to avoid regeneration.
     """
     if gender not in ["Man's", "Women's", "Unisex"]:
-        raise HTTPException(status_code=400, detail="gender 必须是 Man's, Women's 或 Unisex")
+        raise HTTPException(status_code=400, detail="gender must be Man's, Women's, or Unisex")
     
     try:
-        # 1. 获取示例账号的 user_id
+        # 1. Get example account's user_id
         example_user_id = await get_user_id_by_email(EXAMPLE_USER_EMAIL)
         if not example_user_id:
-            raise HTTPException(status_code=404, detail=f"示例账号 {EXAMPLE_USER_EMAIL} 不存在")
+            raise HTTPException(status_code=404, detail=f"Example account {EXAMPLE_USER_EMAIL} does not exist")
         
         logger.info(f"[Import Examples] Example user_id: {example_user_id}, Target gender: {gender}")
         
-        # 2. 获取示例账号的所有单品（包括 embedding）
+        # 2. Get all items from example account (including embedding)
         example_items = get_user_items_with_embedding(example_user_id)
         
         if not example_items:
             return {
-                "message": "示例账号没有单品数据",
+                "message": "Example account has no item data",
                 "imported_count": 0,
                 "skipped_count": 0
             }
         
         logger.info(f"[Import Examples] Found {len(example_items)} items in example account")
         
-        # 3. 按性别筛选
+        # 3. Filter by gender
         filtered_items = [
             item for item in example_items 
             if item.get("gender", "Unisex") == gender or item.get("gender", "Unisex") == "Unisex"
         ]
         
         if not filtered_items:
-            gender_label = "男装" if gender == "Man's" else "女装" if gender == "Women's" else "中性装"
+            gender_label = "Men's" if gender == "Man's" else "Women's" if gender == "Women's" else "Unisex"
             return {
-                "message": f"示例账号没有 {gender_label} 单品",
+                "message": f"Example account has no {gender_label} items",
                 "imported_count": 0,
                 "skipped_count": 0
             }
         
         logger.info(f"[Import Examples] Filtered to {len(filtered_items)} items matching gender {gender}")
         
-        # 4. 检查当前用户是否已有相同 image_url 的单品（去重）
+        # 4. Check if current user already has items with same image_url (deduplication)
         existing_items = get_user_items(user_id)
         existing_urls = {item.get("path") or item.get("image_url") for item in existing_items if item.get("path") or item.get("image_url")}
         
         logger.info(f"[Import Examples] Found {len(existing_urls)} existing items in target user's wardrobe")
         
-        # 5. 批量导入到当前用户（复制 embedding）
+        # 5. Batch import to current user (copy embedding)
         imported_count = 0
         skipped_count = 0
         
         for item in filtered_items:
             image_url = item.get("image_url")
             
-            # 跳过已存在的单品
+            # Skip existing items
             if image_url in existing_urls:
                 skipped_count += 1
                 continue
             
-            # 重建 features 字典
+            # Rebuild features dictionary
             features = {
                 "type": item.get("type"),
                 "color": item.get("color"),
@@ -1308,17 +1308,17 @@ async def import_example_items(
                 "gender": item.get("gender", "Unisex"),
             }
             
-            # 获取原 embedding
+            # Get original embedding
             embedding = item.get("embedding")
             
-            # 添加到当前用户（使用原 embedding）
+            # Add to current user (using original embedding)
             try:
                 await add_to_wardrobe(
                     image_path=image_url,
                     features=features,
                     user_id=user_id,
                     gender=item.get("gender", "Unisex"),
-                    embedding=embedding  # 使用原 embedding
+                    embedding=embedding  # Use original embedding
                 )
                 imported_count += 1
                 logger.debug(f"[Import Examples] Imported item {item.get('id')}: {item.get('type')}")
@@ -1328,10 +1328,10 @@ async def import_example_items(
                 traceback.print_exc()
                 continue
         
-        gender_label = "男装" if gender == "Man's" else "女装" if gender == "Women's" else "中性装"
-        message = f"成功导入 {imported_count} 件{gender_label}"
+        gender_label = "Men's" if gender == "Man's" else "Women's" if gender == "Women's" else "Unisex"
+        message = f"Successfully imported {imported_count} {gender_label} items"
         if skipped_count > 0:
-            message += f"，跳过 {skipped_count} 件重复单品"
+            message += f", skipped {skipped_count} duplicate items"
         
         logger.info(f"[Import Examples] Import completed: {imported_count} imported, {skipped_count} skipped")
         
@@ -1347,7 +1347,7 @@ async def import_example_items(
         logger.error(f"[Import Examples] Failed to import example items: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
 @app.post("/outfit")
@@ -1385,12 +1385,12 @@ async def generate_outfit(
 
         error_msg = str(e)
         
-        # 检查是否是 API 密钥相关的错误
+        # Check if it's an API key related error
         if "API key" in error_msg or "invalid_api_key" in error_msg or "401" in error_msg or "DASHSCOPE_API_KEY" in error_msg:
             logger.error(f"API key authentication error: {e}")
             raise HTTPException(
                 status_code=500, 
-                detail="API 密钥配置错误。新加坡端点必须使用 DASHSCOPE_API_KEY_SG，北京端点必须使用 DASHSCOPE_API_KEY。请检查环境变量是否正确设置。"
+                detail="API key configuration error. Singapore endpoint must use DASHSCOPE_API_KEY_SG, Beijing endpoint must use DASHSCOPE_API_KEY. Please check if environment variables are correctly set."
             )
         
         print(f"Error generating outfit: {e}\n{traceback.format_exc()}")
@@ -1408,12 +1408,12 @@ async def try_on(
 ):
     """
     Virtual try-on:
-    - garment_urls: JSON-encoded list of garment image URLs (图1, 单品合成图)
-    - person_image: the model photo (图2) as uploaded file (optional)
-    - person_image_url: the model photo (图2) as URL (optional)
-    - scene_image_url: the scene image (图3) as URL (optional)
+    - garment_urls: JSON-encoded list of garment image URLs (Image 1, garment collage)
+    - person_image: the model photo (Image 2) as uploaded file (optional)
+    - person_image_url: the model photo (Image 2) as URL (optional)
+    - scene_image_url: the scene image (Image 3) as URL (optional)
 
-    Image order: 图1 (garment collage) → 图2 (model photo) → 图3 (scene, optional)
+    Image order: Image 1 (garment collage) → Image 2 (model photo) → Image 3 (scene, optional)
     At least one of person_image or person_image_url must be provided.
     """
     from services.qwen_image_edit import QwenImageEditClient, _load_env_config
@@ -1423,7 +1423,7 @@ async def try_on(
     # Extract user_id and user_token from auth tuple
     user_id, user_token = auth
     
-    # 检查并消耗试穿次数（调用 subscription-service），同时获取订阅状态以确定分辨率
+    # Check and consume try-on count (call subscription-service), also get subscription status to determine resolution
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
     user_plan = "free"  # Default to free plan
     try:
@@ -1454,12 +1454,12 @@ async def try_on(
                 timeout=5.0
             )
             if response.status_code == 403:
-                raise HTTPException(status_code=403, detail=response.json().get("error", "试穿次数不足"))
+                raise HTTPException(status_code=403, detail=response.json().get("error", "Insufficient try-on count"))
             elif not response.is_success:
-                raise HTTPException(status_code=500, detail="检查试穿次数失败")
+                raise HTTPException(status_code=500, detail="Failed to check try-on count")
     except httpx.RequestError as e:
         logger.warning(f"Failed to check subscription service: {e}, allowing try-on to proceed")
-        # 如果订阅服务不可用，允许继续（开发环境）
+        # If subscription service is unavailable, allow to continue (development environment)
 
     # Parse garment URLs
     try:
@@ -1579,7 +1579,7 @@ async def try_on(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Qwen Image Edit config error: {e}")
 
-    # Build composite garment image (图2) by merging all garment images into a grid
+    # Build composite garment image (Image 1) by merging all garment images into a grid
     def build_garment_collage(urls: List[str], output_path: Path) -> Path:
         images: List[Image.Image] = []
         failed_urls: List[Dict[str, str]] = []
@@ -1587,27 +1587,27 @@ async def try_on(
         if not urls:
             raise RuntimeError("No garment URLs provided for collage")
         
-        # 检测是否为 R2 URL
+        # Detect if it's an R2 URL
         R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "")
         is_r2_url = R2_PUBLIC_URL and urls[0].startswith(R2_PUBLIC_URL) if urls else False
         if not is_r2_url:
-            # 通过域名判断（r2.dev）
+            # Determine by domain (r2.dev)
             is_r2_url = any("r2.dev" in url for url in urls)
         
-        # 创建 Session 并配置代理
-        # 注意：生产环境在海外不需要代理，开发环境可能需要代理
-        # 通过 R2_USE_PROXY 环境变量控制（默认 False，生产环境不需要设置）
+        # Create Session and configure proxy
+        # Note: Production environment overseas does not need proxy, development environment may need proxy
+        # Controlled by R2_USE_PROXY environment variable (default False, production environment does not need to set)
         session = requests.Session()
         use_proxy = os.getenv("R2_USE_PROXY", "false").lower() in ("true", "1", "yes")
         
         if is_r2_url and use_proxy:
-            # 仅在明确配置需要代理时才使用代理（开发环境）
-            # 支持两种代理配置方式：
-            # 1. HTTP_PROXY/HTTPS_PROXY（标准格式，如 http://proxy:port）
-            # 2. PROXY_HOST/PROXY_PORT（自定义格式，构建为 socks5://host:port）
+            # Only use proxy when explicitly configured (development environment)
+            # Supports two proxy configuration methods:
+            # 1. HTTP_PROXY/HTTPS_PROXY (standard format, e.g., http://proxy:port)
+            # 2. PROXY_HOST/PROXY_PORT (custom format, build as socks5://host:port)
             proxies = {}
             
-            # 方式1: 使用 HTTP_PROXY/HTTPS_PROXY（标准格式）
+            # Method 1: Use HTTP_PROXY/HTTPS_PROXY (standard format)
             http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
             https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
             
@@ -1615,38 +1615,38 @@ async def try_on(
                 proxies["http"] = http_proxy
                 proxies["https"] = https_proxy
             else:
-                # 方式2: 使用 PROXY_HOST/PROXY_PORT（构建代理 URL）
+                # Method 2: Use PROXY_HOST/PROXY_PORT (build proxy URL)
                 proxy_host = os.getenv("PROXY_HOST")
                 proxy_port = os.getenv("PROXY_PORT")
                 
                 if proxy_host and proxy_port:
-                    # 默认使用 SOCKS5 代理（端口 10808 通常是 SOCKS5）
-                    # 如果需要 HTTP 代理，可以通过 PROXY_TYPE 环境变量指定（如 http, https, socks5）
+                    # Default to SOCKS5 proxy (port 10808 is usually SOCKS5)
+                    # If HTTP proxy is needed, can specify via PROXY_TYPE environment variable (e.g., http, https, socks5)
                     proxy_type = os.getenv("PROXY_TYPE", "socks5").lower()
                     proxy_url = f"{proxy_type}://{proxy_host}:{proxy_port}"
                     proxies["http"] = proxy_url
                     proxies["https"] = proxy_url
                     
-                    # 如果使用 SOCKS 代理，需要安装 PySocks
+                    # If using SOCKS proxy, PySocks needs to be installed
                     if proxy_type.startswith("socks"):
                         try:
                             import socks
                         except ImportError:
                             print(f"[Try-On] WARNING: SOCKS proxy requires PySocks. Install with: uv add PySocks")
-                            # 尝试使用 HTTP 代理格式（某些代理服务器支持）
+                            # Try using HTTP proxy format (some proxy servers support this)
                             proxy_url = f"http://{proxy_host}:{proxy_port}"
                             proxies["http"] = proxy_url
                             proxies["https"] = proxy_url
             
-            # 如果配置了代理，使用它；否则使用系统代理（requests 会自动检测）
+            # If proxy is configured, use it; otherwise use system proxy (requests will auto-detect)
             if proxies.get("http") or proxies.get("https"):
                 session.proxies = proxies
                 print(f"[Try-On] Using proxy for R2 URLs: {proxies}")
             else:
-                # 使用系统代理（requests 会自动检测）
+                # Use system proxy (requests will auto-detect)
                 print(f"[Try-On] Using system proxy for R2 URLs (auto-detected)")
         else:
-            # 生产环境或非 R2 URL：不使用代理（直连）
+            # Production environment or non-R2 URL: do not use proxy (direct connection)
             session.proxies = None
             if is_r2_url:
                 print(f"[Try-On] R2_USE_PROXY not enabled, using direct connection for R2 URLs")
@@ -1750,53 +1750,53 @@ async def try_on(
         # Build base prompt with garment descriptions
         garment_desc_text = ""
         if garment_descriptions:
-            garment_desc_text = f"\n图1中的单品详情：\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
+            garment_desc_text = f"\nItem details in Image 1:\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
         
         image_inputs: List[Any] = [garments_collage_path, person_input]
-        # If scene image URL is provided, use it as 图3 (background)
+        # If scene image URL is provided, use it as Image 3 (background)
         if scene_image_url:
             image_inputs.append(scene_image_url)
             prompt = (
-                "使用图2（模特图）中的人物，让这个人物穿着图1中的所有衣服和配饰，"
-                "然后将这个穿着新衣服的人物放置在图3所示的场景中。"
-                "保持图3的环境与背景作为最终背景，只使用图3的场景元素，"
-                "人物必须来自图2，不要使用图3中的任何人物。"
-                "所有单品必须正确地穿在模特身上："
-                "上装和下装必须穿在身体的对应位置，鞋子必须穿在脚上并站在地面上，"
-                "外套必须穿在外层，配饰如眼镜必须戴在脸上、帽子戴在头上、"
-                "包背在肩上或拎在手中。"
-                "禁止任何物品悬浮在空中或散落在地上。"
-                "整体画面自然、光影一致、所有物品都贴合人体。"
+                "Use the person from Image 2 (model photo), have this person wear all clothes and accessories from Image 1, "
+                "then place this person wearing new clothes in the scene shown in Image 3. "
+                "Keep Image 3's environment and background as the final background, only use Image 3's scene elements, "
+                "the person must come from Image 2, do not use any person from Image 3. "
+                "All items must be correctly worn on the model: "
+                "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet and standing on the ground, "
+                "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
+                "bags on the shoulder or held in hand. "
+                "Prohibit any items floating in the air or scattered on the ground. "
+                "Overall image should be natural, consistent lighting, all items should fit the human body."
                 + garment_desc_text
             )
-            negative_prompt = "禁止出现图1中的人物，禁止出现图3中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。"  # 禁止出现衣服拼图和场景图中的人物，禁止物品散落或悬浮
+            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit persons from garment collage and scene image, prohibit items scattered or floating
         else:
-            # Prompt: 图2中的人物穿着图1中的所有衣服，保留模特与原始背景
+            # Prompt: Person from Image 2 wearing all clothes from Image 1, keep model and original background
             prompt = (
-                "图2中的人物穿着图1中的所有衣服和配饰，保持人物身份与原始背景自然合理，"
-                "只替换服装，不要移除或替换图2的背景。"
-                "所有单品必须正确地穿在模特身上："
-                "上装和下装必须穿在身体的对应位置，鞋子必须穿在脚上，"
-                "外套必须穿在外层，配饰如眼镜必须戴在脸上、帽子戴在头上、"
-                "包背在肩上或拎在手中。"
-                "禁止任何物品悬浮在空中或散落在地上。"
-                "所有物品都必须贴合人体，位置准确自然。"
+                "Person from Image 2 wearing all clothes and accessories from Image 1, keep person identity and original background natural and reasonable, "
+                "only replace clothing, do not remove or replace Image 2's background. "
+                "All items must be correctly worn on the model: "
+                "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
+                "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
+                "bags on the shoulder or held in hand. "
+                "Prohibit any items floating in the air or scattered on the ground. "
+                "All items must fit the human body, with accurate and natural positioning."
                 + garment_desc_text
             )
-            negative_prompt = "禁止出现图1中的人物。禁止物品悬浮在空中。禁止鞋子、眼镜、配饰散落在地上或空中。所有物品必须正确穿戴在模特身上。"  # 禁止出现衣服拼图中的人物，禁止物品散落或悬浮
+            negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit person from garment collage, prohibit items scattered or floating
     except Exception as e:
         print(f"Failed to build garment collage: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
 
     try:
-        # Index 0 is the garment collage (图1), set it to expire in 7 days
+        # Index 0 is the garment collage (Image 1), set it to expire in 7 days
         edited_path = await client.edit_image(
             image_inputs=image_inputs,
             prompt=prompt,
             n=1,
             negative_prompt=negative_prompt,
             output_path=output_path,
-            garment_collage_index=0,  # 图1 (garment collage) will expire in 7 days
+            garment_collage_index=0,  # Image 1 (garment collage) will expire in 7 days
             size=output_size,  # Set resolution based on subscription plan
         )
     except Exception as e:
@@ -2353,7 +2353,7 @@ async def shutdown_event():
         logger.info("Periodic cleanup task cancelled")
 
 
-# ==================== LV商品相关API ====================
+# ==================== LV Products Related API ====================
 
 class ScrapeLVRequest(BaseModel):
     category_url: str
@@ -2381,9 +2381,9 @@ async def scrape_lv_products(
     background_tasks: BackgroundTasks,
 ):
     """
-    抓取LV商品数据并生成缩略图
+    Scrape LV product data and generate thumbnails
     
-    注意：此功能需要根据实际LV网站结构调整选择器
+    Note: This feature needs to adjust selectors according to actual LV website structure
     """
     from services.lv_scraper import LVScraper
     from services.lv_products_db import get_db
@@ -2394,8 +2394,8 @@ async def scrape_lv_products(
         scraper = LVScraper()
         db = get_db()
         
-        # 抓取商品
-        print(f"[LV Scraper] 开始抓取商品: {request.category_url}")
+        # Scrape products
+        print(f"[LV Scraper] Starting to scrape products: {request.category_url}")
         products = scraper.fetch_product_list(
             request.category_url,
             max_pages=request.max_pages
@@ -2404,11 +2404,11 @@ async def scrape_lv_products(
         if request.max_products:
             products = products[:request.max_products]
         
-        print(f"[LV Scraper] 抓取到 {len(products)} 个商品")
+        print(f"[LV Scraper] Scraped {len(products)} products")
         
         added_products = []
         
-        # 设置缩略图服务
+        # Setup thumbnail service
         watermark_text = request.watermark_text or "fashion-rec.dongzhouhe.com"
         thumbnail_service = ThumbnailService(
             thumbnail_size=(300, 300),
@@ -2416,10 +2416,10 @@ async def scrape_lv_products(
             watermark_text=watermark_text,
         )
         
-        # 处理每个商品
+        # Process each product
         for product in products:
             try:
-                # 添加到数据库
+                # Add to database
                 product_id = db.add_product(
                     product_name=product.get('name', 'Unknown'),
                     original_lv_url=product.get('product_url', ''),
@@ -2432,20 +2432,20 @@ async def scrape_lv_products(
                 
                 thumbnail_url = None
                 
-                # 生成缩略图（如果启用）
+                # Generate thumbnail (if enabled)
                 if request.generate_thumbnails and product.get('original_image_url'):
                     try:
-                        # 下载并生成缩略图
+                        # Download and generate thumbnail
                         thumbnail = thumbnail_service.download_image(product['original_image_url'])
                         if thumbnail:
                             thumbnail_img = thumbnail_service.create_thumbnail(thumbnail, add_watermark=True)
                             
-                            # 保存到临时文件
+                            # Save to temporary file
                             temp_thumbnail_path = UPLOAD_DIR / "lv_thumbnails" / f"{product_id}.jpg"
                             temp_thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
                             thumbnail_service.save_thumbnail(thumbnail_img, temp_thumbnail_path)
                             
-                            # 上传到R2
+                            # Upload to R2
                             with temp_thumbnail_path.open("rb") as f:
                                 thumbnail_url = await upload_file_to_r2(
                                     f,
@@ -2453,13 +2453,13 @@ async def scrape_lv_products(
                                     "image/jpeg"
                                 )
                             
-                            # 更新数据库
+                            # Update database
                             db.update_product(product_id, thumbnail_url=thumbnail_url)
                             
-                            # 删除临时文件
+                            # Delete temporary file
                             temp_thumbnail_path.unlink()
                     except Exception as e:
-                        print(f"[LV Scraper] 生成缩略图失败 {product_id}: {e}")
+                        print(f"[LV Scraper] Failed to generate thumbnail {product_id}: {e}")
                 
                 added_products.append({
                     "product_id": product_id,
@@ -2468,11 +2468,11 @@ async def scrape_lv_products(
                 })
                 
             except Exception as e:
-                print(f"[LV Scraper] 处理商品失败: {e}")
+                print(f"[LV Scraper] Failed to process product: {e}")
                 continue
         
         return {
-            "message": f"成功抓取并处理 {len(added_products)} 个商品",
+            "message": f"Successfully scraped and processed {len(added_products)} products",
             "total_scraped": len(products),
             "total_added": len(added_products),
             "products": added_products,
@@ -2480,8 +2480,8 @@ async def scrape_lv_products(
         
     except Exception as e:
         import traceback
-        print(f"[LV Scraper] 抓取失败: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"抓取失败: {str(e)}")
+        print(f"[LV Scraper] Scraping failed: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
 
 @app.get("/lv-products", response_model=Dict[str, Any])
@@ -2492,7 +2492,7 @@ async def list_lv_products(
     order_direction: str = "DESC",
 ):
     """
-    列出LV商品列表
+    List LV products
     """
     from services.lv_products_db import get_db
     
@@ -2513,14 +2513,14 @@ async def list_lv_products(
             "offset": offset,
         }
     except Exception as e:
-        print(f"[LV Products] 获取商品列表失败: {e}")
+        print(f"[LV Products] Failed to get product list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/lv-products/{product_id}", response_model=LVProductResponse)
 async def get_lv_product(product_id: str):
     """
-    获取单个LV商品详情
+    Get single LV product details
     """
     from services.lv_products_db import get_db
     
@@ -2529,13 +2529,13 @@ async def get_lv_product(product_id: str):
         product = db.get_product(product_id)
         
         if not product:
-            raise HTTPException(status_code=404, detail="商品不存在")
+            raise HTTPException(status_code=404, detail="Product does not exist")
         
         return product
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[LV Products] 获取商品失败: {e}")
+        print(f"[LV Products] Failed to get product: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2546,7 +2546,7 @@ async def search_lv_products(
     offset: int = 0,
 ):
     """
-    搜索LV商品
+    Search LV products
     """
     from services.lv_products_db import get_db
     
@@ -2564,7 +2564,7 @@ async def search_lv_products(
             "count": len(products),
         }
     except Exception as e:
-        print(f"[LV Products] 搜索商品失败: {e}")
+        print(f"[LV Products] Failed to search products: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2574,7 +2574,7 @@ async def generate_product_thumbnail(
     watermark_text: Optional[str] = None,
 ):
     """
-    为指定商品生成缩略图
+    Generate thumbnail for specified product
     """
     from services.lv_products_db import get_db
     from services.thumbnail_service import ThumbnailService
@@ -2585,12 +2585,12 @@ async def generate_product_thumbnail(
         product = db.get_product(product_id)
         
         if not product:
-            raise HTTPException(status_code=404, detail="商品不存在")
+            raise HTTPException(status_code=404, detail="Product does not exist")
         
         if not product.get('original_image_url'):
-            raise HTTPException(status_code=400, detail="商品没有原始图片URL")
+            raise HTTPException(status_code=400, detail="Product has no original image URL")
         
-        # 生成缩略图
+        # Generate thumbnail
         watermark = watermark_text or "fashion-rec.dongzhouhe.com"
         thumbnail_service = ThumbnailService(
             thumbnail_size=(300, 300),
@@ -2598,19 +2598,19 @@ async def generate_product_thumbnail(
             watermark_text=watermark,
         )
         
-        # 下载并生成缩略图
+        # Download and generate thumbnail
         thumbnail = thumbnail_service.download_image(product['original_image_url'])
         if not thumbnail:
-            raise HTTPException(status_code=500, detail="下载原始图片失败")
+            raise HTTPException(status_code=500, detail="Failed to download original image")
         
         thumbnail_img = thumbnail_service.create_thumbnail(thumbnail, add_watermark=True)
         
-        # 保存到临时文件
+        # Save to temporary file
         temp_thumbnail_path = UPLOAD_DIR / "lv_thumbnails" / f"{product_id}.jpg"
         temp_thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
         thumbnail_service.save_thumbnail(thumbnail_img, temp_thumbnail_path)
         
-        # 上传到R2
+        # Upload to R2
         with temp_thumbnail_path.open("rb") as f:
             thumbnail_url = await upload_file_to_r2(
                 f,
@@ -2618,30 +2618,30 @@ async def generate_product_thumbnail(
                 "image/jpeg"
             )
         
-        # 更新数据库
+        # Update database
         db.update_product(product_id, thumbnail_url=thumbnail_url)
         
-        # 删除临时文件
+        # Delete temporary file
         temp_thumbnail_path.unlink()
         
         return {
             "product_id": product_id,
             "thumbnail_url": thumbnail_url,
-            "message": "缩略图生成成功",
+            "message": "Thumbnail generated successfully",
         }
         
     except HTTPException:
         raise
     except Exception as e:
         import traceback
-        print(f"[LV Products] 生成缩略图失败: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"生成缩略图失败: {str(e)}")
+        print(f"[LV Products] Failed to generate thumbnail: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate thumbnail: {str(e)}")
 
 
 @app.delete("/lv-products/{product_id}")
 async def delete_lv_product(product_id: str):
     """
-    删除LV商品
+    Delete LV product
     """
     from services.lv_products_db import get_db
     
@@ -2650,26 +2650,26 @@ async def delete_lv_product(product_id: str):
         success = db.delete_product(product_id)
         
         if not success:
-            raise HTTPException(status_code=404, detail="商品不存在")
+            raise HTTPException(status_code=404, detail="Product does not exist")
         
-        return {"message": "商品已删除", "product_id": product_id}
+        return {"message": "Product deleted", "product_id": product_id}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[LV Products] 删除商品失败: {e}")
+        print(f"[LV Products] Failed to delete product: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== Subscription Management ====================
 
-# 注意：订阅管理 API 已迁移到 subscription-service (TypeScript)
-# 这些端点保留作为代理，或直接调用 subscription-service
-# 建议前端直接调用 subscription-service
+# Note: Subscription management API has been migrated to subscription-service (TypeScript)
+# These endpoints are kept as proxies, or directly call subscription-service
+# It is recommended that frontend directly calls subscription-service
 
 @app.get("/userinfo")
 async def get_userinfo(user_id: str = Depends(get_current_user)):
     """
-    获取用户订阅状态和试穿次数信息（代理到 subscription-service）
+    Get user subscription status and try-on count information (proxy to subscription-service)
     """
     import httpx
     
@@ -2684,7 +2684,7 @@ async def get_userinfo(user_id: str = Depends(get_current_user)):
             if response.is_success:
                 return response.json()
             else:
-                raise HTTPException(status_code=response.status_code, detail="获取订阅状态失败")
+                raise HTTPException(status_code=response.status_code, detail="Failed to get subscription status")
     except httpx.RequestError as e:
         logger.error(f"Error proxying to subscription service: {e}")
-        raise HTTPException(status_code=500, detail=f"订阅服务不可用: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Subscription service unavailable: {str(e)}")
