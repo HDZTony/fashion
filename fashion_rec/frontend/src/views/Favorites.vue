@@ -2,9 +2,12 @@
 defineOptions({ name: 'Favorites' })
 import { onMounted, onUnmounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 import { apiClient } from '../lib/api-client'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -108,7 +111,7 @@ const loadFavorites = async () => {
 }
 
 const deleteFavorite = async (favoriteId: string) => {
-  if (!confirm('Delete this favorite?')) {
+  if (!confirm(t('favorites.deleteConfirm'))) {
     return
   }
   
@@ -233,7 +236,7 @@ const restoreFavorite = async (favorite: Favorite) => {
     })
   } catch (error: any) {
     console.error('Failed to restore favorite:', error)
-    alert('Failed to restore favorite. Please try again.')
+    alert(t('favorites.restoreFailed'))
   }
 }
 
@@ -247,7 +250,7 @@ onUnmounted(() => {
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-6 mb-6 flex items-center justify-between">
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
         <Heart class="w-6 h-6 text-pink-600 fill-current" />
-        My Favorites
+        {{ $t('favorites.title') }}
       </h1>
     </header>
 
@@ -257,7 +260,7 @@ onUnmounted(() => {
         class="py-12 flex flex-col items-center justify-center"
       >
         <div class="w-8 h-8 border-2 border-pink-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-pink-700 font-medium">Loading favorites...</p>
+        <p class="text-pink-700 font-medium">{{ $t('favorites.loading') }}</p>
       </div>
 
       <div v-else-if="error" class="py-8 text-center text-red-600 text-sm">
@@ -266,8 +269,8 @@ onUnmounted(() => {
 
       <div v-else-if="!favorites.length" class="py-12 text-center">
         <Heart class="w-16 h-16 mx-auto mb-4 text-pink-300" />
-        <p class="text-gray-700 text-sm mb-2 font-medium">No try-on results saved yet</p>
-        <p class="text-pink-600 text-xs">After you try on looks, tap Favorite to save what you like.</p>
+        <p class="text-gray-700 text-sm mb-2 font-medium">{{ $t('favorites.noFavorites') }}</p>
+        <p class="text-pink-600 text-xs">{{ $t('favorites.noFavoritesDesc') }}</p>
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -297,24 +300,24 @@ onUnmounted(() => {
                   {{ formatDate(favorite.created_at) }}
                 </p>
                 <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-pink-500">
-                  {{ favorite.garment_urls.length }} item(s)
+                  {{ favorite.garment_urls.length }} {{ $t('favorites.items') }}
                 </p>
                 <p v-if="favorite.scene_image_url" class="text-xs text-pink-600 mt-1">
-                  包含场景
+                  {{ $t('favorites.includesScene') }}
                 </p>
               </div>
               <div class="flex items-center gap-1">
                 <button
                   @click.stop="restoreFavorite(favorite)"
                   class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-pink-50 flex items-center justify-center transition-colors group"
-                  title="恢复到此试穿"
+                  :title="$t('favorites.restoreToTryOn')"
                 >
                   <RotateCcw class="w-4 h-4 text-pink-400 group-hover:text-pink-600 transition-colors" />
                 </button>
                 <button
                   @click.stop="deleteFavorite(favorite.id)"
                   class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
-                  title="删除收藏"
+                  :title="$t('favorites.delete')"
                 >
                   <X class="w-4 h-4 text-pink-400 group-hover:text-red-500 transition-colors" />
                 </button>

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 defineOptions({ name: 'Login' })
 import { supabase } from '../lib/supabase'
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const email = ref('')
@@ -18,11 +21,11 @@ const resendTimer = ref<ReturnType<typeof setInterval> | null>(null)
 
 const handleLogin = async () => {
   if (!email.value) {
-    message.value = 'Please enter your email'
+    message.value = t('login.pleaseEnterEmail')
     return
   }
   if (!password.value) {
-    message.value = 'Please enter your password'
+    message.value = t('login.pleaseEnterPassword')
     return
   }
 
@@ -43,7 +46,7 @@ const handleLogin = async () => {
       if (error) {
         // Handle specific errors
         if (error.message.includes('already registered')) {
-          message.value = 'This email is already registered. Please sign in.'
+          message.value = t('login.emailAlreadyRegistered')
           isSignUp.value = false
         } else {
           throw error
@@ -55,7 +58,7 @@ const handleLogin = async () => {
         // Check whether email verification is needed
         if (data.session) {
           // Session present; no verification needed
-          message.value = 'Sign-up successful! Signing you in...'
+          message.value = t('login.signUpSuccessful')
           localStorage.setItem('auth_token', data.session.access_token)
           // Also set cookie for browser-initiated requests
           const { setTokenInCookie } = await import('../lib/cookie-storage')
@@ -63,7 +66,7 @@ const handleLogin = async () => {
           router.push('/wardrobe')
         } else {
           // Verification required
-          message.value = 'Sign-up successful! Please check your email (including spam folder) to verify your account.'
+          message.value = t('login.signUpCheckEmail')
           showResendConfirmation.value = true
           // Start cooldown timer (60 seconds)
           resendCooldown.value = 60
@@ -87,9 +90,9 @@ const handleLogin = async () => {
       if (error) {
         // Handle specific errors
         if (error.message.includes('Invalid login credentials')) {
-          message.value = 'Incorrect email or password'
+          message.value = t('login.incorrectCredentials')
         } else if (error.message.includes('Email not confirmed')) {
-          message.value = 'Please verify your email first. Check your inbox (including spam folder) for the confirmation email.'
+          message.value = t('login.emailNotConfirmed')
           showResendConfirmation.value = true
           // Start cooldown timer (60 seconds)
           resendCooldown.value = 60
@@ -118,7 +121,7 @@ const handleLogin = async () => {
     }
   } catch (error: any) {
     console.error('Auth error:', error)
-    message.value = error.message || (isSignUp.value ? 'Sign-up failed' : 'Sign-in failed')
+    message.value = error.message || (isSignUp.value ? t('login.signUpFailed') : t('login.signInFailed'))
   } finally {
     isLoading.value = false
   }
@@ -139,7 +142,7 @@ const toggleMode = () => {
 
 const handleForgotPassword = async () => {
   if (!resetEmail.value) {
-    message.value = 'Please enter your email address'
+    message.value = t('login.pleaseEnterEmailAddress')
     return
   }
 
@@ -153,10 +156,10 @@ const handleForgotPassword = async () => {
 
     if (error) throw error
 
-    message.value = 'Password reset email sent. Please check your inbox.'
+    message.value = t('login.passwordResetSent')
   } catch (error: any) {
     console.error('Password reset error:', error)
-    message.value = error.message || 'Failed to send password reset email'
+    message.value = error.message || t('login.resetFailed')
   } finally {
     isLoading.value = false
   }
@@ -185,12 +188,12 @@ onUnmounted(() => {
 
 const handleResendConfirmation = async () => {
   if (!email.value) {
-    message.value = 'Please enter your email address'
+    message.value = t('login.pleaseEnterEmailAddress')
     return
   }
 
   if (resendCooldown.value > 0) {
-    message.value = `Please wait ${resendCooldown.value} seconds before resending.`
+    message.value = t('login.waitBeforeResend', { seconds: resendCooldown.value })
     return
   }
 
@@ -208,17 +211,17 @@ const handleResendConfirmation = async () => {
 
     if (error) {
       if (error.message.includes('already confirmed')) {
-        message.value = 'This email is already confirmed. Please try signing in.'
+        message.value = t('login.emailAlreadyConfirmed')
         showResendConfirmation.value = false
       } else if (error.message.includes('rate limit')) {
-        message.value = 'Too many requests. Please wait a few minutes before trying again.'
+        message.value = t('login.tooManyRequests')
       } else {
         throw error
       }
       return
     }
 
-    message.value = 'Confirmation email sent! Please check your inbox (including spam folder).'
+    message.value = t('login.confirmationEmailSent')
     // Start cooldown timer (60 seconds)
     resendCooldown.value = 60
     if (resendTimer.value) clearInterval(resendTimer.value)
@@ -231,7 +234,7 @@ const handleResendConfirmation = async () => {
     }, 1000)
   } catch (error: any) {
     console.error('Resend confirmation error:', error)
-    message.value = error.message || 'Failed to resend confirmation email'
+    message.value = error.message || t('login.resendFailed')
   } finally {
     isLoading.value = false
   }
@@ -255,7 +258,7 @@ const handleGoogleLogin = async () => {
     // User will be redirected to Google, so we don't need to handle success here
   } catch (error: any) {
     console.error('Google login error:', error)
-    message.value = error.message || 'Failed to sign in with Google'
+    message.value = error.message || t('login.googleLoginFailed')
     isLoading.value = false
   }
 }
@@ -271,10 +274,10 @@ const handleGoogleLogin = async () => {
     
     <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 border border-pink-100">
       <h1 class="text-4xl font-bold mb-2 text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-        Welcome
+        {{ $t('login.title') }}
       </h1>
       <p class="text-gray-600 mb-8 text-center text-lg">
-        {{ isForgotPassword ? 'Reset password' : isSignUp ? 'Create account' : 'Sign in to access your AI wardrobe' }}
+        {{ isForgotPassword ? $t('login.subtitle.forgotPassword') : isSignUp ? $t('login.subtitle.signUp') : $t('login.subtitle.signIn') }}
       </p>
       
       <!-- 密码找回表单 -->
@@ -282,7 +285,7 @@ const handleGoogleLogin = async () => {
         <input
           v-model="resetEmail"
           type="email"
-          placeholder="Enter your email address"
+          :placeholder="$t('login.enterEmailAddress')"
           class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleForgotPassword"
         />
@@ -292,7 +295,7 @@ const handleGoogleLogin = async () => {
           :disabled="isLoading"
           class="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-3 rounded-full font-semibold hover:from-pink-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
         >
-          {{ isLoading ? 'Sending...' : 'Send reset link' }}
+          {{ isLoading ? $t('login.sending') : $t('login.sendResetLink') }}
         </button>
 
         <p v-if="message" class="text-sm text-center" :class="message.toLowerCase().includes('sent') ? 'text-green-600' : 'text-red-600'">
@@ -304,7 +307,7 @@ const handleGoogleLogin = async () => {
             @click="backToLogin"
             class="w-full text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
           >
-            ← Back to login
+            {{ $t('login.backToLogin') }}
           </button>
         </div>
       </div>
@@ -314,7 +317,7 @@ const handleGoogleLogin = async () => {
         <input
           v-model="email"
           type="email"
-          placeholder="Enter email"
+          :placeholder="$t('login.enterEmail')"
           class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleLogin"
         />
@@ -322,7 +325,7 @@ const handleGoogleLogin = async () => {
         <input
           v-model="password"
           type="password"
-          placeholder="Enter password"
+          :placeholder="$t('login.enterPassword')"
           class="w-full px-4 py-3 rounded-xl border border-pink-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-400 transition-all"
           @keyup.enter="handleLogin"
         />
@@ -332,7 +335,7 @@ const handleGoogleLogin = async () => {
               @click="showForgotPassword"
               class="text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
             >
-              Forgot password?
+              {{ $t('login.forgotPassword') }}
             </button>
         </div>
         
@@ -341,7 +344,7 @@ const handleGoogleLogin = async () => {
           :disabled="isLoading"
           class="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-3 rounded-full font-semibold hover:from-pink-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
         >
-          {{ isLoading ? (isSignUp ? 'Signing up...' : 'Signing in...') : (isSignUp ? 'Sign up' : 'Sign in') }}
+          {{ isLoading ? (isSignUp ? $t('login.signingUp') : $t('login.signingIn')) : (isSignUp ? $t('login.signUp') : $t('login.signIn')) }}
         </button>
 
         <!-- Divider -->
@@ -350,7 +353,7 @@ const handleGoogleLogin = async () => {
             <div class="w-full border-t border-gray-200"></div>
           </div>
           <div class="relative flex justify-center text-sm">
-            <span class="px-2 bg-white text-gray-500">Or continue with</span>
+            <span class="px-2 bg-white text-gray-500">{{ $t('login.continueWith') }}</span>
           </div>
         </div>
 
@@ -366,7 +369,7 @@ const handleGoogleLogin = async () => {
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
-          <span>Continue with Google</span>
+          <span>{{ $t('login.continueWithGoogle') }}</span>
         </button>
 
         <p v-if="message" class="text-sm text-center font-medium" :class="message.toLowerCase().includes('success') || message.toLowerCase().includes('sent') ? 'text-pink-600' : 'text-red-600'">
@@ -381,8 +384,8 @@ const handleGoogleLogin = async () => {
             class="w-full text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed underline"
           >
             {{ resendCooldown > 0 
-              ? `Resend confirmation email (wait ${resendCooldown}s)` 
-              : 'Didn\'t receive the email? Resend confirmation' }}
+              ? $t('login.resendWait', { seconds: resendCooldown })
+              : $t('login.resendConfirmation') }}
           </button>
         </div>
         
@@ -391,7 +394,7 @@ const handleGoogleLogin = async () => {
             @click="toggleMode"
             class="w-full text-sm text-pink-600 hover:text-pink-700 font-medium transition-colors"
           >
-            {{ isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up' }}
+            {{ isSignUp ? $t('login.hasAccount') + '? ' + $t('login.signIn') : $t('login.needAccount') }}
           </button>
         </div>
       </div>

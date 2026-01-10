@@ -8,6 +8,9 @@ import { useHead } from '@vueuse/head'
 import { useSEO } from '@/composables/useSEO'
 import { siteBaseUrl } from '@/config/seo'
 import { apiClient } from '@/lib/api-client'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineOptions({ name: 'Home' })
 
@@ -57,40 +60,40 @@ const handleGetStarted = async () => {
 }
 
 const buttonText = computed(() => {
-  return isAuthenticated.value ? 'Enter Studio' : 'Start for Free'
+  return isAuthenticated.value ? t('home.enterStudio') : t('home.startForFree')
 })
 
-// FAQ data
-const faqs = [
+// FAQ data - using computed to make it reactive to language changes
+const faqs = computed(() => [
   {
-    question: 'What is the difference between Fashion Rec and the many similar services already available in the market?',
-    answer: '1. Fashion Rec is a service designed for individual users. 2. It features a smart wardrobe for convenient personal clothing management. 3. It is affordable, and free users can also enjoy full functionality.'
+    question: t('home.faq.q1'),
+    answer: t('home.faq.a1')
   },
   {
-    question: 'How do I use the AI virtual try-on?',
-    answer: 'Upload your photo and the garments you want to try. Our AI will generate the try-on results automatically. You can start in the Studio page.'
+    question: t('home.faq.q2'),
+    answer: t('home.faq.a2')
   },
   {
-    question: "If I don't plan to pay, is this website useless to me?",
-    answer: "Absolutely not. We believe people will always pay for quality service. Even if you subscribe to the free plan, you can still enjoy all core features."
+    question: t('home.faq.q3'),
+    answer: t('home.faq.a3')
   },
   {
-    question: 'What is the difference between Free and Premium?',
-    answer: 'The Free plan offers 2 try-on per day with core features and history saving. Premium includes more try-ons and advanced features.'
+    question: t('home.faq.q4'),
+    answer: t('home.faq.a4')
   },
   {
-    question: 'Is my data safe?',
-    answer: 'We take privacy and security seriously. All uploaded photos and data are stored with encryption and never shared with third parties.'
+    question: t('home.faq.q5'),
+    answer: t('home.faq.a5')
   },
   {
-    question: 'Which image formats are supported?',
-    answer: 'JPG, PNG, WEBP and other common formats are supported. Clear portrait photos provide the best results.'
+    question: t('home.faq.q6'),
+    answer: t('home.faq.a6')
   },
   {
-    question: 'How do I manage my wardrobe?',
-    answer: 'After signing in, go to “My Wardrobe” to add, edit, or delete items.'
+    question: t('home.faq.q7'),
+    answer: t('home.faq.a7')
   }
-]
+])
 
 useSEO({
   title: 'Fashion Rec | Virtual Try-On & Smart Outfit Recommendations',
@@ -102,7 +105,7 @@ useSEO({
 const faqSchema = computed(() => ({
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
-  mainEntity: faqs.map((item) => ({
+  mainEntity: faqs.value.map((item: { question: string; answer: string }) => ({
     '@type': 'Question',
     name: item.question,
     acceptedAnswer: {
@@ -138,11 +141,11 @@ useHead({
         
         <div class="max-w-4xl mx-auto">
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight bg-gradient-to-r from-pink-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-fade-in">
-            Discover Your Perfect Style
+            {{ $t('home.title') }}
           </h1>
           <p class="mt-6 text-xl sm:text-2xl leading-8 text-gray-700 max-w-3xl mx-auto font-light">
-            AI-powered virtual try-on and personalized outfit recommendations. 
-            <span class="text-pink-600 font-medium">Try before you buy</span> and find your signature look.
+            {{ $t('home.subtitle') }}
+            <span class="text-pink-600 font-medium">{{ $t('home.tryBeforeBuy') }}</span> {{ $t('home.findSignatureLook') }}
           </p>
           <div class="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button
@@ -425,7 +428,7 @@ useHead({
       <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-3xl mx-auto">
           <h2 class="text-4xl sm:text-5xl font-bold text-center mb-12 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-            Frequently Asked Questions
+            {{ $t('home.faq.title') }}
           </h2>
           <Accordion type="single" collapsible class="w-full">
             <AccordionItem

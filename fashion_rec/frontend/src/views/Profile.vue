@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
 import { subscriptionClient } from '../lib/api-client'
@@ -8,6 +9,8 @@ import { useAuthStore } from '../stores/auth'
 import type { UserInfo } from '../types'
 
 defineOptions({ name: 'Profile' })
+
+const { t } = useI18n()
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -237,7 +240,7 @@ const upgradeSubscription = async (target: 'member') => {
     })
     
     await loadUserInfo()
-    alert('Subscription updated successfully!')
+    alert(t('profile.subscriptionUpdated'))
   } catch (e: any) {
     console.error('Failed to upgrade/downgrade subscription', e)
     const errorMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to update subscription'
@@ -389,17 +392,17 @@ const actionLabel = (slug: string) => {
   if (slug === planSlug.value) {
     // 当前计划：如果是付费计划且状态为 active/trialing，显示取消订阅
     if (planSlug.value !== 'free' && (status.value === 'Active' || status.value === 'Trialing')) {
-      return 'Cancel Subscription'
+      return t('profile.cancelSubscription')
     }
-    return 'Current plan'
+    return t('profile.current') + ' ' + t('profile.plan')
   }
   // 如果当前订阅状态是 Canceled 或 Expired，其他套餐显示 "Subscribe"
   if (status.value === 'Canceled' || status.value === 'Expired') {
-    return 'Subscribe'
+    return t('profile.subscribe')
   }
   const currentRank = planRank[planSlug.value] ?? 0
   const targetRank = planRank[slug] ?? 0
-  return targetRank > currentRank ? 'Upgrade' : 'Downgrade'
+  return targetRank > currentRank ? t('profile.upgrade') : t('profile.downgrade')
 }
 
 const isActionDisabled = (slug: string) => {
@@ -436,38 +439,38 @@ onMounted(async () => {
       <div class="max-w-4xl mx-auto space-y-8">
         <div>
           <h1 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            Profile
+            {{ $t('profile.title') }}
           </h1>
-          <p class="text-xl text-gray-600 mt-2">View your subscription status and remaining credits</p>
+          <p class="text-xl text-gray-600 mt-2">{{ $t('profile.subtitle') }}</p>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
           <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Subscription</h2>
-              <span class="text-sm text-pink-600 font-medium">{{ isLoading ? 'Loading...' : 'Updated' }}</span>
+              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.subscription') }}</h2>
+              <span class="text-sm text-pink-600 font-medium">{{ isLoading ? $t('profile.loading') : $t('profile.updated') }}</span>
             </div>
             <div class="space-y-3">
               <div class="flex justify-between text-sm text-gray-700">
-                <span>Current plan</span>
+                <span>{{ $t('profile.currentPlan') }}</span>
                 <span class="font-semibold text-gray-900">{{ planDisplay }}</span>
               </div>
               <div class="flex justify-between text-sm text-gray-700">
-                <span>Status</span>
+                <span>{{ $t('profile.status') }}</span>
                 <span class="font-semibold text-gray-900">{{ status }}</span>
               </div>
               <div class="flex justify-between text-sm text-gray-700">
-                <span>Remaining free credits</span>
+                <span>{{ $t('profile.remainingFreeCredits') }}</span>
                 <span class="font-semibold text-gray-900">
-                  {{ freeRemainingTries }}/3 (Daily limit)
+                  {{ freeRemainingTries }}/3 ({{ $t('profile.dailyLimit') }})
                 </span>
               </div>
               <div class="flex justify-between text-sm text-gray-700">
-                <span>Remaining credits</span>
+                <span>{{ $t('profile.remainingCredits') }}</span>
                 <span class="font-semibold text-gray-900">{{ remainingCredits }}</span>
               </div>
               <div class="flex justify-between text-sm text-gray-700" v-if="nextResetDate">
-                <span>Next reset</span>
+                <span>{{ $t('profile.nextReset') }}</span>
                 <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
               </div>
             </div>
@@ -479,7 +482,7 @@ onMounted(async () => {
                 :disabled="isLoading"
                 @click="cancelSubscription"
               >
-              Cancel Subscription
+              {{ $t('profile.cancelSubscription') }}
               </Button>
             </div>
             <p v-if="error" class="mt-3 text-sm text-red-600 font-medium">{{ error }}</p>
@@ -487,16 +490,16 @@ onMounted(async () => {
 
           <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Account</h2>
+              <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.account') }}</h2>
             </div>
             <div class="space-y-3 text-sm text-gray-700">
-              <p>Sign-in email: <span class="font-semibold">{{ userEmail }}</span></p>
-              <p v-if="userinfo?.subscriptionId">Billing period: <span class="font-semibold">Monthly</span></p>
-              <p v-if="userinfo?.period">Credits reset period: <span class="font-semibold">{{ userinfo.period }}</span></p>
+              <p>{{ $t('profile.signInEmail') }}: <span class="font-semibold">{{ userEmail }}</span></p>
+              <p v-if="userinfo?.subscriptionId">{{ $t('profile.billingPeriod') }}: <span class="font-semibold">{{ $t('profile.monthly') }}</span></p>
+              <p v-if="userinfo?.period">{{ $t('profile.creditsResetPeriod') }}: <span class="font-semibold">{{ userinfo.period }}</span></p>
             </div>
             <div class="mt-6 space-y-3">
-              <Button variant="outline" class="w-full" @click="openPortal">Customer Portal</Button>
-              <Button variant="secondary" class="w-full" @click="signOut">Sign out</Button>
+              <Button variant="outline" class="w-full" @click="openPortal">{{ $t('profile.customerPortal') }}</Button>
+              <Button variant="secondary" class="w-full" @click="signOut">{{ $t('profile.signOut') }}</Button>
             </div>
           </div>
         </div>
@@ -504,8 +507,8 @@ onMounted(async () => {
         <!-- Subscription Plans -->
         <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
           <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Subscription Plans</h2>
-            <span class="text-sm text-pink-600 font-medium">Monthly recurring</span>
+            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.subscriptionPlans') }}</h2>
+            <span class="text-sm text-pink-600 font-medium">{{ $t('profile.monthlyRecurring') }}</span>
           </div>
           <div class="grid gap-4 md:grid-cols-1">
             <div
@@ -522,7 +525,7 @@ onMounted(async () => {
                 <span
                   v-if="plan.slug === planSlug"
                   class="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold shadow-md"
-                >Current</span>
+                >{{ $t('profile.current') }}</span>
               </div>
               <p class="text-sm text-gray-600">{{ plan.desc }}</p>
               <Button
@@ -543,8 +546,8 @@ onMounted(async () => {
         <!-- Credits (One-time Purchase) -->
         <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
           <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Credits</h2>
-            <span class="text-sm text-pink-600 font-medium">One-time purchase</span>
+            <h2 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.credits') }}</h2>
+            <span class="text-sm text-pink-600 font-medium">{{ $t('profile.oneTimePurchase') }}</span>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
             <div
@@ -564,13 +567,13 @@ onMounted(async () => {
                 </div>
               </div>
               <p class="text-sm text-gray-700 font-medium">{{ credit.credits }} credits</p>
-              <p class="text-sm text-gray-600">One-time purchase, credits never expire</p>
+              <p class="text-sm text-gray-600">{{ $t('profile.creditsNeverExpire') }}</p>
               <Button
                 class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl rounded-full"
                 :disabled="isLoading"
                 @click="purchaseCredits(credit.id)"
               >
-                {{ isLoading ? 'Processing...' : 'Purchase' }}
+                {{ isLoading ? $t('profile.processing') : $t('profile.purchase') }}
               </Button>
             </div>
           </div>

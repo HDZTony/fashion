@@ -2,9 +2,12 @@
 defineOptions({ name: 'TryOnHistory' })
 import { onMounted, onActivated, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -89,7 +92,7 @@ const loadHistory = async (page: number = 1) => {
 }
 
 const deleteHistoryItem = async (historyId: string) => {
-  if (!confirm('Delete this try-on history item?')) {
+  if (!confirm(t('history.deleteConfirm'))) {
     return
   }
   
@@ -229,7 +232,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
     })
   } catch (error: any) {
     console.error('Failed to restore try-on history:', error)
-    alert('Failed to restore try-on history. Please try again.')
+    alert(t('history.restoreFailed'))
   }
 }
 </script>
@@ -240,7 +243,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
       <div class="flex items-center gap-3">
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
           <History class="w-6 h-6 text-pink-600" />
-          Try-On History
+          {{ $t('history.title') }}
         </h1>
       </div>
     </header>
@@ -251,7 +254,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
         class="py-12 flex flex-col items-center justify-center"
       >
         <div class="w-8 h-8 border-2 border-pink-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-pink-700 font-medium">Loading try-on history...</p>
+        <p class="text-pink-700 font-medium">{{ $t('history.loading') }}</p>
       </div>
 
       <div v-else-if="error" class="py-8 text-center text-red-600 text-sm">
@@ -260,14 +263,14 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
 
       <div v-else-if="!historyItems.length" class="py-12 text-center">
         <History class="w-16 h-16 mx-auto mb-4 text-pink-300" />
-        <p class="text-gray-700 text-sm mb-2 font-medium">No try-on history yet</p>
-        <p class="text-pink-600 text-xs">After you try on looks, results will be saved here automatically.</p>
+        <p class="text-gray-700 text-sm mb-2 font-medium">{{ $t('history.noHistory') }}</p>
+        <p class="text-pink-600 text-xs">{{ $t('history.noHistoryDesc') }}</p>
       </div>
 
       <div v-else>
         <!-- Statistics -->
         <div v-if="totalItems > 0" class="mb-4 text-sm text-pink-700 font-medium">
-          Showing {{ historyItems.length }} of {{ totalItems }} item(s)
+          {{ $t('history.showing') }} {{ historyItems.length }} {{ $t('history.of') }} {{ totalItems }} {{ $t('history.items') }}
         </div>
         
         <!-- History Grid -->
@@ -290,7 +293,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
             <!-- Days remaining badge -->
             <div class="absolute top-2 right-2 bg-gradient-to-r from-pink-500 to-purple-500/90 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm font-medium">
-              Expires in {{ getDaysRemaining(item.expires_at) }} days
+              {{ $t('history.expiresIn') }} {{ getDaysRemaining(item.expires_at) }} {{ $t('history.days') }}
             </div>
           </div>
           
@@ -302,24 +305,24 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
                   {{ formatDate(item.created_at) }}
                 </p>
                 <p v-if="item.garment_urls && item.garment_urls.length > 0" class="text-xs text-pink-500">
-                  {{ item.garment_urls.length }} item(s)
+                  {{ item.garment_urls.length }} {{ $t('history.items') }}
                 </p>
                 <p v-if="item.scene_image_url" class="text-xs text-pink-600 mt-1">
-                  Includes scene
+                  {{ $t('history.includesScene') }}
                 </p>
               </div>
               <div class="flex items-center gap-1">
                 <button
                   @click.stop="restoreTryOnHistory(item)"
                   class="flex-shrink-0 w-7 h-7 rounded-full hover:bg-pink-50 flex items-center justify-center transition-colors group"
-                  title="Restore to this fitting"
+                  :title="$t('history.restoreToFitting')"
                 >
                   <RotateCcw class="w-4 h-4 text-pink-400 group-hover:text-pink-600 transition-colors" />
                 </button>
                 <button
                   @click.stop="deleteHistoryItem(item.id)"
                   class="flex-shrink-0 w-6 h-6 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors group"
-                  title="Clear History"
+                  :title="$t('history.clearHistory')"
                 >
                   <X class="w-4 h-4 text-pink-400 group-hover:text-red-500 transition-colors" />
                 </button>
@@ -336,17 +339,17 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             :disabled="currentPage === 1 || isLoading"
             class="px-4 py-2 border border-pink-300 rounded-lg hover:bg-pink-50 disabled:opacity-50 disabled:cursor-not-allowed text-pink-700 transition-colors font-medium"
           >
-            Previous
+            {{ $t('history.previous') }}
           </button>
           <span class="px-4 py-2 text-pink-700 text-sm font-medium">
-            Page {{ currentPage }} of {{ totalPages }}
+            {{ $t('history.page') }} {{ currentPage }} {{ $t('history.of') }} {{ totalPages }}
           </span>
           <button
             @click="loadHistory(currentPage + 1)"
             :disabled="currentPage === totalPages || isLoading"
             class="px-4 py-2 border border-pink-300 rounded-lg hover:bg-pink-50 disabled:opacity-50 disabled:cursor-not-allowed text-pink-700 transition-colors font-medium"
           >
-            Next
+            {{ $t('history.next') }}
           </button>
         </div>
       </div>

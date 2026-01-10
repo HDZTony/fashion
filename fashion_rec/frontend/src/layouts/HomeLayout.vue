@@ -3,10 +3,13 @@ import { Button } from '@/components/ui/button'
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useI18n } from 'vue-i18n'
 import { Mail } from 'lucide-vue-next'
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { t } = useI18n()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const handleGetStarted = () => {
@@ -18,7 +21,7 @@ const handleGetStarted = () => {
 }
 
 const buttonText = computed(() => {
-  return isAuthenticated.value ? 'Enter Studio' : 'Start for Free'
+  return isAuthenticated.value ? t('home.enterStudio') : t('home.startForFree')
 })
 </script>
 
@@ -47,6 +50,7 @@ const buttonText = computed(() => {
             <Mail class="w-4 h-4" />
             Contact Us
           </a>
+          <LanguageSwitcher class="mr-4" />
           <Button @click="handleGetStarted" variant="default" size="lg" class="font-bold text-base px-6 py-3 shadow-lg hover:shadow-xl transition-shadow bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white border-0">
             {{ buttonText }}
           </Button>

@@ -19,11 +19,11 @@
           </span>
         </router-link>
         <div class="flex items-center gap-4">
-          <router-link to="/studio" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">Studio</router-link>
-          <router-link to="/wardrobe" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">Wardrobe</router-link>
-          <router-link to="/tryon-history" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">Outfit History</router-link>
+          <router-link to="/studio" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">{{ $t('nav.studio') }}</router-link>
+          <router-link to="/wardrobe" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">{{ $t('nav.wardrobe') }}</router-link>
+          <router-link to="/tryon-history" class="text-sm text-pink-600 hover:text-pink-700 transition-colors font-medium">{{ $t('nav.history') }}</router-link>
           <router-link to="/favorites" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
-            <Heart class="w-4 h-4" /> Favorites
+            <Heart class="w-4 h-4" /> {{ $t('nav.favorites') }}
           </router-link>
           <a href="mailto:support@hdz73.com" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <Mail class="w-4 h-4" />
@@ -31,8 +31,9 @@
           </a>
           <router-link to="/profile" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <User class="w-4 h-4" />
-            Profile
+            {{ $t('nav.profile') }}
           </router-link>
+          <LanguageSwitcher />
         </div>
       </div>
     </nav>
@@ -46,6 +47,7 @@
 import { onMounted } from 'vue'
 import { Heart, User, Mail } from 'lucide-vue-next'
 import { useVersion } from '@/composables/useVersion'
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 
 const { currentVersion, getVersion, isV2, isLoading: isLoadingVersion } = useVersion()
 

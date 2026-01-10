@@ -3,9 +3,12 @@ defineOptions({ name: 'Wardrobe' })
 import { ref, onMounted, onUnmounted, onActivated, watch, computed } from 'vue'
 import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle, Info, Edit2, Save } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import type { Item, PendingItem, ItemFeatures } from '../types'
 import { apiClient, uploadApiClient, longUploadApiClient } from '../lib/api-client'
 import { API_URL } from '../config/api'
+
+const { t } = useI18n()
 import {
   Sheet,
   SheetContent,
@@ -25,8 +28,22 @@ const route = useRoute()
 
 const uploadedItems = ref<Item[]>([])
 const hasLoadedItems = ref(false)
-const typeFilters = ['All', 'Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories', 'Sportswear', 'Traditional']
-const selectedFilter = ref('All')
+const typeFilters = computed(() => [
+  t('wardrobe.categories.all'),
+  t('wardrobe.categories.tops'),
+  t('wardrobe.categories.bottoms'),
+  t('wardrobe.categories.outerwear'),
+  t('wardrobe.categories.dresses'),
+  t('wardrobe.categories.shoes'),
+  t('wardrobe.categories.accessories'),
+  t('wardrobe.categories.sportswear'),
+  t('wardrobe.categories.traditional')
+])
+// Initialize selectedFilter with translated "All"
+const selectedFilter = ref('')
+onMounted(() => {
+  selectedFilter.value = t('wardrobe.categories.all')
+})
 const isUploading = ref(false)
 const uploadProgress = ref<{ current: number; total: number; currentFile: string } | null>(null)
 const pendingItems = ref<PendingItem[]>([])
@@ -618,10 +635,24 @@ const getTypeCandidates = (typeValue: string | string[] | undefined) => {
 }
 
 const matchesCategory = (typeValue: string | string[] | undefined, category: string) => {
-  if (category === 'All') return true
+  // Check if category is "All" in any language
+  if (category === t('wardrobe.categories.all') || category === 'All') return true
   const candidates = getTypeCandidates(typeValue)
   if (candidates.length === 0) return false
-  const keywords = categoryKeywords[category] || []
+  
+  // Map translated category back to English key for keyword matching
+  const categoryMap: Record<string, string> = {
+    [t('wardrobe.categories.tops')]: 'Tops',
+    [t('wardrobe.categories.bottoms')]: 'Bottoms',
+    [t('wardrobe.categories.outerwear')]: 'Outerwear',
+    [t('wardrobe.categories.dresses')]: 'Dresses',
+    [t('wardrobe.categories.shoes')]: 'Shoes',
+    [t('wardrobe.categories.accessories')]: 'Accessories',
+    [t('wardrobe.categories.sportswear')]: 'Sportswear',
+    [t('wardrobe.categories.traditional')]: 'Traditional',
+  }
+  const englishCategory = categoryMap[category] || category
+  const keywords = categoryKeywords[englishCategory] || []
   return candidates.some((candidate) => keywords.some((keyword) => candidate.includes(keyword)))
 }
 
@@ -1014,7 +1045,7 @@ onUnmounted(() => {
 <template>
   <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <header class="container mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8 flex items-center justify-between">
-      <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">My Wardrobe</h1>
+      <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('wardrobe.title') }}</h1>
     </header>
 
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
@@ -1022,7 +1053,7 @@ onUnmounted(() => {
       <section class="bg-white p-6 rounded-2xl shadow-sm border border-pink-100">
         <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
           <Upload class="w-5 h-5" />
-          Add Wardrobe Items
+          {{ $t('wardrobe.uploadItems') }}
         </h2>
         <div
           class="border-2 border-dashed border-pink-200 rounded-xl p-8 text-center hover:border-pink-600 transition-colors cursor-pointer relative bg-pink-50 hover:bg-pink-100"
@@ -1055,7 +1086,7 @@ onUnmounted(() => {
         
         <!-- URL Upload -->
         <div class="mt-4 pt-4 border-t border-pink-200">
-          <p class="text-sm font-medium text-gray-700 mb-2">Or add via URL (one URL per line)</p>
+          <p class="text-sm font-medium text-gray-700 mb-2">{{ $t('wardrobe.uploadFromUrl') }}</p>
           <div class="space-y-2">
             <textarea
               v-model="imageUrlInput"
@@ -1089,7 +1120,7 @@ onUnmounted(() => {
         
         <!-- 导入示例数据 -->
         <div class="mt-4 pt-4 border-t border-pink-200">
-          <p class="text-sm font-medium text-gray-700 mb-2">Or import sample products</p>
+          <p class="text-sm font-medium text-gray-700 mb-2">{{ $t('wardrobe.importExampleItems') }}</p>
           <div class="flex gap-2">
             <button
               @click="importExampleItems(GENDER_WOMENS)"
@@ -1118,7 +1149,7 @@ onUnmounted(() => {
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-lg font-semibold flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
             <Shirt class="w-5 h-5" />
-            My Wardrobe
+            {{ $t('wardrobe.title') }}
             <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-pink-600 ml-2">
               ({{ uploadedItems.length }} items)
             </span>

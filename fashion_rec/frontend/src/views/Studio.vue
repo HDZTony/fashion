@@ -3,10 +3,13 @@ defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -1585,7 +1588,7 @@ const searchOnGoogle = (description: string) => {
       <!-- Describe today & generate outfits -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Tell AI about your day</h2>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.tellAIAboutDay') }}</h2>
         </div>
         <div class="flex flex-col gap-4">
           <div class="w-full space-y-3">
@@ -1595,7 +1598,7 @@ const searchOnGoogle = (description: string) => {
                 v-model="customPrompt"
                 rows="3"
                 class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
-                placeholder="Describe your desired clothing style; artificial intelligence will create outfits based on your wardrobe.e.g.Minimalist commute vibe, avoid white shoes; or describe your scene and preferences."
+                :placeholder="$t('studio.promptPlaceholder')"
               ></textarea>
               
               <!-- Scene image preview area -->
@@ -1631,7 +1634,7 @@ const searchOnGoogle = (description: string) => {
                     v-if="sceneImagePreviewUrl && !isUploadingSceneImage"
                     @click="removeSceneImage"
                     class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md"
-                    title="Delete scene image"
+                    :title="$t('studio.deleteSceneImage')"
                   >
                     <X class="w-4 h-4" />
                   </button>
@@ -1644,10 +1647,10 @@ const searchOnGoogle = (description: string) => {
                   <label
                     for="sceneImageInput"
                     class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-                    title="Upload a reference scene image"
+                    :title="$t('studio.uploadSceneImage')"
                   >
                     <Upload class="w-4 h-4" />
-                    <span class="text-xs">Upload scene image (optional)</span>
+                    <span class="text-xs">{{ $t('studio.uploadSceneImage') }}</span>
                   </label>
                   <input
                     id="sceneImageInput"
@@ -1659,10 +1662,10 @@ const searchOnGoogle = (description: string) => {
                   <button
                     @click="showSceneImageHistory = !showSceneImageHistory"
                     class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-                    title="Pick from scene history"
+                    :title="$t('studio.pickFromSceneHistory')"
                   >
                     <Clock class="w-4 h-4" />
-                    <span class="text-xs">History</span>
+                    <span class="text-xs">{{ $t('studio.viewHistory') }}</span>
                   </button>
                 </div>
                 
@@ -1671,7 +1674,7 @@ const searchOnGoogle = (description: string) => {
             
             <!-- Helper text below input -->
             <p class="text-xs text-pink-600 px-1">
-              Upload a photo of your environment (office, cafe, outdoors, etc.). AI will use it as the scene reference.
+              {{ $t('studio.uploadSceneHelper') }}
             </p>
             
             <!-- Historical scene images modal -->
@@ -1682,7 +1685,7 @@ const searchOnGoogle = (description: string) => {
             >
               <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-6 border-b border-gray-200">
-                  <h3 class="text-lg font-semibold text-gray-900">Choose a historical scene image</h3>
+                  <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseHistoricalScene') }}</h3>
                   <button
                     @click="showSceneImageHistory = false"
                     class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
@@ -1693,7 +1696,7 @@ const searchOnGoogle = (description: string) => {
                 <div class="flex-1 overflow-y-auto p-6">
                   <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-pink-400">
                     <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                    <p>No historical scene images</p>
+                    <p>{{ $t('studio.noHistoricalScene') }}</p>
                   </div>
                   <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     <div
@@ -1734,7 +1737,7 @@ const searchOnGoogle = (description: string) => {
               class="bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 transition-colors shadow-lg shadow-pink-500/20 w-full justify-center sm:w-auto"
             >
               <Wand2 class="w-5 h-5" />
-              {{ isGenerating ? 'AI is Thinking...' : 'Generate Outfit' }}
+              {{ isGenerating ? $t('studio.aiThinking') : $t('studio.generateOutfit') }}
             </button>
             <!-- AI branding and transparency note -->
             <div class="flex items-center gap-2 text-xs text-pink-600">
@@ -1906,7 +1909,7 @@ const searchOnGoogle = (description: string) => {
       <!-- Step 3: Review outfits & virtual try-on -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Review outfits & try on</h2>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.reviewOutfits') }}</h2>
         </div>
 
         <!-- Model photo uploader with integrated empty state -->
@@ -2090,7 +2093,7 @@ const searchOnGoogle = (description: string) => {
         <div v-if="activeWardrobeItems.length" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
           <div class="flex items-center justify-between mb-3">
             <div>
-              <p class="text-sm font-medium text-gray-700 mb-1">Ready to try on</p>
+              <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.readyToTryOn') }}</p>
               <p class="text-xs text-pink-500">
                 {{ activeWardrobeItems.length }} items selected. Click below to generate a virtual try-on.
               </p>
@@ -2104,7 +2107,7 @@ const searchOnGoogle = (description: string) => {
             >
               <Wand2 v-if="!isTryingOn" class="w-4 h-4" />
               <div v-else class="w-4 h-4 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
-              <span>{{ isTryingOn ? 'Generating try-on...' : 'Try on this outfit' }}</span>
+              <span>{{ isTryingOn ? $t('studio.generatingTryOn') : $t('studio.tryOnThisOutfit') }}</span>
             </button>
            
           </div>

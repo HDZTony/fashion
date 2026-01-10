@@ -5,6 +5,7 @@ import { createHead } from '@vueuse/head'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import { routes, setupRouterGuards } from './router'
+import { i18n } from './i18n'
 // Import apiClient to ensure interceptors are registered immediately when the module loads
 // This is critical for page refresh scenarios where requests might be made before components mount
 import './lib/api-client'
@@ -18,6 +19,9 @@ export const createApp = ViteSSG(
   ({ app, router }) => {
     const head = createHead()
     app.use(head)
+
+    // Setup i18n
+    app.use(i18n)
 
     // Setup Pinia with persistence plugin
     const pinia = createPinia()
