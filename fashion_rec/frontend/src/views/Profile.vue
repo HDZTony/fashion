@@ -75,7 +75,7 @@ const planDisplay = computed(() => {
   
   const name = (planNameRaw.value || '').toString().toLowerCase()
   if (name === 'member' || name === 'fashion rec member') {
-    return 'Fashion Rec Member ($4.9)'
+    return 'member'
   }
   return userinfo.value?.planName
 })
@@ -170,6 +170,11 @@ const loadUserInfo = async () => {
 const goPricing = () => router.push('/pricing')
 const signOut = async () => {
   try {
+    // 清除本地状态，确保退出后不会保留旧的用户信息
+    userEmail.value = '—'
+    userinfo.value = null
+    error.value = null
+    
     await supabase.auth.signOut()
     router.push('/login')
   } catch (e) {
@@ -417,6 +422,12 @@ const isActionDisabled = (slug: string) => {
 }
 
 onMounted(async () => {
+  // 在加载前先重置状态，确保不会显示上一个用户的信息
+  // 这特别重要，因为用户可能在退出后重新登录，通过路由导航（而不是刷新页面）进入此页面
+  userEmail.value = '—'
+  userinfo.value = null
+  error.value = null
+  
   // 初始化所有数据（配置、计划、订阅信息）
   await initializeData()
   

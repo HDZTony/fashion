@@ -83,6 +83,8 @@ function getServices(c: { env: Env }) {
 }
 
 // Cache for user tokens within a single request (to avoid duplicate calls)
+// 注意：使用完整的 token 作为 key，确保每个不同的 token 都有唯一的缓存条目
+// 这避免了使用 token 前缀可能导致的不同用户 token 冲突问题
 const requestUserCache = new Map<string, { id: string; email?: string } | null>();
 
 /**
@@ -144,11 +146,22 @@ async function getUserFromToken(c: { env: Env; req: any }): Promise<{ id: string
       return null;
     }
 
-    // 使用请求级缓存（基于 token 的前16个字符作为 key）
-    // 注意：这不是全局缓存，只是为了避免同一请求中的重复调用
-    const cacheKey = `token_${token.substring(0, 16)}`;
+    // 使用完整的 token 作为缓存 key，确保每个不同的 token 都有唯一的缓存条目
+    // 这避免了使用 token 前缀可能导致的不同用户 token 冲突问题
+    // 注意：虽然使用完整 token 作为 key 会占用更多内存，但这是安全的做法
+    // 缓存会自动清理（最多保留100个条目），避免内存泄漏
+    const cacheKey = token;
     if (requestUserCache.has(cacheKey)) {
-      return requestUserCache.get(cacheKey)!;
+      const cached = requestUserCache.get(cacheKey);
+      // 如果缓存存在且不是 null，直接返回
+      if (cached !== null && cached !== undefined) {
+        return cached;
+      }
+      // 如果缓存的是 null（表示之前的解析失败），返回 null
+      if (cached === null) {
+        return null;
+      }
+      // 如果缓存是 undefined（理论上不应该发生），继续尝试解析
     }
 
     // 优化：优先直接从 JWT token 解码（快速，几毫秒）
@@ -167,6 +180,10 @@ async function getUserFromToken(c: { env: Env; req: any }): Promise<{ id: string
       }
       
       return decodedUser;
+    } else if (decodedUser === null) {
+      // 如果解码失败，缓存 null 并返回 null
+      requestUserCache.set(cacheKey, null);
+      return null;
     }
 
     // 如果直接解码失败，回退到 Supabase API（慢速，但更可靠）
