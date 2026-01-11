@@ -3,7 +3,7 @@
 # 从 backend/.env 文件中读取 SUPABASE 配置
 
 WORKER_NAME="fashion-rec-router"
-BACKEND_ENV_FILE="../fashion-rec/backend/.env"
+BACKEND_ENV_FILE="../fashion_rec/backend/.env"
 
 echo "Setting environment variables for $WORKER_NAME..."
 echo ""
