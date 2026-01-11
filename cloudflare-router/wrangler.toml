@@ -27,15 +27,17 @@ id = "e335d5ff4f4948718434187ca14f94b7"
 # Workers & Pages → fashion-rec-router → Settings → Triggers → Routes
 # 
 # IMPORTANT: Route format must include wildcard /* at the end
-# Correct format: fashion.hdz73.com/*
-# Wrong format: fashion.hdz73.com (will cause ERR_CONNECTION_CLOSED)
+# Correct format: fashion-rec.com/*
+# Wrong format: fashion-rec.com (will cause ERR_CONNECTION_CLOSED)
 #
 # To configure via Dashboard:
 # 1. Go to Workers & Pages → fashion-rec-router → Settings → Triggers → Routes
-# 2. Add route: fashion.hdz73.com/*
-# 3. Ensure DNS record exists with proxy enabled (orange cloud)
+# 2. Add route: fashion-rec.com/* (new domain)
+# 3. Keep route: fashion.hdz73.com/* (old domain, for 301 redirect)
+# 4. Ensure DNS records exist with proxy enabled (orange cloud)
 #
-# Note: Routes can also be configured in this file using routes array,
+# Note: The worker will automatically redirect fashion.hdz73.com to fashion-rec.com with 301.
+# Routes can also be configured in this file using routes array,
 # but Dashboard configuration is recommended for custom domains.
 
 [env.production]

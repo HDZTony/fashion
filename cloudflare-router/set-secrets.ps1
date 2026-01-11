@@ -2,7 +2,7 @@
 # 从 backend/.env 文件中读取 SUPABASE 配置
 
 $workerName = "fashion-rec-router"
-$backendEnvFile = "../fashion_rec/backend/.env"
+$backendEnvFile = "../fashion-rec/backend/.env"
 
 Write-Host "Setting environment variables for $workerName..." -ForegroundColor Green
 Write-Host ""

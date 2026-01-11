@@ -25,7 +25,7 @@
           <router-link to="/favorites" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <Heart class="w-4 h-4" /> {{ $t('nav.favorites') }}
           </router-link>
-          <a href="mailto:support@hdz73.com" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
+          <a href="mailto:support@fashion-rec.com" class="text-sm text-pink-600 hover:text-pink-700 transition-colors flex items-center gap-1 font-medium">
             <Mail class="w-4 h-4" />
             Contact Us
           </a>

@@ -1,24 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://fashion.hdz73.com/</loc>
+    <loc>https://fashion-rec.com/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <lastmod>2025-01-20</lastmod>
   </url>
   <url>
-    <loc>https://fashion.hdz73.com/pricing</loc>
+    <loc>https://fashion-rec.com/pricing</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+    <lastmod>2025-01-20</lastmod>
   </url>
   <url>
-    <loc>https://fashion.hdz73.com/privacy-policy</loc>
+    <loc>https://fashion-rec.com/privacy-policy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
+    <lastmod>2025-01-20</lastmod>
   </url>
   <url>
-    <loc>https://fashion.hdz73.com/terms-of-service</loc>
+    <loc>https://fashion-rec.com/terms-of-service</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
+    <lastmod>2025-01-20</lastmod>
   </url>
 </urlset>
 

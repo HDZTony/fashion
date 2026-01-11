@@ -112,7 +112,7 @@ pnpm exec wrangler tail --format pretty | Select-String "KV\|cache"
 ### Pretty 格式示例
 
 ```
-[2024-01-15 10:30:45] GET https://fashion.hdz73.com/api/test
+[2024-01-15 10:30:45] GET https://fashion-rec.com/api/test
   Status: 200
   Duration: 45ms
   User ID: abc123
@@ -127,7 +127,7 @@ pnpm exec wrangler tail --format pretty | Select-String "KV\|cache"
   "event": {
     "request": {
       "method": "GET",
-      "url": "https://fashion.hdz73.com/api/test"
+      "url": "https://fashion-rec.com/api/test"
     },
     "response": {
       "status": 200

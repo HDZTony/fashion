@@ -3,7 +3,7 @@
 ## 当前架构
 
 ```
-fashion.hdz73.com (自定义域名)
+fashion-rec.com (生产域名) 或 fashion.hdz73.com (301 重定向到 fashion-rec.com)
     ↓
 Cloudflare Worker (路由层)
     ↓
@@ -18,7 +18,7 @@ Cloudflare Worker (路由层)
 在 GitHub Repository Settings → Variables 中设置：
 
 ```bash
-VITE_API_URL=https://fashion.hdz73.com
+VITE_API_URL=https://fashion-rec.com
 ```
 
 ### 为什么这样配置？
@@ -31,7 +31,7 @@ VITE_API_URL=https://fashion.hdz73.com
 
 1. **前端页面请求**：
    ```
-   用户访问: fashion.hdz73.com
+   用户访问: fashion-rec.com (或 fashion.hdz73.com 自动 301 重定向)
    → Worker 识别为页面请求
    → 路由到对应的前端部署
    ```
@@ -39,7 +39,7 @@ VITE_API_URL=https://fashion.hdz73.com
 2. **API 请求**：
    ```
    前端调用: apiClient.get('/items')
-   → 实际请求: https://fashion.hdz73.com/items
+   → 实际请求: https://fashion-rec.com/items
    → Worker 识别为 API 请求（路径以 /items 开头）
    → 路由到对应的后端部署
    ```
@@ -66,8 +66,9 @@ Worker 会自动识别以下路径为 API 请求：
 
 ## 配置检查清单
 
-- [ ] GitHub Repository Variables 中 `VITE_API_URL` 设置为 `https://fashion.hdz73.com`
-- [ ] Cloudflare Worker 路由规则已配置：`fashion.hdz73.com/*` → Worker
+- [ ] GitHub Repository Variables 中 `VITE_API_URL` 设置为 `https://fashion-rec.com`
+- [ ] Cloudflare Worker 路由规则已配置：`fashion-rec.com/*` → Worker
+- [ ] 保留旧域名路由：`fashion.hdz73.com/*` → Worker (用于 301 重定向)
 - [ ] Worker 环境变量已配置（包括前后端 URL）
 - [ ] 重新部署前端以应用新的 API URL
 
@@ -80,7 +81,7 @@ Worker 会自动识别以下路径为 API 请求：
 2. **测试 API 调用**：
    - 打开浏览器 DevTools → Network
    - 执行一个操作（如加载单品列表）
-   - 查看请求 URL 是否为 `https://fashion.hdz73.com/items`
+   - 查看请求 URL 是否为 `https://fashion-rec.com/items`
 
 3. **检查 Worker 日志**：
    - Cloudflare Dashboard → Workers → fashion-rec-router → Logs
@@ -88,7 +89,8 @@ Worker 会自动识别以下路径为 API 请求：
 
 ## 注意事项
 
-- 如果之前 `VITE_API_URL` 直接指向后端（如 `https://fashion-rec-backend.fly.dev`），需要改为 `https://fashion.hdz73.com`
+- 如果之前 `VITE_API_URL` 直接指向后端（如 `https://fashion-rec-backend.fly.dev`），需要改为 `https://fashion-rec.com`
+- 旧域名 `fashion.hdz73.com` 会自动 301 重定向到新域名 `fashion-rec.com`
 - 修改后需要重新部署前端才能生效
 - Worker 会自动处理 CORS 和认证头传递
 

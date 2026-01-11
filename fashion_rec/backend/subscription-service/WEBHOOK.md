@@ -4,15 +4,17 @@
 
 你的 webhook URL 已配置为：
 ```
-https://fashion.hdz73.com/webhook
+https://fashion-rec.com/webhook
 ```
+
+注意：旧域名 `fashion.hdz73.com` 会自动 301 重定向到新域名 `fashion-rec.com`。
 
 ## 配置步骤
 
 1. ✅ **Creem Dashboard 配置**
    - 登录 [Creem Dashboard](https://creem.io)
    - 进入 **Developers** > **Webhooks**
-   - 添加 Webhook URL: `https://fashion.hdz73.com/webhook`
+   - 添加 Webhook URL: `https://fashion-rec.com/webhook`
    - 复制 **Signing Secret** 到 `.env` 文件
 
 2. ✅ **环境变量配置**
@@ -21,7 +23,7 @@ https://fashion.hdz73.com/webhook
    ```
 
 3. ✅ **服务部署**
-   - 确保服务运行在 `https://fashion.hdz73.com`
+   - 确保服务运行在 `https://fashion-rec.com`（旧域名会自动重定向）
    - Webhook 端点路径: `/webhook`
 
 ## 支持的 Webhook 事件

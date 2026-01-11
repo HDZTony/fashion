@@ -7,6 +7,7 @@ Disallow: /lv-products
 Disallow: /favorites
 Disallow: /tryon-history
 Disallow: /profile
+Disallow: /undefined
 
-Sitemap: https://fashion.hdz73.com/sitemap.xml
+Sitemap: https://fashion-rec.com/sitemap.xml
 

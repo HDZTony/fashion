@@ -42,7 +42,7 @@ fly auth login
 
 ### 方法 1：使用自动化脚本（推荐）
 
-在 `fashion_rec/backend` 目录下执行以下命令：
+在 `fashion-rec/backend` 目录下执行以下命令：
 
 ```bash
 fly secrets set \
@@ -65,7 +65,7 @@ fly secrets set \
 ### 方法 3：使用 Bash 脚本（Linux/macOS）
 
 ```bash
-cd fashion_rec/backend
+cd fashion-rec/backend
 chmod +x setup_v2_secrets.sh
 ./setup_v2_secrets.sh
 ```

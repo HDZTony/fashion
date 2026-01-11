@@ -68,7 +68,7 @@ const selectedForOutfitIds = ref<Set<string>>(new Set())
 // Load selection from localStorage on mount
 const loadOutfitSelection = () => {
   try {
-    const saved = localStorage.getItem('fashion_rec_selected_items')
+    const saved = localStorage.getItem('fashion-rec_selected_items')
     if (saved) {
       const ids = JSON.parse(saved)
       if (Array.isArray(ids)) {
@@ -95,7 +95,7 @@ const toggleOutfitSelection = (itemId: string, event?: Event) => {
   // Save to localStorage
   try {
     localStorage.setItem(
-      'fashion_rec_selected_items', 
+      'fashion-rec_selected_items', 
       JSON.stringify(Array.from(selectedForOutfitIds.value))
     )
   } catch (e) {
@@ -589,7 +589,7 @@ const importExampleItems = async (gender: string) => {
     const formData = new FormData()
     formData.append('gender', gender)
     
-    const response = await apiClient.post<{ message: string; imported_count: number; skipped_count: number }>(
+    await apiClient.post<{ message: string; imported_count: number; skipped_count: number }>(
       '/items/import-examples',
       formData,
       {
@@ -598,8 +598,6 @@ const importExampleItems = async (gender: string) => {
         },
       }
     )
-    
-    const genderLabel = gender === GENDER_MENS ? '男装' : gender === GENDER_WOMENS ? '女装' : '中性装'
     
     
     // 刷新衣橱列表

@@ -33,14 +33,14 @@
 
 **示例：**
 ```
-用户在浏览器输入：https://fashion.hdz73.com/favorites
+用户在浏览器输入：https://fashion-rec.com/favorites
 ```
 
 ### 📝 HTTP 请求示例
 
 ```http
 GET /favorites HTTP/1.1
-Host: fashion.hdz73.com
+Host: fashion-rec.com
 Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
 Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
 Accept-Encoding: gzip, deflate, br
@@ -98,7 +98,7 @@ const response = await apiClient.get('/favorites')
 
 ```http
 GET /favorites HTTP/1.1
-Host: fashion.hdz73.com
+Host: fashion-rec.com
 Accept: application/json, text/plain, */*
 Accept-Language: zh-CN,zh;q=0.9
 Authorization: Bearer eyJhbGci...

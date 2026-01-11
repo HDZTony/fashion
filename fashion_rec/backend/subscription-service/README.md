@@ -141,7 +141,7 @@ Body: <webhook_event_payload>
 - `onPaymentFailed` - 支付失败
 
 **配置：**
-1. 在 Creem Dashboard 中设置 Webhook URL: `https://fashion.hdz73.com/webhook`
+1. 在 Creem Dashboard 中设置 Webhook URL: `https://fashion-rec.com/webhook`
 2. 确保 `.env` 文件中配置了 `CREEM_WEBHOOK_SECRET`
 3. Webhook 请求会自动验证签名，确保安全性
 
@@ -275,7 +275,7 @@ const canceledSubscription = await response.json();
 详细的 webhook 配置说明请查看 [WEBHOOK.md](./WEBHOOK.md)
 
 **快速配置：**
-1. Webhook URL: `https://fashion.hdz73.com/webhook` ✅
+1. Webhook URL: `https://fashion-rec.com/webhook` ✅
 2. 在 `.env` 中配置 `CREEM_WEBHOOK_SECRET`
 3. 服务会自动处理所有 webhook 事件并验证签名
 
@@ -287,7 +287,7 @@ const canceledSubscription = await response.json();
 2. 使用 Docker 容器化
 3. 部署到 Fly.io、Railway 等平台
 
-**重要：** 确保 webhook URL (`https://fashion.hdz73.com/webhook`) 可以公开访问。
+**重要：** 确保 webhook URL (`https://fashion-rec.com/webhook`) 可以公开访问。旧域名 `fashion.hdz73.com` 会自动 301 重定向到新域名。
 
 ## 许可证
 

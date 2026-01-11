@@ -3,13 +3,10 @@ defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
-import { useI18n } from 'vue-i18n'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
-
-const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -308,7 +305,7 @@ onMounted(async () => {
 // This ensures items selected from Wardrobe page appear in Applied Outfit Items
 const syncSelectedItemsToActiveWardrobe = () => {
   try {
-    const saved = localStorage.getItem('fashion_rec_selected_items')
+    const saved = localStorage.getItem('fashion-rec_selected_items')
     if (saved) {
       const ids = JSON.parse(saved)
       if (Array.isArray(ids)) {
@@ -1260,7 +1257,7 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     
     selectedItem.value = null
     selectedItemIds.value = [] // Clear selected base items after applying
-    localStorage.removeItem('fashion_rec_selected_items')
+    localStorage.removeItem('fashion-rec_selected_items')
     
     console.log('=== Apply Outfit (Supplement Mode) ===')
     console.log('Active wardrobe IDs after supplement:', activeWardrobeIds.value)
@@ -1281,7 +1278,7 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     activeWardrobeIds.value = ids
     selectedItem.value = null
     selectedItemIds.value = []
-    localStorage.removeItem('fashion_rec_selected_items')
+    localStorage.removeItem('fashion-rec_selected_items')
 
     // Store the original outfit for tracking missing roles
     originalAppliedOutfit.value = outfit
@@ -1389,7 +1386,7 @@ const removeActiveItem = (itemId: string) => {
   selectedItemIds.value = selectedItemIds.value.filter(id => String(id) !== itemIdStr)
   try {
     localStorage.setItem(
-      'fashion_rec_selected_items',
+      'fashion-rec_selected_items',
       JSON.stringify(selectedItemIds.value)
     )
     console.log('[removeActiveItem] Updated localStorage, removed item:', itemIdStr)

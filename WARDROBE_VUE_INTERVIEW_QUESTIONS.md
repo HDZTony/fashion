@@ -697,7 +697,7 @@ const loadUserItems = async () => {
 ```typescript
 // localStorage：跨页面持久化（与 Studio.vue 同步）
 const loadOutfitSelection = () => {
-  const saved = localStorage.getItem('fashion_rec_selected_items')
+  const saved = localStorage.getItem('fashion-rec_selected_items')
   if (saved) {
     const ids = JSON.parse(saved)
     selectedForOutfitIds.value = new Set(ids)
@@ -716,7 +716,7 @@ const saveItemsToCache = () => {
 
 | 存储 | 用途 | 原因 |
 |------|------|------|
-| `localStorage` | 选择状态（`fashion_rec_selected_items`） | 跨页面同步（Wardrobe ↔ Studio） |
+| `localStorage` | 选择状态（`fashion-rec_selected_items`） | 跨页面同步（Wardrobe ↔ Studio） |
 | `sessionStorage` | 物品缓存（`wardrobe_items_cache`） | 临时缓存，刷新后重新加载最新数据 |
 
 **设计原则：**
@@ -750,14 +750,14 @@ const toggleOutfitSelection = (itemId: string, event?: Event) => {
   
   // 保存到 localStorage
   localStorage.setItem(
-    'fashion_rec_selected_items', 
+    'fashion-rec_selected_items', 
     JSON.stringify(Array.from(selectedForOutfitIds.value))
   )
 }
 
 // 加载选择状态
 const loadOutfitSelection = () => {
-  const saved = localStorage.getItem('fashion_rec_selected_items')
+  const saved = localStorage.getItem('fashion-rec_selected_items')
   if (saved) {
     const ids = JSON.parse(saved)
     selectedForOutfitIds.value = new Set(ids)
@@ -936,7 +936,7 @@ if (event) {
 
 ```typescript
 // 每次选择都写入 localStorage
-localStorage.setItem('fashion_rec_selected_items', ...)
+localStorage.setItem('fashion-rec_selected_items', ...)
 ```
 
 **改进建议：**

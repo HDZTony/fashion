@@ -6,7 +6,7 @@
  * Environment Variables:
  * - VITE_API_URL: Backend API URL
  *   - Development: http://127.0.0.1:8787 (local Cloudflare Router via wrangler dev)
- *   - Production: https://fashion.hdz73.com (production Cloudflare Router)
+ *   - Production: https://fashion-rec.com (production Cloudflare Router)
  * - VITE_SUBSCRIPTION_API_URL: Subscription service API URL (defaults to http://localhost:3001)
  * 
  * Usage:
@@ -16,7 +16,7 @@
 /**
  * Backend API URL
  * - Development: http://127.0.0.1:8787 (local Cloudflare Router via wrangler dev)
- * - Production: https://fashion.hdz73.com (production Cloudflare Router)
+ * - Production: https://fashion-rec.com (production Cloudflare Router)
  * - All environments use Cloudflare Router for consistency (no direct backend connection)
  * - Default fallback: http://127.0.0.1:8787 (local development)
  * 
@@ -27,7 +27,7 @@
 const envApiUrl = import.meta.env.VITE_API_URL
 const isProdMode = import.meta.env.PROD || import.meta.env.MODE === 'production'
 const defaultDevUrl = 'http://127.0.0.1:8787'
-const defaultProdUrl = 'https://fashion.hdz73.com'
+const defaultProdUrl = 'https://fashion-rec.com'
 
 export const API_URL = (() => {
   // In production, use env or production default
@@ -38,7 +38,7 @@ export const API_URL = (() => {
   // In development:
   // - If env is explicitly set to cloudflare-router or production URL, use it
   // - Otherwise use default cloudflare-router URL
-  if (envApiUrl && (envApiUrl.includes('8787') || envApiUrl.includes('hdz73.com'))) {
+  if (envApiUrl && (envApiUrl.includes('8787') || envApiUrl.includes('fashion-rec.com') || envApiUrl.includes('hdz73.com'))) {
     return envApiUrl
   }
   

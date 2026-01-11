@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Login' })
 import { supabase } from '../lib/supabase'
-import { ref, onUnmounted, computed } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 

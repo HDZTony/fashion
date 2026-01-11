@@ -120,7 +120,7 @@ const router = useRouter()
           <h2 class="text-xl font-semibold mb-3 text-black">14. Contact</h2>
           <p class="mb-3">Questions? Contact us:</p>
           <ul class="list-none space-y-2 mb-3">
-            <li><strong>Email:</strong>support@hdz73.com</li>
+            <li><strong>Email:</strong> support@fashion-rec.com (or support@hdz73.com)</li>
           </ul>
         </section>
       </div>

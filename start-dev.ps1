@@ -12,13 +12,13 @@ Write-Host ""
 $services = @(
     @{
         Name = "Python Backend"
-        Path = "fashion_rec\backend"
+        Path = "fashion-rec\backend"
         Command = "uv run run.py"
         Color = "Cyan"
     },
     @{
         Name = "Vue Frontend"
-        Path = "fashion_rec\frontend"
+        Path = "fashion-rec\frontend"
         Command = "pnpm dev"
         Color = "Yellow"
     },
@@ -30,7 +30,7 @@ $services = @(
     },
     @{
         Name = "Subscription Service"
-        Path = "fashion_rec\backend\subscription-service"
+        Path = "fashion-rec\backend\subscription-service"
         Command = "pnpm dev"
         Color = "Green"
     }

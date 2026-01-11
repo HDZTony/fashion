@@ -28,7 +28,7 @@
 
 #### 后端切换（唯一需要配置的地方）
 
-编辑 `fashion_rec/backend/subscription-service/.env` 文件：
+编辑 `fashion-rec/backend/subscription-service/.env` 文件：
 
 ```env
 # 测试环境
@@ -38,7 +38,7 @@ CREEM_TEST_MODE=true
 CREEM_TEST_MODE=false
 ```
 
-或者编辑 `fashion_rec/backend/subscription-service/wrangler.toml` 文件：
+或者编辑 `fashion-rec/backend/subscription-service/wrangler.toml` 文件：
 
 ```toml
 [vars]
@@ -87,7 +87,7 @@ wrangler secret put CREEM_TEST_MODE
   - `VITE_CREEM_PRODUCT_ID_TEST`
   - `VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST`
   - `VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST`
-- Webhook URL: `https://fashion.hdz73.com/test-webhook`
+- Webhook URL: `https://fashion-rec.com/test-webhook`
 
 ### 生产环境 (`false`)
 
@@ -97,7 +97,7 @@ wrangler secret put CREEM_TEST_MODE
   - `VITE_CREEM_PRODUCT_ID_PROD`
   - `VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD`
   - `VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD`
-- Webhook URL: `https://fashion.hdz73.com/webhook`
+- Webhook URL: `https://fashion-rec.com/webhook`
 
 ## 代码中的使用
 

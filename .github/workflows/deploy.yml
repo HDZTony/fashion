@@ -28,12 +28,12 @@ jobs:
         with:
           filters: |
             frontend:
-              - 'fashion_rec/frontend/**'
+              - 'fashion-rec/frontend/**'
             backend:
-              - 'fashion_rec/backend/**'
-              - '!fashion_rec/backend/subscription-service/**'
+              - 'fashion-rec/backend/**'
+              - '!fashion-rec/backend/subscription-service/**'
             subscription-service:
-              - 'fashion_rec/backend/subscription-service/**'
+              - 'fashion-rec/backend/subscription-service/**'
             cloudflare-router:
               - 'cloudflare-router/**'
           list-files: shell
@@ -60,7 +60,7 @@ jobs:
       - name: Create Stable Fly.io app if not exists
         run: |
           flyctl apps create fashion-rec-backend || true
-        working-directory: ./fashion_rec/backend
+        working-directory: ./fashion-rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Deploy to Stable backend with retry
@@ -84,7 +84,7 @@ jobs:
             fi
             attempt=$((attempt + 1))
           done
-        working-directory: ./fashion_rec/backend
+        working-directory: ./fashion-rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -100,7 +100,7 @@ jobs:
       - name: Create V2 Fly.io app if not exists
         run: |
           flyctl apps create fashion-rec-backend-v2 || true
-        working-directory: ./fashion_rec/backend
+        working-directory: ./fashion-rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Deploy to V2 backend with retry
@@ -124,7 +124,7 @@ jobs:
             fi
             attempt=$((attempt + 1))
           done
-        working-directory: ./fashion_rec/backend
+        working-directory: ./fashion-rec/backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -147,16 +147,16 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: fashion_rec/backend/subscription-service/pnpm-lock.yaml
+          cache-dependency-path: fashion-rec/backend/subscription-service/pnpm-lock.yaml
       - name: Install Dependencies
         run: |
           # Clear any proxy settings that might interfere
           unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
           pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/backend/subscription-service
+        working-directory: ./fashion-rec/backend/subscription-service
       - name: Deploy to Cloudflare Workers (Stable)
         run: pnpm exec wrangler deploy
-        working-directory: ./fashion_rec/backend/subscription-service
+        working-directory: ./fashion-rec/backend/subscription-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -178,16 +178,16 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: fashion_rec/backend/subscription-service/pnpm-lock.yaml
+          cache-dependency-path: fashion-rec/backend/subscription-service/pnpm-lock.yaml
       - name: Install Dependencies
         run: |
           # Clear any proxy settings that might interfere
           unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
           pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/backend/subscription-service
+        working-directory: ./fashion-rec/backend/subscription-service
       - name: Deploy to Cloudflare Workers (V2)
         run: pnpm exec wrangler deploy --name fashion-rec-subscription-service-v2
-        working-directory: ./fashion_rec/backend/subscription-service
+        working-directory: ./fashion-rec/backend/subscription-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -213,7 +213,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: fashion_rec/frontend/pnpm-lock.yaml
+          cache-dependency-path: fashion-rec/frontend/pnpm-lock.yaml
       - name: Install Dependencies
         run: |
           # Clear any proxy settings that might interfere
@@ -223,10 +223,10 @@ jobs:
             sed -i.bak '/^proxy=/d; /^https-proxy=/d' .npmrc || true
           fi
           pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/frontend
+        working-directory: ./fashion-rec/frontend
       - name: Build
         run: pnpm build
-        working-directory: ./fashion_rec/frontend
+        working-directory: ./fashion-rec/frontend
         env:
           # Set these in GitHub Repository Settings -> Secrets and Variables -> Variables
           VITE_API_URL: ${{ vars.VITE_API_URL }} 
@@ -250,7 +250,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: fashion-rec-frontend
-          directory: ./fashion_rec/frontend/dist
+          directory: ./fashion-rec/frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-frontend-v2:
@@ -273,7 +273,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: fashion_rec/frontend/pnpm-lock.yaml
+          cache-dependency-path: fashion-rec/frontend/pnpm-lock.yaml
       - name: Install Dependencies
         run: |
           # Clear any proxy settings that might interfere
@@ -283,10 +283,10 @@ jobs:
             sed -i.bak '/^proxy=/d; /^https-proxy=/d' .npmrc || true
           fi
           pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/frontend
+        working-directory: ./fashion-rec/frontend
       - name: Build
         run: pnpm build
-        working-directory: ./fashion_rec/frontend
+        working-directory: ./fashion-rec/frontend
         env:
           # Set these in GitHub Repository Settings -> Secrets and Variables -> Variables
           VITE_API_URL: ${{ vars.VITE_API_URL }} 
@@ -310,7 +310,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: fashion-rec-frontend
-          directory: ./fashion_rec/frontend/dist
+          directory: ./fashion-rec/frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           branch: v2
 

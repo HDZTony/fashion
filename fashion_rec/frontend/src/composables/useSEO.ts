@@ -28,6 +28,15 @@ export function useSEO(options: SEOOptions = {}) {
 
   const image = computed(() => options.image || defaultSEO.ogImage)
 
+  // Ensure og:image uses absolute URL
+  const absoluteImage = computed(() => {
+    if (!image.value) return ''
+    if (image.value.startsWith('http://') || image.value.startsWith('https://')) {
+      return image.value
+    }
+    return `${siteBaseUrl || 'https://fashion-rec.com'}${image.value.startsWith('/') ? image.value : `/${image.value}`}`
+  })
+
   useHead({
     title: pageTitle.value,
     meta: [
@@ -35,16 +44,20 @@ export function useSEO(options: SEOOptions = {}) {
       { name: 'keywords', content: keywords.value },
       { name: 'author', content: author.value },
       { name: 'robots', content: robots.value },
+      { name: 'theme-color', content: '#ec4899' },
+      // Open Graph tags
       { property: 'og:title', content: pageTitle.value },
       { property: 'og:description', content: description.value },
       { property: 'og:site_name', content: defaultSEO.siteName },
       { property: 'og:type', content: 'website' },
       { property: 'og:url', content: canonical.value },
-      { property: 'og:image', content: image.value },
+      { property: 'og:image', content: absoluteImage.value },
+      { property: 'og:locale', content: 'en_US' },
+      // Twitter Card tags
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'twitter:title', content: pageTitle.value },
       { name: 'twitter:description', content: description.value },
-      { name: 'twitter:image', content: image.value },
+      { name: 'twitter:image', content: absoluteImage.value },
       { name: 'twitter:site', content: defaultSEO.twitterHandle },
     ],
     link: [

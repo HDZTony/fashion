@@ -1822,7 +1822,7 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
     });
     const syncSelectedItemsToActiveWardrobe = () => {
       try {
-        const saved = localStorage.getItem("fashion_rec_selected_items");
+        const saved = localStorage.getItem("fashion-rec_selected_items");
         if (saved) {
           const ids = JSON.parse(saved);
           if (Array.isArray(ids)) {
@@ -2747,7 +2747,7 @@ const _sfc_main$9 = /* @__PURE__ */ defineComponent({
     const selectedForOutfitIds = ref(/* @__PURE__ */ new Set());
     const loadOutfitSelection = () => {
       try {
-        const saved = localStorage.getItem("fashion_rec_selected_items");
+        const saved = localStorage.getItem("fashion-rec_selected_items");
         if (saved) {
           const ids = JSON.parse(saved);
           if (Array.isArray(ids)) {

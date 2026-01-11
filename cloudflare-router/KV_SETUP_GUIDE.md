@@ -48,7 +48,7 @@ pnpm exec wrangler deploy
 
 1. **测试设置版本 API**：
    ```bash
-   curl -X POST https://fashion.hdz73.com/api/router/set-version \
+   curl -X POST https://fashion-rec.com/api/router/set-version \
      -H "Content-Type: application/json" \
      -H "Cookie: sb-xxx-auth-token=your-token" \
      -d '{"version": "v2"}'

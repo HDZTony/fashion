@@ -128,14 +128,14 @@ fly secrets set DASHSCOPE_API_KEY_SG=your_key SUPABASE_URL=your_url ...
 
 **Linux/macOS:**
 ```bash
-cd fashion_rec/backend
+cd fashion-rec/backend
 chmod +x setup_v2_secrets.sh
 ./setup_v2_secrets.sh
 ```
 
 **Windows PowerShell:**
 ```powershell
-cd fashion_rec/backend
+cd fashion-rec/backend
 .\setup_v2_secrets.ps1
 ```
 
@@ -146,7 +146,7 @@ cd fashion_rec/backend
 如果 `.env` 文件中有所有必要的值，可以手动执行：
 
 ```bash
-# 在 fashion_rec/backend 目录下执行
+# 在 fashion-rec/backend 目录下执行
 fly secrets set \
   DASHSCOPE_API_KEY_SG=sk-bdf76674a9d5495492ee556a4ff32ac1 \
   DASHSCOPE_API_KEY=sk-2927da63a9e045cb9adf945a1708e4bc \

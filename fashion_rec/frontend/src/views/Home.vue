@@ -6,7 +6,7 @@ import { computed, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useHead } from '@vueuse/head'
 import { useSEO } from '@/composables/useSEO'
-import { siteBaseUrl } from '@/config/seo'
+import { siteBaseUrl, organizationSchema, websiteSchema } from '@/config/seo'
 import { apiClient } from '@/lib/api-client'
 import { useI18n } from 'vue-i18n'
 
@@ -116,12 +116,22 @@ const faqSchema = computed(() => ({
 }))
 
 const faqJsonLd = computed(() => JSON.stringify(faqSchema.value))
+const organizationJsonLd = computed(() => JSON.stringify(organizationSchema))
+const websiteJsonLd = computed(() => JSON.stringify(websiteSchema))
 
 useHead({
   script: [
     {
       type: 'application/ld+json',
       children: faqJsonLd.value,
+    },
+    {
+      type: 'application/ld+json',
+      children: organizationJsonLd.value,
+    },
+    {
+      type: 'application/ld+json',
+      children: websiteJsonLd.value,
     },
   ],
 })

@@ -5,18 +5,21 @@ Cloudflare Worker for routing users to different frontend and backend versions b
 ## Architecture
 
 ```
-用户请求 (fashion.hdz73.com)
+用户请求 (fashion-rec.com 或 fashion.hdz73.com)
     ↓
-Cloudflare Worker (fashion-rec-router)
-    ↓
-从 Cookie 提取用户ID → 查询 KV 缓存或 Supabase
-    ↓
-    ├─→ 前端页面请求 → 
-    │   ├─→ stable → fashion-rec-frontend.pages.dev
-    │   └─→ v2 → v2.fashion-rec-frontend.pages.dev
-    └─→ API 请求 (/api/*, /items, /outfit, etc.) →
-        ├─→ stable → fashion-rec-backend.fly.dev
-        └─→ v2 → fashion-rec-backend-v2.fly.dev
+    ├─→ fashion.hdz73.com → 301 Redirect → fashion-rec.com
+    └─→ fashion-rec.com →
+        ↓
+        Cloudflare Worker (fashion-rec-router)
+        ↓
+        从 Cookie 提取用户ID → 查询 KV 缓存或 Supabase
+        ↓
+        ├─→ 前端页面请求 → 
+        │   ├─→ stable → fashion-rec-frontend.pages.dev
+        │   └─→ v2 → v2.fashion-rec-frontend.pages.dev
+        └─→ API 请求 (/api/*, /items, /outfit, etc.) →
+            ├─→ stable → fashion-rec-backend.fly.dev
+            └─→ v2 → fashion-rec-backend-v2.fly.dev
 ```
 
 ## Features
@@ -34,7 +37,7 @@ Cloudflare Worker (fashion-rec-router)
 1. Supabase project with `user_frontend_versions` table
 2. Cloudflare account with Workers and KV enabled
 3. Two Cloudflare Pages deployments (stable and v2)
-4. DNS record for custom domain (e.g., `fashion.hdz73.com`)
+4. DNS records for custom domains (e.g., `fashion-rec.com` and `fashion.hdz73.com` for redirect)
 
 ## Quick Start
 
@@ -107,8 +110,9 @@ See [KV_SETUP_GUIDE.md](./KV_SETUP_GUIDE.md) for detailed instructions.
 In Cloudflare Dashboard:
 1. Go to Workers & Pages → `fashion-rec-router`
 2. Navigate to Settings → Triggers → Routes
-3. Add route: `fashion.hdz73.com/*` (must include `/*`)
-4. Ensure DNS record exists with proxy enabled (orange cloud ☁️)
+3. Add route: `fashion-rec.com/*` (must include `/*`) - new production domain
+4. Keep route: `fashion.hdz73.com/*` (for 301 redirect to new domain)
+5. Ensure DNS records exist with proxy enabled (orange cloud ☁️)
 
 ### 5. Deploy Worker
 
@@ -126,7 +130,8 @@ pnpm exec wrangler deploy
 
 ## Key URLs
 
-- **Production Domain**: `fashion.hdz73.com` (points to Worker)
+- **Production Domain**: `fashion-rec.com` (points to Worker)
+- **Legacy Domain**: `fashion.hdz73.com` (301 redirects to fashion-rec.com)
 - **Stable Frontend**: `fashion-rec-frontend.pages.dev`
 - **V2 Frontend**: `v2.fashion-rec-frontend.pages.dev`
 - **Stable Backend**: `https://fashion-rec-backend.fly.dev`
@@ -136,7 +141,7 @@ pnpm exec wrangler deploy
 
 ### Lazy Routing with KV Caching
 
-1. **User Request**: User visits `fashion.hdz73.com` or makes API request
+1. **User Request**: User visits `fashion-rec.com` or makes API request (or `fashion.hdz73.com` which redirects to `fashion-rec.com`)
 2. **Cookie Extraction**: Worker extracts user ID from Supabase session cookie
 3. **Version Lookup**:
    - If authenticated: Check KV cache first, if miss query Supabase and cache
@@ -263,9 +268,10 @@ Cookie: sb-xxx-auth-token=...
 
 ### ERR_CONNECTION_CLOSED Error
 
-1. **Check DNS Record**: Ensure `fashion.hdz73.com` DNS record exists with proxy enabled (orange cloud)
-2. **Check Route Format**: Route must be `fashion.hdz73.com/*` (with `/*`)
+1. **Check DNS Record**: Ensure `fashion-rec.com` DNS record exists with proxy enabled (orange cloud)
+2. **Check Route Format**: Route must be `fashion-rec.com/*` (with `/*`)
 3. **Check SSL/TLS**: Mode should be "Full" or "Full (strict)"
+4. **For old domain redirect**: Ensure `fashion.hdz73.com/*` route exists for 301 redirect
 
 ### Worker Errors
 
@@ -308,7 +314,7 @@ pnpm dev
 - **Worker Code**: `cloudflare-router/src/index.ts`
 - **Worker Config**: `cloudflare-router/wrangler.toml`
 - **CI/CD**: `.github/workflows/deploy.yml`
-- **Backend V2**: `fashion_rec/backend/fly.v2.toml`
+- **Backend V2**: `fashion-rec/backend/fly.v2.toml`
 - **Database Migration**: `cloudflare-router/migrations/create_user_frontend_versions.sql`
 
 ## Related Documentation

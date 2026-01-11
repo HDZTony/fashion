@@ -6,7 +6,7 @@ import zh from './locales/zh.json'
 const getDefaultLocale = (): string => {
   if (typeof window === 'undefined') return 'en'
   
-  const saved = localStorage.getItem('fashion_rec_locale')
+  const saved = localStorage.getItem('fashion-rec_locale')
   if (saved && (saved === 'en' || saved === 'zh')) {
     return saved
   }
@@ -34,6 +34,6 @@ export const i18n = createI18n({
 export const setLocale = (locale: 'en' | 'zh') => {
   i18n.global.locale.value = locale
   if (typeof window !== 'undefined') {
-    localStorage.setItem('fashion_rec_locale', locale)
+    localStorage.setItem('fashion-rec_locale', locale)
   }
 }

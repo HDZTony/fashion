@@ -50,7 +50,7 @@ function getServices(c: { env: Env }) {
     // Test模式下的配置检查
     if (isTestMode) {
       const expectedTestApiKey = 'creem_test_4WsdDJBIaJR4UcGoGkBPMb';
-      const expectedTestWebhookUrl = 'https://fashion.hdz73.com/test-webhook';
+      const expectedTestWebhookUrl = 'https://fashion-rec.com/test-webhook';
       
       if (creemApiKey !== expectedTestApiKey) {
         console.error(`❌ Test模式API Key不匹配！`);
@@ -1769,7 +1769,7 @@ const createWebhookHandler = (
 /**
  * POST /webhook
  * 处理 Creem.io webhook 事件（生产环境）
- * Webhook URL: https://fashion.hdz73.com/webhook
+ * Webhook URL: https://fashion-rec.com/webhook
  * 
  * 根据官方文档：https://docs.creem.io/code/webhooks
  * - 事件格式：{ id, eventType, object, created_at, mode }
@@ -1874,7 +1874,7 @@ app.post('/webhook', async (c) => {
 /**
  * POST /test-webhook
  * 处理 Creem.io webhook 事件（测试环境）
- * Webhook URL: https://fashion.hdz73.com/test-webhook
+ * Webhook URL: https://fashion-rec.com/test-webhook
  * 
  * 根据官方文档：https://docs.creem.io/code/webhooks
  * - 事件格式：{ id, eventType, object, created_at, mode }

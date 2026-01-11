@@ -397,7 +397,20 @@ export default {
     }
     try {
       const url = new URL(request.url)
+      
+      // 301 Permanent Redirect from old domain to new domain
+      if (url.hostname === 'fashion.hdz73.com') {
+        const newUrl = new URL(request.url)
+        newUrl.hostname = 'fashion-rec.com'
+        return Response.redirect(newUrl.toString(), 301)
+      }
+      
       const path = url.pathname
+
+      // Block invalid /undefined/ paths (return 404)
+      if (path.startsWith('/undefined')) {
+        return new Response('Not Found', { status: 404 })
+      }
 
       // Helper function to get CORS headers
       const getCorsHeaders = (origin: string | null) => {
