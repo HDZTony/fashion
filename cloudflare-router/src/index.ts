@@ -397,15 +397,23 @@ export default {
     }
     try {
       const url = new URL(request.url)
+      const path = url.pathname
       
       // 301 Permanent Redirect from old domain to new domain
+      // Only redirect page requests (HTML), not API requests
+      // API requests should be handled directly to avoid CORS issues
       if (url.hostname === 'fashion.hdz73.com') {
-        const newUrl = new URL(request.url)
-        newUrl.hostname = 'fashion-rec.com'
-        return Response.redirect(newUrl.toString(), 301)
+        const isApi = isApiRequest(url, request)
+        if (!isApi) {
+          // Only redirect page requests (HTML navigation)
+          const newUrl = new URL(request.url)
+          newUrl.hostname = 'fashion-rec.com'
+          return Response.redirect(newUrl.toString(), 301)
+        }
+        // For API requests, continue processing with the old domain
+        // The request will be handled normally, just with the old hostname
       }
       
-      const path = url.pathname
 
       // Block invalid /undefined/ paths (return 404)
       if (path.startsWith('/undefined')) {
