@@ -14,6 +14,7 @@ compatibility_date = "2024-01-01"
 # - V2_BACKEND_URL: V2 version backend URL (e.g., https://fashion-rec-backend-v2.fly.dev)
 # - STABLE_SUBSCRIPTION_SERVICE_URL: Stable version subscription service URL (e.g., https://fashion-rec-subscription-service.954504788.workers.dev)
 # - V2_SUBSCRIPTION_SERVICE_URL: V2 version subscription service URL (e.g., https://fashion-rec-subscription-service-v2.workers.dev)
+# - BLOG_SERVICE_URL: Blog service URL (e.g., https://fashion-rec-blog.954504788.workers.dev)
 #
 # KV Namespace for caching user versions
 # Create with: wrangler kv namespace create USER_VERSIONS
@@ -46,6 +47,11 @@ id = "e335d5ff4f4948718434187ca14f94b7"
 
 [env.staging]
 # Staging environment configuration (optional)
+
+# Development server configuration
+[dev]
+port = 8787
+local_protocol = "http"
 
 [observability]
 enabled = false

@@ -1,0 +1,44 @@
+name = "fashion-rec-blog"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Environment variables (set via wrangler secret put or Cloudflare Dashboard)
+# These should be set as secrets, not in this file
+# 
+# Required secrets:
+# - SUPABASE_URL: Your Supabase project URL
+# - SUPABASE_SERVICE_ROLE_KEY: Supabase Service Role Key (for bypassing RLS)
+#
+# R2 Bucket for storing blog media files (images and videos)
+# Create with: wrangler r2 bucket create blog-media
+# Then add the bucket binding below
+[[r2_buckets]]
+bucket_name = "blog-media"
+binding = "blog_media"
+# preview_bucket_name is optional - if not set, uses bucket_name for all environments
+
+[env.production]
+# Production environment configuration
+
+[env.staging]
+# Staging environment configuration (optional)
+
+# Development server configuration
+[dev]
+port = 8788
+local_protocol = "http"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

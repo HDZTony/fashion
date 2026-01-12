@@ -82,6 +82,28 @@ export const routes: RouteRecordRaw[] = [
         name: 'profile',
         component: Profile,
         meta: { requiresAuth: true }
+      },
+      {
+        path: 'blog',
+        name: 'blog',
+        component: () => import('../views/BlogList.vue')
+      },
+      {
+        path: 'blog/:id',
+        name: 'blog-detail',
+        component: () => import('../views/BlogDetail.vue')
+      },
+      {
+        path: 'blog/create',
+        name: 'blog-create',
+        component: () => import('../views/BlogCreate.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'blog/:id/edit',
+        name: 'blog-edit',
+        component: () => import('../views/BlogCreate.vue'),
+        meta: { requiresAuth: true }
       }
     ]
   },

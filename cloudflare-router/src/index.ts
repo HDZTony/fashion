@@ -25,6 +25,7 @@ interface Env {
   V2_BACKEND_URL: string
   STABLE_SUBSCRIPTION_SERVICE_URL: string
   V2_SUBSCRIPTION_SERVICE_URL: string
+  BLOG_SERVICE_URL: string
   USER_VERSIONS: KVNamespace
 }
 
@@ -306,6 +307,53 @@ function routeToBackend(request: Request, backendUrl: string): Request {
 }
 
 /**
+ * Route blog request to blog service (removes /blog prefix)
+ */
+function routeToBlogService(request: Request, blogServiceUrl: string): Request {
+  const url = new URL(request.url)
+  const blogServiceUrlObj = new URL(blogServiceUrl)
+  
+  // Remove /blog prefix from path
+  let newPath = url.pathname
+  if (newPath.startsWith('/blog')) {
+    newPath = newPath.substring(5) // Remove '/blog'
+    if (!newPath) {
+      newPath = '/' // Ensure path is not empty
+    }
+  }
+  
+  // Replace hostname and port with blog service URL
+  url.hostname = blogServiceUrlObj.hostname
+  url.port = blogServiceUrlObj.port || ''
+  url.protocol = blogServiceUrlObj.protocol
+  url.pathname = newPath
+
+  // Create new request with updated URL
+  // CRITICAL: Preserve all headers including Authorization
+  const headers = new Headers(request.headers)
+  
+  // Update Host header
+  headers.set('Host', blogServiceUrlObj.hostname)
+  
+  // Remove X-Forwarded-* headers that might interfere
+  headers.delete('X-Forwarded-Host')
+  headers.delete('X-Forwarded-Proto')
+  
+  // Ensure Authorization header is explicitly preserved
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader) {
+    headers.set('Authorization', authHeader)
+  }
+
+  return new Request(url.toString(), {
+    method: request.method,
+    headers: headers,
+    body: request.body,
+    redirect: request.redirect,
+  })
+}
+
+/**
  * Check if request is an API request
  * 
  * IMPORTANT: We need to distinguish between:
@@ -331,7 +379,7 @@ function isApiRequest(url: URL, request: Request): boolean {
     return false
   }
   
-  // List of all API endpoints from backend (main.py) and subscription service
+  // List of all API endpoints from backend (main.py), subscription service, and blog service
   // This ensures all API requests are routed to backend, not frontend
   // NOTE: Root path '/' should route to frontend, not backend
   const isApi = path.startsWith('/api/') || 
@@ -348,6 +396,7 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/tryon-history') ||
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||
+         path.startsWith('/blog') ||
          path.startsWith('/cleanup-expired-files') ||
          path === '/userinfo' ||
          path === '/plans' ||
@@ -453,6 +502,7 @@ export default {
                                        path.startsWith('/checkouts/') ||
                                        path.startsWith('/products/') ||
                                        path.startsWith('/customers/')
+      const isBlogServicePath = path.startsWith('/blog')
       
       // Handle OPTIONS preflight for all API endpoints
       if (request.method === 'OPTIONS' && (isApiForCors || 
@@ -460,7 +510,8 @@ export default {
           path === '/api/router/set-version' || 
           path === '/webhook' || 
           path === '/test-webhook' ||
-          isSubscriptionServicePath)) {
+          isSubscriptionServicePath ||
+          isBlogServicePath)) {
         const origin = request.headers.get('Origin')
         return new Response(null, {
           status: 204,
@@ -584,6 +635,9 @@ export default {
       console.log(`[Router] Request ${request.method} ${path} - isApiRequest: ${isApi}, version: ${version}`)
       
       if (isApi) {
+        // Check if this is a blog-service request
+        const isBlogRequest = path.startsWith('/blog')
+        
         // Check if this is a subscription-service request
         const isSubscriptionRequest = path.startsWith('/subscription') || 
                                       path === '/userinfo' ||
@@ -600,9 +654,98 @@ export default {
                                       path === '/webhook' ||
                                       path === '/test-webhook'
         
-        // Route subscription requests to subscription-service, others to main backend
+        // Route requests to appropriate service
         let backendUrl: string
-        if (isSubscriptionRequest) {
+        if (isBlogRequest) {
+          // Route blog requests to blog service
+          backendUrl = env.BLOG_SERVICE_URL
+          
+          if (!backendUrl) {
+            console.error(`[Router] ❌ [${path}] Blog service URL is undefined`)
+            const origin = request.headers.get('Origin')
+            const corsHeaders = getCorsHeaders(origin)
+            
+            return new Response(JSON.stringify({
+              error: 'Configuration error',
+              detail: 'Blog service URL is not configured. Please set BLOG_SERVICE_URL environment variable.\n\nFor local development:\n1. Ensure .dev.vars file exists in cloudflare-router directory\n2. Add BLOG_SERVICE_URL=http://127.0.0.1:8788\n3. Restart wrangler dev after adding environment variables',
+              path: path,
+              missingEnvVar: 'BLOG_SERVICE_URL'
+            }), {
+              status: 500,
+              statusText: 'Internal Server Error',
+              headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
+            })
+          }
+          
+          console.log(`[Router] ✅ [${path}] Routing blog request ${request.method} to: ${backendUrl}`)
+          
+          // Use special routing function that removes /blog prefix
+          const blogRequest = routeToBlogService(request, backendUrl)
+          console.log(`[Router] Blog request URL: ${blogRequest.url}, method: ${blogRequest.method}, hasAuth: ${!!blogRequest.headers.get('Authorization')}`)
+          
+          const fetchStartTime = Date.now()
+          
+          // Add timeout to blog service fetch
+          const timeoutMs = 25000 // 25 seconds
+          const abortController = new AbortController()
+          const timeoutId = setTimeout(() => {
+            abortController.abort()
+          }, timeoutMs)
+          
+          let response: Response
+          try {
+            const requestWithSignal = new Request(blogRequest, {
+              signal: abortController.signal
+            })
+            
+            response = await fetch(requestWithSignal)
+            clearTimeout(timeoutId)
+            
+            console.log(`[Router] Blog service response: status ${response.status} ${response.statusText} for ${path}`)
+          } catch (fetchError: any) {
+            clearTimeout(timeoutId)
+            const errorDuration = Date.now() - fetchStartTime
+            console.error(`[Router] Blog service fetch failed for ${blogRequest.url} after ${errorDuration}ms:`, fetchError)
+            
+            const origin = request.headers.get('Origin')
+            const corsHeaders = getCorsHeaders(origin)
+            
+            return new Response(JSON.stringify({
+              error: 'Blog service request failed',
+              detail: fetchError.message || 'Request timeout or connection error',
+              path: path,
+              backend_host: new URL(blogRequest.url).hostname
+            }), {
+              status: 502,
+              statusText: 'Bad Gateway',
+              headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
+            })
+          }
+          
+          const fetchDuration = Date.now() - fetchStartTime
+          console.log(`[Router] Blog service response received: status ${response.status} in ${fetchDuration}ms for ${path}`)
+          
+          // Add CORS headers to blog service response
+          const origin = request.headers.get('Origin')
+          const corsHeaders = getCorsHeaders(origin)
+          
+          const responseHeaders = new Headers(response.headers)
+          for (const [key, value] of Object.entries(corsHeaders)) {
+            responseHeaders.set(key, value)
+          }
+          
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+          })
+        } else if (isSubscriptionRequest) {
           // Webhook routing: test-webhook -> v2, webhook -> stable
           // Other subscription requests route based on user version
           if (path === '/test-webhook') {

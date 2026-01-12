@@ -28,5 +28,5 @@ storage/
 # OS
 .DS_Store
 Thumbs.db
-fashion-rec/backend/subscription-service/.wrangler/tmp/
-fashion-rec/backend/subscription-service/.wrangler/tmp/
+cloudflare-blog/.wrangler/
+fashion_rec/backend/subscription-service/.wrangler/

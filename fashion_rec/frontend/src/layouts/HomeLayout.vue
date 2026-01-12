@@ -43,6 +43,12 @@ const buttonText = computed(() => {
           >
             Pricing
           </router-link>
+          <router-link
+            to="/blog"
+            class="text-sm text-pink-600 hover:text-pink-700 font-semibold mr-4 transition-colors"
+          >
+            {{ $t('nav.blog') }}
+          </router-link>
           <a
             href="mailto:support@fashion-rec.com"
             class="text-sm text-pink-600 hover:text-pink-700 font-semibold flex items-center gap-1 mr-4 transition-colors"
