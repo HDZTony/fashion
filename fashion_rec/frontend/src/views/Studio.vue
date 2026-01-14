@@ -1,12 +1,14 @@
 <script setup lang="ts">
 defineOptions({ name: 'Studio' })
-import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
+import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search, Image } from 'lucide-vue-next'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getThumbnailUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
 const route = useRoute()
 const router = useRouter()
@@ -92,10 +94,82 @@ const historicalSceneImages = ref<HistoricalImage[]>([])
 const historicalModelImages = ref<HistoricalImage[]>([])
 const showSceneImageHistory = ref(false)
 const showModelImageHistory = ref(false)
+const showExampleModelImages = ref(false)
+const showExampleSceneImages = ref(false)
+
+// Example model images (pre-uploaded sample photos)
+const exampleModelImages = ref<string[]>([
+  // These are placeholder URLs - replace with actual pre-uploaded image URLs
+  // You can upload these images to your storage (R2) and use the public URLs here
+  'https://r2.fashion-rec.com/example/IMG_9953.JPG',
+  'https://r2.fashion-rec.com/example/IMG_9954.JPG',
+])
+
+// Example scene images (pre-uploaded sample photos)
+const exampleSceneImages = ref<string[]>([
+  'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg',
+  'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg',
+  'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg',
+  'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg',
+  'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg',
+  'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg',
+  'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg',
+  'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg',
+  'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg',
+  'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg',
+  'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg',
+  'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg',
+  'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg',
+  'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg',
+  'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg',
+  'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg',
+  'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg',
+  'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg',
+  'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg',
+  'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg',
+  'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg',
+  'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg',
+  'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg',
+  'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg',
+  'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg',
+  'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg',
+  'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg',
+  'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg',
+  'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg',
+  'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg',
+  'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg',
+  'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg',
+  'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg',
+  'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg',
+  'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg',
+  'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg',
+  'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg',
+  'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg',
+  'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg',
+  'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg',
+  'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg',
+  'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg',
+  'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg',
+  'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg',
+])
 
 // Upload progress
 const sceneImageUploadProgress = ref(0)
 const isUploadingSceneImage = ref(false)
+
+// Scene action prompt (for describing model actions in scene)
+const sceneActionPrompt = ref<string>('')
+
+// Current tab value for scene image options
+const sceneTabValue = ref<string>('no-scene')
+
+// Watch for tab changes and validate scene image requirement
+watch(sceneTabValue, (newValue: string) => {
+  if (newValue === 'with-scene' && !sceneImageUrl.value && !sceneImagePreviewUrl.value && !isUploadingSceneImage.value) {
+    // Auto-focus on upload button or show hint
+    // The UI will show the upload button prominently
+  }
+})
 
 // Model image upload progress
 const modelImageUploadProgress = ref(0)
@@ -697,6 +771,7 @@ const getRecommendations = async () => {
       base_item_ids: activeItemIds,
       prompt: enhancedPrompt,
       scene_image_url: sceneImageUrl.value || undefined,
+      scene_action_prompt: sceneImageUrl.value && sceneActionPrompt.value ? sceneActionPrompt.value : undefined,
       selected_items_roles: selectedItemsRoles,
     }
     
@@ -834,6 +909,92 @@ const selectHistoricalModelImage = (image: HistoricalImage) => {
   showModelImageHistory.value = false
 }
 
+const selectExampleModelImage = async (imageUrl: string) => {
+  modelImageFile.value = null
+  showModelImageError.value = false // Reset error state when user selects example image
+  
+  // If the example image is already on our server (R2), use it directly
+  // Otherwise, we need to upload it to save to history
+  if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
+    // Already on our server, use directly (similar to historical images)
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+    }
+    modelImagePreviewUrl.value = imageUrl
+    showExampleModelImages.value = false
+    return
+  }
+  
+  // For external URLs or local files, upload to backend to save to history
+  try {
+    // Fetch the image as a blob
+    const response = await fetch(imageUrl)
+    if (!response.ok) {
+      throw new Error('Failed to fetch example image')
+    }
+    const blob = await response.blob()
+    const file = new File([blob], 'example-model.jpg', { type: blob.type })
+    
+    // Upload to backend to save to history
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    isUploadingModelImage.value = true
+    modelImageUploadProgress.value = 0
+    
+    let hasRealProgress = false
+    const progressInterval = setInterval(() => {
+      if (!hasRealProgress && modelImageUploadProgress.value < 90) {
+        modelImageUploadProgress.value += 10
+      }
+    }, 200)
+    
+    const resp = await uploadApiClient.post<{ url: string }>('/model-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        hasRealProgress = true
+        if (progressEvent.total) {
+          modelImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        } else if (progressEvent.loaded) {
+          modelImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
+        }
+      },
+    })
+    
+    clearInterval(progressInterval)
+    modelImageUploadProgress.value = 100
+    
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+    }
+    modelImagePreviewUrl.value = resp.data.url
+    modelImageFile.value = null
+    
+    // Reload historical images
+    await loadHistoricalImages()
+    
+    // Reset progress
+    setTimeout(() => {
+      isUploadingModelImage.value = false
+      modelImageUploadProgress.value = 0
+    }, 500)
+  } catch (e: any) {
+    console.error('Failed to use example model image:', e)
+    // Fallback: use the URL directly without uploading
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+    }
+    modelImagePreviewUrl.value = imageUrl
+    isUploadingModelImage.value = false
+    modelImageUploadProgress.value = 0
+    alert(`Failed to upload example image: ${e?.message || 'Unknown error'}. Using image directly.`)
+  }
+  
+  showExampleModelImages.value = false
+}
+
 const deleteHistoricalModelImage = async (image: HistoricalImage, event: Event) => {
   event.stopPropagation() // Prevent selecting the image when clicking delete
   
@@ -943,6 +1104,95 @@ const selectHistoricalSceneImage = (image: HistoricalImage) => {
   }
   sceneImagePreviewUrl.value = image.image_url
   showSceneImageHistory.value = false
+}
+
+const selectExampleSceneImage = async (imageUrl: string) => {
+  sceneImageFile.value = null
+  
+  // If the example image is already on our server (R2), use it directly
+  // Otherwise, we need to upload it to save to history
+  if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
+    // Already on our server, use directly (similar to historical images)
+    sceneImageUrl.value = imageUrl
+    if (sceneImagePreviewUrl.value) {
+      URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    }
+    sceneImagePreviewUrl.value = imageUrl
+    showExampleSceneImages.value = false
+    return
+  }
+  
+  // For external URLs or local files, upload to backend to save to history
+  try {
+    // Fetch the image as a blob
+    const response = await fetch(imageUrl)
+    if (!response.ok) {
+      throw new Error('Failed to fetch example image')
+    }
+    const blob = await response.blob()
+    const file = new File([blob], 'example-scene.jpg', { type: blob.type })
+    
+    // Upload to backend to save to history
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    sceneImageUrl.value = null
+    isUploadingSceneImage.value = true
+    sceneImageUploadProgress.value = 0
+    
+    let hasRealProgress = false
+    const progressInterval = setInterval(() => {
+      if (!hasRealProgress && sceneImageUploadProgress.value < 90) {
+        sceneImageUploadProgress.value += 10
+      }
+    }, 200)
+    
+    const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        hasRealProgress = true
+        if (progressEvent.total) {
+          sceneImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        } else if (progressEvent.loaded) {
+          sceneImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
+        }
+      },
+    })
+    
+    clearInterval(progressInterval)
+    sceneImageUploadProgress.value = 100
+    sceneImageUrl.value = resp.data.url
+    
+    // Reload historical images
+    await loadHistoricalImages()
+    
+    if (sceneImagePreviewUrl.value) {
+      URL.revokeObjectURL(sceneImagePreviewUrl.value)
+      sceneImagePreviewUrl.value = null
+    }
+    sceneImagePreviewUrl.value = resp.data.url
+    
+    // Reset progress
+    setTimeout(() => {
+      isUploadingSceneImage.value = false
+      sceneImageUploadProgress.value = 0
+    }, 500)
+  } catch (e: any) {
+    console.error('Failed to use example scene image:', e)
+    // Fallback: use the URL directly without uploading
+    sceneImageUrl.value = imageUrl
+    if (sceneImagePreviewUrl.value) {
+      URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    }
+    sceneImagePreviewUrl.value = imageUrl
+    isUploadingSceneImage.value = false
+    sceneImageUploadProgress.value = 0
+    alert(`Failed to upload example image: ${e?.message || 'Unknown error'}. Using image directly.`)
+  }
+  
+  showExampleSceneImages.value = false
 }
 
 const deleteHistoricalSceneImage = async (image: HistoricalImage, event: Event) => {
@@ -1588,99 +1838,154 @@ const searchOnGoogle = (description: string) => {
           <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.tellAIAboutDay') }}</h2>
         </div>
         <div class="flex flex-col gap-4">
-          <div class="w-full space-y-3">
-            <!-- Rich input wrapper with integrated image upload -->
-            <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
-              <textarea
-                v-model="customPrompt"
-                rows="3"
-                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
-                :placeholder="$t('studio.promptPlaceholder')"
-              ></textarea>
-              
-              <!-- Scene image preview area -->
-              <div v-if="sceneImagePreviewUrl || isUploadingSceneImage" class="px-4 pb-2">
-                <div class="relative inline-block group">
-                  <div class="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
-                    <img 
-                      v-if="sceneImagePreviewUrl"
-                      :src="sceneImagePreviewUrl" 
-                      alt="Scene preview" 
-                      class="w-full h-full object-cover"
-                    />
-                    <!-- Upload progress overlay -->
-                    <div
-                      v-if="isUploadingSceneImage"
-                      class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
-                    >
-                      <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
-                      <span class="text-white text-xs">{{ sceneImageUploadProgress }}%</span>
-                    </div>
-                    <!-- Progress bar -->
-                    <div
-                      v-if="isUploadingSceneImage"
-                      class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"
-                    >
-                      <div
-                        class="h-full bg-blue-500 transition-all duration-300"
-                        :style="{ width: `${sceneImageUploadProgress}%` }"
-                      ></div>
+          <div class="flex flex-col gap-4">
+            <!-- Tabs for scene image options (horizontal, fixed width, left-aligned) -->
+            <Tabs v-model="sceneTabValue" default-value="no-scene" class="w-full">
+              <TabsList class="inline-flex items-center justify-start h-auto w-auto p-1 bg-muted rounded-lg">
+                <TabsTrigger 
+                  value="no-scene"
+                  class="min-w-[120px] max-w-[160px] px-4 py-2 text-sm font-medium text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent data-[state=active]:bg-background data-[state=active]:opacity-100 data-[state=inactive]:opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer"
+                >
+                  {{ $t('studio.noSceneImage') }}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="with-scene"
+                  class="min-w-[120px] max-w-[160px] px-4 py-2 text-sm font-medium text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent data-[state=active]:bg-background data-[state=active]:opacity-100 data-[state=inactive]:opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer"
+                >
+                  {{ $t('studio.withSceneImage') }}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            
+            <!-- Content area -->
+            <div class="w-full space-y-4">
+              <!-- Action prompt input (only shown in "with-scene" tab) -->
+              <Transition
+                enter-active-class="transition-all duration-300 ease-out"
+                enter-from-class="opacity-0 -translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition-all duration-200 ease-in"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 -translate-y-2"
+              >
+                <div v-if="sceneTabValue === 'with-scene'" class="space-y-2">
+                  <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
+                    <div class="flex items-center gap-2 px-4 py-3">
+                      <input
+                        v-model="sceneActionPrompt"
+                        type="text"
+                        class="flex-1 text-sm focus:outline-none border-0 placeholder:text-pink-600 bg-transparent"
+                        :placeholder="$t('studio.sceneActionPromptPlaceholder')"
+                      />
+                      <div class="flex items-center gap-2 border-l border-pink-100 pl-3">
+                        <!-- Scene image preview -->
+                        <div v-if="sceneImagePreviewUrl || isUploadingSceneImage" class="relative">
+                          <div class="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+                            <img 
+                              v-if="sceneImagePreviewUrl"
+                              :src="getThumbnailUrl(sceneImagePreviewUrl)" 
+                              loading="lazy"
+                              alt="Scene preview" 
+                              class="w-full h-full object-cover"
+                            />
+                            <!-- Upload progress overlay -->
+                            <div
+                              v-if="isUploadingSceneImage"
+                              class="absolute inset-0 bg-gray-900/50 flex items-center justify-center"
+                            >
+                              <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                          </div>
+                          <button
+                            v-if="sceneImagePreviewUrl && !isUploadingSceneImage"
+                            @click="removeSceneImage"
+                            class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md cursor-pointer"
+                            :title="$t('studio.deleteSceneImage')"
+                          >
+                            <X class="w-3 h-3" />
+                          </button>
+                        </div>
+                        <!-- Upload button -->
+                        <label
+                          for="sceneImageInput"
+                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
+                          :title="$t('studio.uploadSceneImage')"
+                        >
+                          <Upload class="w-4 h-4" />
+                          <span class="hidden sm:inline">{{ $t('studio.uploadSceneImage') }}</span>
+                        </label>
+                        <input
+                          id="sceneImageInput"
+                          type="file"
+                          accept="image/*"
+                          @change="handleSceneImageChange"
+                          class="hidden"
+                        />
+                        <!-- History button -->
+                        <button
+                          @click="showSceneImageHistory = !showSceneImageHistory"
+                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
+                          :title="$t('studio.pickFromSceneHistory')"
+                        >
+                          <Clock class="w-4 h-4" />
+                          <span class="hidden sm:inline">{{ $t('studio.viewHistory') }}</span>
+                        </button>
+                        <!-- Example button -->
+                        <button
+                          @click="showExampleSceneImages = !showExampleSceneImages"
+                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
+                          :title="$t('studio.chooseExampleScene')"
+                        >
+                          <Image class="w-4 h-4" />
+                          <span class="hidden sm:inline">{{ $t('studio.example') }}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    v-if="sceneImagePreviewUrl && !isUploadingSceneImage"
-                    @click="removeSceneImage"
-                    class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md"
-                    :title="$t('studio.deleteSceneImage')"
+                  <!-- Helper text -->
+                  <p class="text-xs text-pink-600 px-1">
+                    {{ $t('studio.uploadSceneHelper') }}
+                  </p>
+                  
+                  <!-- Warning if no scene image uploaded -->
+                  <div 
+                    v-if="!sceneImageUrl && !sceneImagePreviewUrl && !isUploadingSceneImage"
+                    class="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700"
                   >
-                    <X class="w-4 h-4" />
-                  </button>
+                    <span class="flex-shrink-0">⚠️</span>
+                    <span>{{ $t('studio.sceneImageRequired') }}</span>
+                  </div>
                 </div>
-              </div>
+              </Transition>
               
-              <!-- Toolbar with image upload button -->
-              <div class="flex items-center justify-between px-4 py-2 border-t border-pink-100">
-                <div class="flex items-center gap-2">
-                  <label
-                    for="sceneImageInput"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-                    :title="$t('studio.uploadSceneImage')"
-                  >
-                    <Upload class="w-4 h-4" />
-                    <span class="text-xs">{{ $t('studio.uploadSceneImage') }}</span>
-                  </label>
-                  <input
-                    id="sceneImageInput"
-                    type="file"
-                    accept="image/*"
-                    @change="handleSceneImageChange"
-                    class="hidden"
-                  />
-                  <button
-                    @click="showSceneImageHistory = !showSceneImageHistory"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-                    :title="$t('studio.pickFromSceneHistory')"
-                  >
-                    <Clock class="w-4 h-4" />
-                    <span class="text-xs">{{ $t('studio.viewHistory') }}</span>
-                  </button>
+              <!-- Style prompt textarea (shown in both tabs) -->
+              <Transition
+                enter-active-class="transition-all duration-300 ease-out"
+                enter-from-class="opacity-0 translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition-all duration-200 ease-in"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 translate-y-2"
+              >
+                <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
+                  <textarea
+                    v-model="customPrompt"
+                    rows="3"
+                    class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
+                    :placeholder="$t('studio.promptPlaceholder')"
+                  ></textarea>
                 </div>
-                
-              </div>
+              </Transition>
             </div>
-            
-            <!-- Helper text below input -->
-            <p class="text-xs text-pink-600 px-1">
-              {{ $t('studio.uploadSceneHelper') }}
-            </p>
-            
-            <!-- Historical scene images modal -->
-            <div
+          </div>
+        
+        <!-- Historical scene images modal -->
+        <div
               v-if="showSceneImageHistory"
               class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
               @click.self="showSceneImageHistory = false"
             >
-              <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+              <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-6 border-b border-gray-200">
                   <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseHistoricalScene') }}</h3>
                   <button
@@ -1695,15 +2000,16 @@ const searchOnGoogle = (description: string) => {
                     <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
                     <p>{{ $t('studio.noHistoricalScene') }}</p>
                   </div>
-                  <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     <div
                       v-for="image in historicalSceneImages"
                       :key="image.id"
                       @click="selectHistoricalSceneImage(image)"
-                      class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"
+                      class="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                     >
                       <img
-                        :src="image.image_url"
+                        :src="getThumbnailUrl(image.image_url)"
+                        loading="lazy"
                         :alt="`Scene image ${image.id}`"
                         class="w-full h-full object-cover"
                       />
@@ -1717,7 +2023,7 @@ const searchOnGoogle = (description: string) => {
                         <Trash2 class="w-4 h-4" />
                       </button>
                       <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                        <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
                           {{ new Date(image.created_at).toLocaleDateString('en-US') }}
                         </div>
                       </div>
@@ -1726,8 +2032,8 @@ const searchOnGoogle = (description: string) => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <button 
               @click="getRecommendations" 
               :disabled="isGenerating"
@@ -1872,7 +2178,8 @@ const searchOnGoogle = (description: string) => {
                   <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-pink-200 hover:border-pink-500 transition-all hover:shadow-lg bg-pink-100">
                     <img
                       v-if="item.url || item.features.path"
-                      :src="item.url || item.features.path"
+                      :src="getThumbnailUrl((item.url || item.features.path) || '')"
+                      loading="lazy"
                       class="w-full h-full object-cover"
                       :alt="`${formatFeatureValue(item.features.color)} ${formatFeatureValue(item.features.type)}`"
                     />
@@ -1940,7 +2247,8 @@ const searchOnGoogle = (description: string) => {
             <div class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
               <img 
                 v-if="modelImagePreviewUrl"
-                :src="modelImagePreviewUrl" 
+                :src="getMediumImageUrl(modelImagePreviewUrl)" 
+                loading="lazy"
                 alt="Model preview" 
                 class="w-full h-full object-cover"
               />
@@ -1996,6 +2304,13 @@ const searchOnGoogle = (description: string) => {
                     <Clock class="w-4 h-4" />
                     <span>History</span>
                   </button>
+                  <button
+                    @click="showExampleModelImages = !showExampleModelImages"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                  >
+                    <Image class="w-4 h-4" />
+                    <span>{{ $t('studio.example') }}</span>
+                  </button>
                 </div>
                 <p class="text-xs text-pink-600">
                   Upload a half-body or full-body photo; all try-ons will use this model photo.
@@ -2029,6 +2344,13 @@ const searchOnGoogle = (description: string) => {
                 <Clock class="w-4 h-4" />
                 <span>History</span>
               </button>
+              <button
+                @click="showExampleModelImages = !showExampleModelImages"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
+              >
+                <Image class="w-4 h-4" />
+                <span>{{ $t('studio.example') }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2039,7 +2361,7 @@ const searchOnGoogle = (description: string) => {
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           @click.self="showModelImageHistory = false"
         >
-          <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
             <div class="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
               <button
@@ -2054,15 +2376,16 @@ const searchOnGoogle = (description: string) => {
                 <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
                 <p>No historical model images</p>
               </div>
-              <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 <div
                   v-for="image in historicalModelImages"
                   :key="image.id"
                   @click="selectHistoricalModelImage(image)"
-                  class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"
+                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                 >
                   <img
-                    :src="image.image_url"
+                    :src="getThumbnailUrl(image.image_url)"
+                    loading="lazy"
                     :alt="`Model image ${image.id}`"
                     class="w-full h-full object-cover"
                   />
@@ -2076,8 +2399,100 @@ const searchOnGoogle = (description: string) => {
                     <Trash2 class="w-4 h-4" />
                   </button>
                   <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
                       {{ new Date(image.created_at).toLocaleDateString('en-US') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Example model images modal -->
+        <div
+          v-if="showExampleModelImages"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showExampleModelImages = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleModel') }}</h3>
+              <button
+                @click="showExampleModelImages = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-pink-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="exampleModelImages.length === 0" class="text-center py-12 text-pink-400">
+                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
+                <p>{{ $t('studio.noExampleModel') }}</p>
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div
+                  v-for="(imageUrl, index) in exampleModelImages"
+                  :key="index"
+                  @click="selectExampleModelImage(imageUrl)"
+                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
+                >
+                  <img
+                    :src="getThumbnailUrl(imageUrl)"
+                    loading="lazy"
+                    :alt="`Example model ${index + 1}`"
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
+                      {{ $t('studio.clickToUse') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Example scene images modal -->
+        <div
+          v-if="showExampleSceneImages"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showExampleSceneImages = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleScene') }}</h3>
+              <button
+                @click="showExampleSceneImages = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-pink-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="exampleSceneImages.length === 0" class="text-center py-12 text-pink-400">
+                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
+                <p>{{ $t('studio.noExampleScene') }}</p>
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div
+                  v-for="(imageUrl, index) in exampleSceneImages"
+                  :key="index"
+                  @click="selectExampleSceneImage(imageUrl)"
+                  class="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
+                >
+                  <img
+                    :src="getThumbnailUrl(imageUrl)"
+                    loading="lazy"
+                    :alt="`Example scene ${index + 1}`"
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
+                      {{ $t('studio.clickToUse') }}
                     </div>
                   </div>
                 </div>
@@ -2125,7 +2540,8 @@ const searchOnGoogle = (description: string) => {
               <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-pink-400 overflow-hidden">
                 <img 
                   v-if="rec.path && rec.path.startsWith('http')" 
-                  :src="rec.path" 
+                  :src="getThumbnailUrl(rec.path)" 
+                  loading="lazy"
                   class="w-full h-full object-cover"
                 />
                 <span v-else>{{ rec.type }}</span>
@@ -2164,7 +2580,7 @@ const searchOnGoogle = (description: string) => {
             </button>
           </div>
           <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:border-gray-300 transition-colors" @click="openTryOnImageViewer">
-            <img :src="tryOnImageUrl" alt="Try-on result" class="w-full object-contain" />
+            <img :src="getLargeImageUrl(tryOnImageUrl || '')" loading="lazy" alt="Try-on result" class="w-full object-contain" />
           </div>
         </div>
       </section>

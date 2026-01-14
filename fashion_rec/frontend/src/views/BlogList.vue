@@ -29,38 +29,47 @@
       <article
         v-for="post in posts"
         :key="post.id"
-        class="bg-white border border-pink-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+        class="bg-white border border-pink-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col"
         @click="goToPost(post.id)"
       >
-        <div class="p-6">
-          <div class="flex items-start justify-between mb-3">
-            <h2 class="text-xl font-semibold text-gray-900 line-clamp-2">
-              {{ post.title }}
-            </h2>
-            <span
-              v-if="post.status === 'draft'"
-              class="ml-2 px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600"
-            >
-              {{ $t('blog.draft') }}
-            </span>
+        <!-- Media Section (Top) -->
+        <div class="w-full h-48 bg-gray-100 overflow-hidden relative">
+          <template v-if="post.media_urls && post.media_urls.length > 0">
+            <img
+              v-if="post.media_urls[0].type === 'image'"
+              :src="post.media_urls[0].url"
+              :alt="post.title"
+              class="w-full h-full object-cover"
+            />
+            <video
+              v-else
+              :src="post.media_urls[0].url"
+              :poster="post.media_urls[0].thumbnail"
+              class="w-full h-full object-cover"
+              preload="metadata"
+              muted
+            />
+          </template>
+          <div v-else class="w-full h-full flex items-center justify-center text-gray-400">
+            <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
           </div>
-          
-          <p class="text-gray-600 text-sm mb-4 line-clamp-3">
-            {{ getExcerpt(post.content) }}
-          </p>
-          
-          <div class="flex flex-wrap gap-2 mb-4">
+        </div>
+        
+        <!-- Title Section (Bottom) -->
+        <div class="p-4 flex-1 flex flex-col">
+          <h2 class="text-lg font-semibold text-gray-900 line-clamp-2 mb-2">
+            {{ post.title }}
+          </h2>
+          <div v-if="post.tags && post.tags.length > 0" class="mt-auto flex gap-1 flex-wrap">
             <span
-              v-for="tag in post.tags"
+              v-for="(tag, index) in post.tags.slice(0, 2)"
               :key="tag"
-              class="px-2 py-1 text-xs rounded-full bg-pink-50 text-pink-600"
+              class="px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 text-xs"
             >
               {{ tag }}
             </span>
-          </div>
-          
-          <div class="text-xs text-gray-500">
-            {{ formatDate(post.created_at) }}
           </div>
         </div>
       </article>
@@ -92,12 +101,19 @@ const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
 
+interface MediaItem {
+  url: string
+  type: 'image' | 'video'
+  thumbnail?: string
+}
+
 interface BlogPost {
   id: string
   title: string
   content: string
   tags: string[]
   status: 'draft' | 'published'
+  media_urls?: MediaItem[]
   created_at: string
   updated_at: string
   user_id: string

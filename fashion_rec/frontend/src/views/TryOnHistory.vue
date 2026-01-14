@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
+import { getThumbnailUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -286,7 +287,8 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             class="aspect-square bg-gray-100 cursor-pointer overflow-hidden relative"
           >
             <img
-              :src="item.image_url"
+              :src="getThumbnailUrl(item.image_url)"
+              loading="lazy"
               alt="Try-on result"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -382,7 +384,8 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
         <!-- Image -->
         <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
           <img
-            :src="imageViewerImages[currentImageIndex]"
+            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
+            loading="lazy"
             alt="Try-on result"
             class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
           />

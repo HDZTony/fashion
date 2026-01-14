@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="container mx-auto px-4 py-12">
     <div v-if="isLoading" class="text-center py-12">
       <div class="text-pink-600">{{ $t('blog.loading') }}</div>
     </div>
@@ -11,14 +11,14 @@
       </router-link>
     </div>
 
-    <article v-else-if="post" class="bg-white rounded-xl shadow-sm">
+    <article v-else-if="post" class="max-w-[680px] mx-auto">
       <!-- Header -->
-      <div class="p-8 border-b border-pink-200">
-        <div class="flex items-start justify-between mb-4">
-          <h1 class="text-4xl font-bold text-gray-900 flex-1">
+      <header class="mb-12">
+        <div class="flex items-start justify-between mb-6">
+          <h1 class="text-5xl font-bold text-gray-900 leading-tight tracking-tight flex-1">
             {{ post.title }}
           </h1>
-          <div v-if="isAuthor" class="ml-4 flex gap-2">
+          <div v-if="isAuthor" class="ml-6 flex gap-2 flex-shrink-0">
             <router-link
               :to="`/blog/${post.id}/edit`"
               class="px-4 py-2 text-sm border border-pink-200 rounded-lg hover:bg-pink-50"
@@ -35,43 +35,36 @@
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-          <span>{{ formatDate(post.created_at) }}</span>
-          <span v-if="post.status === 'draft'" class="px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-            {{ $t('blog.draft') }}
+        <div v-if="post.tags && post.tags.length > 0" class="flex flex-wrap gap-2">
+          <span
+            v-for="tag in post.tags"
+            :key="tag"
+            class="px-3 py-1 text-sm rounded-full bg-pink-50 text-pink-600 font-medium"
+          >
+            {{ tag }}
           </span>
-          <div v-if="post.tags && post.tags.length > 0" class="flex flex-wrap gap-2">
-            <span
-              v-for="tag in post.tags"
-              :key="tag"
-              class="px-2 py-1 rounded-full bg-pink-50 text-pink-600"
-            >
-              {{ tag }}
-            </span>
-          </div>
         </div>
-      </div>
+      </header>
 
       <!-- Media Gallery -->
-      <div v-if="post.media_urls && post.media_urls.length > 0" class="px-8 pb-8 border-b border-pink-200">
-        <h3 class="text-lg font-semibold mb-4">{{ $t('blog.mediaGallery') }}</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div v-if="post.media_urls && post.media_urls.length > 0" class="mb-12">
+        <div class="space-y-6">
           <div
             v-for="(media, index) in post.media_urls"
             :key="index"
-            class="rounded-lg overflow-hidden border border-pink-200"
+            class="rounded-lg overflow-hidden"
           >
             <img
               v-if="media.type === 'image'"
               :src="media.url"
               :alt="`Image ${index + 1}`"
-              class="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+              class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity"
               @click="openMediaViewer(media.url, index)"
             />
             <video
               v-else
               :src="media.url"
-              class="w-full h-auto"
+              class="w-full h-auto rounded-lg"
               controls
               preload="metadata"
             />
@@ -80,9 +73,9 @@
       </div>
 
       <!-- Content -->
-      <div class="p-8">
+      <div class="blog-content">
         <div
-          class="prose prose-pink max-w-none"
+          class="prose prose-medium"
           v-html="renderedContent"
         />
       </div>
@@ -203,70 +196,141 @@ onMounted(() => {
 </script>
 
 <style scoped>
-:deep(.prose) {
-  color: #374151;
+/* Medium-style typography */
+.blog-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 }
 
-:deep(.prose h1),
-:deep(.prose h2),
-:deep(.prose h3) {
-  color: #111827;
+:deep(.prose-medium) {
+  color: rgba(0, 0, 0, 0.84);
+  font-size: 21px;
+  line-height: 1.58;
+  letter-spacing: -0.003em;
+  max-width: 100%;
+}
+
+:deep(.prose-medium p) {
+  margin-bottom: 1.6em;
+  font-size: 21px;
+  line-height: 1.58;
+  letter-spacing: -0.003em;
+}
+
+:deep(.prose-medium h1) {
+  font-size: 42px;
   font-weight: 700;
-  margin-top: 2em;
-  margin-bottom: 1em;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  margin-top: 1.6em;
+  margin-bottom: 0.8em;
+  color: rgba(0, 0, 0, 0.84);
 }
 
-:deep(.prose p) {
-  margin-bottom: 1.25em;
-  line-height: 1.75;
+:deep(.prose-medium h2) {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin-top: 1.6em;
+  margin-bottom: 0.8em;
+  color: rgba(0, 0, 0, 0.84);
 }
 
-:deep(.prose code) {
-  background-color: #f3f4f6;
-  padding: 0.125em 0.375em;
-  border-radius: 0.25rem;
-  font-size: 0.875em;
+:deep(.prose-medium h3) {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.012em;
+  margin-top: 1.6em;
+  margin-bottom: 0.8em;
+  color: rgba(0, 0, 0, 0.84);
 }
 
-:deep(.prose pre) {
-  background-color: #1f2937;
-  color: #f9fafb;
-  padding: 1em;
-  border-radius: 0.5rem;
+:deep(.prose-medium h4) {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.22;
+  margin-top: 1.6em;
+  margin-bottom: 0.8em;
+  color: rgba(0, 0, 0, 0.84);
+}
+
+:deep(.prose-medium img) {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 2em 0;
+}
+
+:deep(.prose-medium a) {
+  color: rgba(0, 0, 0, 0.84);
+  text-decoration: underline;
+  text-decoration-color: rgba(0, 0, 0, 0.3);
+  transition: text-decoration-color 0.2s;
+}
+
+:deep(.prose-medium a:hover) {
+  text-decoration-color: rgba(0, 0, 0, 0.84);
+}
+
+:deep(.prose-medium ul),
+:deep(.prose-medium ol) {
+  margin: 1.6em 0;
+  padding-left: 2em;
+}
+
+:deep(.prose-medium li) {
+  margin-bottom: 0.8em;
+  font-size: 21px;
+  line-height: 1.58;
+}
+
+:deep(.prose-medium blockquote) {
+  border-left: 3px solid rgba(0, 0, 0, 0.84);
+  padding-left: 1.6em;
+  margin: 1.6em 0;
+  font-style: italic;
+  color: rgba(0, 0, 0, 0.68);
+  font-size: 21px;
+  line-height: 1.58;
+}
+
+:deep(.prose-medium code) {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+:deep(.prose-medium pre) {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 1.6em;
+  border-radius: 4px;
   overflow-x: auto;
-  margin-bottom: 1.5em;
+  margin: 1.6em 0;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
-:deep(.prose pre code) {
+:deep(.prose-medium pre code) {
   background-color: transparent;
   padding: 0;
-  color: inherit;
+  font-size: inherit;
 }
 
-:deep(.prose a) {
-  color: #ec4899;
-  text-decoration: underline;
+:deep(.prose-medium hr) {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 2em 0;
 }
 
-:deep(.prose a:hover) {
-  color: #be185d;
+:deep(.prose-medium strong) {
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.84);
 }
 
-:deep(.prose ul),
-:deep(.prose ol) {
-  margin-bottom: 1.25em;
-  padding-left: 1.625em;
-}
-
-:deep(.prose li) {
-  margin-bottom: 0.5em;
-}
-
-:deep(.prose blockquote) {
-  border-left: 4px solid #ec4899;
-  padding-left: 1em;
-  margin-left: 0;
-  color: #6b7280;
+:deep(.prose-medium em) {
   font-style: italic;
 }
 </style>

@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 import { apiClient } from '../lib/api-client'
+import { getThumbnailUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
 const { t } = useI18n()
 
@@ -285,7 +286,8 @@ onUnmounted(() => {
             class="aspect-square bg-gray-100 cursor-pointer overflow-hidden relative"
           >
             <img
-              :src="favorite.image_url"
+              :src="getThumbnailUrl(favorite.image_url)"
+              loading="lazy"
               :alt="favorite.title || 'Favorite'"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -355,7 +357,8 @@ onUnmounted(() => {
         <!-- Image -->
         <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
           <img
-            :src="imageViewerImages[currentImageIndex]"
+            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
+            loading="lazy"
             alt="Favorite"
             class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
           />

@@ -1,8 +1,17 @@
 <template>
   <div class="container mx-auto px-4 py-8 max-w-4xl">
-    <h1 class="text-3xl font-bold mb-6">
-      {{ isEdit ? $t('blog.edit') : $t('blog.create') }}
-    </h1>
+    <div class="flex items-center gap-4 mb-6">
+      <button
+        @click="router.back()"
+        class="flex items-center gap-2 px-4 py-2 text-sm border border-pink-200 rounded-lg hover:bg-pink-50 transition-colors"
+      >
+        <ArrowLeft class="w-4 h-4" />
+        {{ $t('common.back') }}
+      </button>
+      <h1 class="text-3xl font-bold">
+        {{ isEdit ? $t('blog.edit') : $t('blog.create') }}
+      </h1>
+    </div>
     
     <form @submit.prevent="handleSubmit" class="space-y-6">
       <!-- Title -->
@@ -100,18 +109,6 @@
         <p class="mt-1 text-sm text-gray-500">{{ $t('blog.contentHint') }}</p>
       </div>
       
-      <!-- Status -->
-      <div>
-        <label class="block text-sm font-medium mb-2">{{ $t('blog.statusLabel') }}</label>
-        <select
-          v-model="form.status"
-          class="w-full px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-        >
-          <option value="draft">{{ $t('blog.draft') }}</option>
-          <option value="published">{{ $t('blog.published') }}</option>
-        </select>
-      </div>
-      
       <!-- Preview (optional) -->
       <div v-if="form.content" class="border border-pink-200 rounded-lg p-4 bg-gray-50">
         <h3 class="text-sm font-medium mb-2">{{ $t('blog.preview') }}</h3>
@@ -147,7 +144,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '../lib/api-client'
 import { marked } from 'marked'
-import { Upload, X } from 'lucide-vue-next'
+import { Upload, X, ArrowLeft } from 'lucide-vue-next'
 
 defineOptions({ name: 'BlogCreate' })
 
@@ -166,7 +163,7 @@ interface MediaItem {
 const form = ref({
   title: '',
   content: '',
-  status: 'draft' as 'draft' | 'published',
+  status: 'published' as 'draft' | 'published',
   tags: [] as string[],
   media_urls: [] as MediaItem[]
 })
@@ -191,7 +188,7 @@ onMounted(async () => {
       form.value = {
         title: post.title,
         content: post.content,
-        status: post.status,
+        status: post.status || 'published',
         tags: post.tags || [],
         media_urls: post.media_urls || []
       }

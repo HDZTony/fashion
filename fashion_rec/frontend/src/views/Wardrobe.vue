@@ -2,6 +2,7 @@
 defineOptions({ name: 'Wardrobe' })
 import { ref, onMounted, onUnmounted, onActivated, watch, computed } from 'vue'
 import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle, Info, Edit2, Save } from 'lucide-vue-next'
+import { getThumbnailUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { Item, PendingItem, ItemFeatures } from '../types'
@@ -1232,7 +1233,8 @@ onUnmounted(() => {
             
             <img
               v-if="item.url || item.features.path"
-              :src="item.url || item.features.path"
+              :src="getThumbnailUrl(item.url || item.features.path)"
+              loading="lazy"
               class="absolute inset-0 w-full h-full object-cover"
               :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'opacity-75' : ''"
               alt="Clothing item"
@@ -1312,7 +1314,8 @@ onUnmounted(() => {
                   </div>
                   <img
                     v-if="item.url"
-                    :src="item.url"
+                    :src="getThumbnailUrl(item.url)"
+                    loading="lazy"
                     class="w-16 h-16 object-cover rounded-lg"
                     alt="Item preview"
                   />
@@ -1371,7 +1374,8 @@ onUnmounted(() => {
         <!-- Image -->
         <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
           <img
-            :src="imageViewerImages[currentImageIndex]"
+            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
+            loading="lazy"
             alt="Wardrobe item"
             class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
           />
@@ -1433,7 +1437,8 @@ onUnmounted(() => {
           <!-- Item Image -->
           <div class="flex justify-center">
             <img
-              :src="currentItem.url || currentItem.features.path"
+              :src="getMediumImageUrl(currentItem.url || currentItem.features.path)"
+              loading="lazy"
               :alt="formatFeatureValue(currentItem.features.type)"
               class="w-full max-w-sm rounded-lg object-cover shadow-lg"
             />
