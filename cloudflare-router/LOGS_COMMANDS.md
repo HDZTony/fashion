@@ -77,7 +77,7 @@ pnpm exec wrangler tail | Select-String "user-id-here"
 - **日志导出**：导出日志为 CSV 格式
 - **性能指标**：查看请求耗时、错误率等指标
 
-## 常用日志场景
+## 常用日志背景
 
 ### 调试路由问题
 

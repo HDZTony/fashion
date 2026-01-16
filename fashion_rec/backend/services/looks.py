@@ -120,7 +120,7 @@ def cleanup_expired_looks(
 
     Args:
         resolve_retention_days: callable(user_id) -> int | None
-        delete_file_func: callable(url) -> bool, used to delete scene images from R2
+        delete_file_func: callable(url) -> bool, used to delete background images from R2
 
     Returns:
         Number of deleted looks
@@ -153,11 +153,11 @@ def cleanup_expired_looks(
                 # If parsing fails, skip to avoid accidental deletion
                 continue
 
-            # Delete associated scene image if any
-            scene_url = look.get("scene_image_url")
-            if scene_url:
+            # Delete associated background image if any
+            background_url = look.get("background_image_url")
+            if background_url:
                 try:
-                    delete_file_func(scene_url)
+                    delete_file_func(background_url)
                 except Exception:
                     # Best-effort; continue
                     pass

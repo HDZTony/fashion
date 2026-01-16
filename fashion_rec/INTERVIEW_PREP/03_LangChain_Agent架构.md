@@ -22,7 +22,7 @@ async def generate_outfit_suggestions(
     location: Optional[str],
     user_prompt: str,
     base_item_ids: Optional[List[str]] = None,
-    scene_image_url: Optional[str] = None,
+    background_image_url: Optional[str] = None,
     client_ip: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -100,7 +100,7 @@ async def generate_outfit_suggestions(...):
         wardrobe_summary,
         base_items,
         user_prompt,
-        scene_image_url
+        background_image_url
     )
     
     # 步骤5: 调用LLM（决策）
@@ -123,7 +123,7 @@ async def generate_outfit_suggestions(...):
 1. **多数据源整合**：
    - 天气API（外部服务）
    - 用户衣橱（数据库）
-   - 场景图片（用户输入）
+   - 背景图片（用户输入）
    - 用户偏好（文本输入）
 
 2. **上下文构建**：
@@ -142,11 +142,11 @@ async def generate_outfit_suggestions(...):
 
 ```python
 # 在outfit_agent.py中
-if scene_image_url:
+if background_image_url:
     # 构建多模态消息
     user_message_content = [
         {"type": "text", "text": user_prompt_text},
-        {"type": "image_url", "image_url": {"url": scene_image_url}}
+        {"type": "image_url", "image_url": {"url": background_image_url}}
     ]
 else:
     user_message_content = user_prompt_text
@@ -159,8 +159,8 @@ response = await llm.ainvoke([
 ```
 
 **优势：**
-- LLM可以同时理解场景图片和文本描述
-- 根据场景（办公室、咖啡厅等）推荐合适的穿搭
+- LLM可以同时理解背景图片和文本描述
+- 根据背景（办公室、咖啡厅等）推荐合适的穿搭
 - 提高推荐的准确性和相关性
 
 ## 3. 向量检索增强

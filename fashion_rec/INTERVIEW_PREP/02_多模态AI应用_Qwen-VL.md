@@ -25,7 +25,7 @@
 
 3. **多图像输入**：
    - 支持同时处理多张图像
-   - 在我们的项目中用于场景图片+服装图片的组合理解
+   - 在我们的项目中用于背景图片+服装图片的组合理解
 
 **代码示例：**
 ```python
@@ -59,7 +59,7 @@ response = llm.invoke(messages)
 
 1. **成本效益**：
    - Qwen-VL的API调用成本相对较低
-   - 适合需要频繁调用的场景（用户上传图片）
+   - 适合需要频繁调用的背景（用户上传图片）
 
 2. **中文支持**：
    - 原生支持中文，对中文用户更友好
@@ -199,13 +199,13 @@ response = llm.invoke(messages)
    - 简单任务使用更便宜的模型
    - 复杂任务使用更准确的模型
 
-## 3. 实际应用场景
+## 3. 实际应用背景
 
-### Q: 在项目中，Qwen-VL具体用在哪些场景？
+### Q: 在项目中，Qwen-VL具体用在哪些背景？
 
 **答案：**
 
-**应用场景：**
+**应用背景：**
 
 1. **服装图像识别**（`recognition.py`）：
    ```python
@@ -216,18 +216,18 @@ response = llm.invoke(messages)
 
 2. **穿搭方案生成**（`outfit_agent.py`）：
    ```python
-   # 结合场景图片，生成穿搭方案
-   if scene_image_url:
-       # 多模态输入：场景图片 + 用户衣橱 + 天气信息
+   # 结合背景图片，生成穿搭方案
+   if background_image_url:
+       # 多模态输入：背景图片 + 用户衣橱 + 天气信息
        user_message_content = [
            {"type": "text", "text": user_prompt},
-           {"type": "image_url", "image_url": {"url": scene_image_url}}
+           {"type": "image_url", "image_url": {"url": background_image_url}}
        ]
    ```
 
-3. **场景理解**：
-   - 分析用户上传的场景图片（办公室、咖啡厅等）
-   - 根据场景推荐合适的穿搭
+3. **背景理解**：
+   - 分析用户上传的背景图片（办公室、咖啡厅等）
+   - 根据背景推荐合适的穿搭
 
 ### Q: 如何处理多图像输入？
 
@@ -239,13 +239,13 @@ response = llm.invoke(messages)
    ```python
    # 在outfit_agent.py中
    user_message_content = [
-       {"type": "text", "text": "根据场景图片推荐穿搭"},
-       {"type": "image_url", "image_url": {"url": scene_image_url}}
+       {"type": "text", "text": "根据背景图片推荐穿搭"},
+       {"type": "image_url", "image_url": {"url": background_image_url}}
    ]
    ```
 
 2. **图像顺序**：
-   - 场景图片在前，帮助模型理解环境
+   - 背景图片在前，帮助模型理解环境
    - 服装图片在后，作为参考
 
 3. **图像数量限制**：

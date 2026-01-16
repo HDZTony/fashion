@@ -288,7 +288,7 @@ if (cookies) {
 
 ### 🎯 什么时候用 Authorization Header？
 
-✅ **适合场景：**
+✅ **适合背景：**
 - RESTful API
 - 移动应用（iOS/Android）
 - 跨域 API 调用
@@ -299,7 +299,7 @@ if (cookies) {
 
 ### 🍪 什么时候用 Cookie？
 
-✅ **适合场景：**
+✅ **适合背景：**
 - 传统 Web 应用
 - 同域请求
 - 需要自动登录保持

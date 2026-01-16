@@ -392,7 +392,7 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/favorites') ||
          path.startsWith('/model-image') ||
          path.startsWith('/user-images') ||
-         path.startsWith('/scene-image') ||
+         path.startsWith('/background-image') ||
          path.startsWith('/tryon-history') ||
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||

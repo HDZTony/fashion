@@ -113,7 +113,7 @@ def _normalize_record(record: Dict[str, Any]) -> Dict[str, Any]:
 def _cleanup_expired(user_id: Optional[str] = None) -> int:
     """
     Remove expired records based on expires_at field.
-    Also deletes corresponding R2 files (image_url and scene_image_url).
+    Also deletes corresponding R2 files (image_url and background_image_url).
     If user_id is provided, only cleans up that user's expired records.
     Otherwise, cleans up all expired records.
     
@@ -170,12 +170,12 @@ def _cleanup_expired(user_id: Optional[str] = None) -> int:
                         logger.warning(f"[Try-On History] Failed to delete R2 file {image_url}: {e}")
                         # Continue with database deletion even if R2 deletion fails
                 
-                scene_image_url = record.get("scene_image_url")
-                if scene_image_url:
+                background_image_url = record.get("background_image_url")
+                if background_image_url:
                     try:
-                        delete_file_from_r2_by_url(scene_image_url)
+                        delete_file_from_r2_by_url(background_image_url)
                     except Exception as e:
-                        logger.warning(f"[Try-On History] Failed to delete R2 file {scene_image_url}: {e}")
+                        logger.warning(f"[Try-On History] Failed to delete R2 file {background_image_url}: {e}")
                         # Continue with database deletion even if R2 deletion fails
                 
                 # Delete from database
@@ -260,7 +260,7 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
             "user_id": str(user_id),  # Ensure it's a string
             "image_url": history.get("image_url", ""),
             "garment_urls": garment_urls,  # Selected items from Applied Outfit Items (JSONB array)
-            "scene_image_url": history.get("scene_image_url"),
+            "background_image_url": history.get("background_image_url"),
             "prompt": history.get("prompt"),  # User's custom prompt (optional)
             "model_image_url": history.get("model_image_url"),  # Model image URL for restoration
             "created_at": created_at.isoformat() + "Z",

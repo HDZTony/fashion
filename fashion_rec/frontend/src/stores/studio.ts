@@ -5,8 +5,8 @@ import type { AgentOutfit } from '@/types'
 export const useStudioStore = defineStore('studio', () => {
   // State that should be persisted across page navigation
   const customPrompt = ref('')
-  const sceneImageUrl = ref<string | null>(null)
-  const sceneImagePreviewUrl = ref<string | null>(null)
+  const backgroundImageUrl = ref<string | null>(null)
+  const backgroundImagePreviewUrl = ref<string | null>(null)
   const modelImagePreviewUrl = ref<string | null>(null)
   const tryOnImageUrl = ref<string | null>(null)
   const agentOutfits = ref<AgentOutfit[]>([])
@@ -32,9 +32,9 @@ export const useStudioStore = defineStore('studio', () => {
     customPrompt.value = prompt
   }
 
-  const setSceneImage = (url: string | null, previewUrl: string | null = null) => {
-    sceneImageUrl.value = url
-    sceneImagePreviewUrl.value = previewUrl || url
+  const setBackgroundImage = (url: string | null, previewUrl: string | null = null) => {
+    backgroundImageUrl.value = url
+    backgroundImagePreviewUrl.value = previewUrl || url
   }
 
   const setModelImage = (url: string | null) => {
@@ -74,8 +74,8 @@ export const useStudioStore = defineStore('studio', () => {
 
   const clearState = () => {
     customPrompt.value = ''
-    sceneImageUrl.value = null
-    sceneImagePreviewUrl.value = null
+    backgroundImageUrl.value = null
+    backgroundImagePreviewUrl.value = null
     modelImagePreviewUrl.value = null
     tryOnImageUrl.value = null
     agentOutfits.value = []
@@ -89,8 +89,8 @@ export const useStudioStore = defineStore('studio', () => {
   return {
     // State
     customPrompt,
-    sceneImageUrl,
-    sceneImagePreviewUrl,
+    backgroundImageUrl,
+    backgroundImagePreviewUrl,
     modelImagePreviewUrl,
     tryOnImageUrl,
     agentOutfits,
@@ -104,7 +104,7 @@ export const useStudioStore = defineStore('studio', () => {
     setActiveWardrobeRoleMap,
     // Actions
     setCustomPrompt,
-    setSceneImage,
+    setBackgroundImage,
     setModelImage,
     setTryOnImage,
     setAgentOutfits,

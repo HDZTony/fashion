@@ -30,7 +30,7 @@ interface Favorite {
   image_url: string
   title?: string
   garment_urls?: string[]
-  scene_image_url?: string
+  background_image_url?: string
   prompt?: string
   model_image_url?: string
   model_image_id?: string
@@ -221,7 +221,7 @@ const restoreFavorite = async (favorite: Favorite) => {
       tryonHistoryId: favorite.id,
       image_url: favorite.image_url,
       garment_urls: favorite.garment_urls || [],
-      scene_image_url: favorite.scene_image_url,
+      background_image_url: favorite.background_image_url,
       prompt: favorite.prompt,
       model_image_url: favorite.model_image_url,
       model_image_id: favorite.model_image_id,
@@ -304,8 +304,8 @@ onUnmounted(() => {
                 <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-pink-500">
                   {{ favorite.garment_urls.length }} {{ $t('favorites.items') }}
                 </p>
-                <p v-if="favorite.scene_image_url" class="text-xs text-pink-600 mt-1">
-                  {{ $t('favorites.includesScene') }}
+                <p v-if="favorite.background_image_url" class="text-xs text-pink-600 mt-1">
+                  {{ $t('favorites.includesBackground') }}
                 </p>
               </div>
               <div class="flex items-center gap-1">

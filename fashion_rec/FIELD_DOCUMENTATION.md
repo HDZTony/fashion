@@ -21,23 +21,23 @@
 - **用途**: 作为 `prompt` 字段传递给 `/outfit` API，用于向AI提供额外的穿搭偏好
 - **位置**: `Home.vue:46`
 
-#### 2. `sceneImageFile` (场景图片文件)
+#### 2. `backgroundImageFile` (背景图片文件)
 - **类型**: `ref<File | null>`
 - **来源**: 用户通过文件选择器上传，或从历史图片中选择
 - **用途**: 
-  - 上传到 `/scene-image` 获取 `sceneImageUrl`
-  - 作为场景参考传递给 Qwen-VL 模型
-- **相关字段**: `sceneImagePreviewUrl`, `sceneImageUrl`
+  - 上传到 `/background-image` 获取 `backgroundImageUrl`
+  - 作为背景参考传递给 Qwen-VL 模型
+- **相关字段**: `backgroundImagePreviewUrl`, `backgroundImageUrl`
 - **位置**: `Home.vue:49`
 
-#### 3. `sceneImageUrl` (场景图片URL)
+#### 3. `backgroundImageUrl` (背景图片URL)
 - **类型**: `ref<string | null>`
 - **来源**: 
-  - 上传 `sceneImageFile` 后从 `/scene-image` API 返回
+  - 上传 `backgroundImageFile` 后从 `/background-image` API 返回
   - 从历史图片中选择后直接使用
 - **用途**: 
-  - 传递给 `/outfit` API (`scene_image_url`)
-  - 传递给 `/try-on` API (`scene_image_url`)
+  - 传递给 `/outfit` API (`background_image_url`)
+  - 传递给 `/try-on` API (`background_image_url`)
   - 保存到 `SaveLookRequest` 中
 - **位置**: `Home.vue:51`
 
@@ -136,7 +136,7 @@
     "location": Optional[str] = None,  # 地点（可选，会从提示词或IP提取）
     "prompt": str,                      # 用户自定义提示（必需）
     "base_item_ids": Optional[List[str]] = None,  # 预选单品ID列表（可选）
-    "scene_image_url": Optional[str] = None,      # 场景图片URL（可选）
+    "background_image_url": Optional[str] = None,      # 背景图片URL（可选）
   }
   ```
 - **来源**: 前端 `getRecommendations()` 函数构建
@@ -144,7 +144,7 @@
 - **注意**: 
   - `location` 字段可选，如果未提供，系统会从 `prompt` 中提取地点
   - 如果提示词中也没有地点，系统会通过客户端IP自动获取天气信息
-  - `occasion` 字段已移除，穿搭场合由模型根据用户提示词和场景图片自动判断
+  - `occasion` 字段已移除，穿搭场合由模型根据用户提示词和背景图片自动判断
 
 #### 2. `SaveLookRequest` (保存穿搭方案请求)
 - **位置**: `main.py:67-72`
@@ -155,7 +155,7 @@
     "items": List[SaveLookItem],       # 单品列表（必需）
     "location": Optional[str] = None,  # 地点（可选）
     "prompt": str,                     # 完整描述（必需）
-    "scene_image_url": Optional[str] = None,  # 场景图片URL（可选）
+    "background_image_url": Optional[str] = None,  # 背景图片URL（可选）
   }
   ```
 - **来源**: 前端 `applyOutfit()` 函数构建
@@ -219,12 +219,12 @@
 ```
 用户输入
   ├─ customPrompt (文本输入，可包含地点信息)
-  └─ sceneImageFile (文件上传)
-      └─ 上传到 /scene-image → sceneImageUrl
+  └─ backgroundImageFile (文件上传)
+      └─ 上传到 /background-image → backgroundImageUrl
 
 前端构建请求 (getRecommendations)
   ├─ customPrompt → OutfitAgentRequest.prompt
-  ├─ sceneImageUrl → OutfitAgentRequest.scene_image_url
+  ├─ backgroundImageUrl → OutfitAgentRequest.background_image_url
   └─ selectedBaseItems → OutfitAgentRequest.base_item_ids
 
 后端处理 (generate_outfit_suggestions)
@@ -235,9 +235,9 @@
   ├─ 获取天气信息 (fetch_weather 或 fetch_weather_by_ip)
   ├─ 获取衣橱单品 (get_user_items)
   ├─ 构建提示词 (system_prompt + user_prompt)
-  │   └─ 提示模型根据用户提示词和场景图片判断穿搭场合
+  │   └─ 提示模型根据用户提示词和背景图片判断穿搭场合
   ├─ 调用 Qwen-VL 模型 (llm.ainvoke)
-  │   └─ 如果 scene_image_url 存在，作为多模态输入
+  │   └─ 如果 background_image_url 存在，作为多模态输入
   ├─ 解析 JSON 响应
   └─ 向量检索增强 (匹配 wardrobe_id)
 
@@ -261,7 +261,7 @@
       ├─ items → outfit.items (映射为 SaveLookItem)
       ├─ location → null (可选，不再硬编码)
       ├─ prompt → outfit.long_text || outfit.reason
-      └─ scene_image_url → sceneImageUrl.value
+      └─ background_image_url → backgroundImageUrl.value
 
 后端保存 (save_look)
   └─ 保存到 looks.json
@@ -277,7 +277,7 @@
 前端构建请求 (performTryOn)
   ├─ person_image → modelImageFile (FormData)
   ├─ garment_urls → activeWardrobeItems 的 URL 列表 (JSON字符串)
-  └─ scene_image_url → sceneImageUrl.value (可选)
+  └─ background_image_url → backgroundImageUrl.value (可选)
 
 后端处理 (try_on)
   ├─ 保存 person_image 到本地
@@ -307,14 +307,14 @@
 | `outfit.items[].description` | `items[].description` | 直接映射 |
 | `null` (固定值) | `location` | 可选字段 |
 | `outfit.long_text \|\| outfit.reason` | `prompt` | 优先使用 long_text |
-| `sceneImageUrl.value` | `scene_image_url` | 直接映射，可为 null |
+| `backgroundImageUrl.value` | `background_image_url` | 直接映射，可为 null |
 
 ### 前端请求 → 后端 OutfitAgentRequest
 
 | 前端字段 | 后端字段 | 转换逻辑 |
 |---------|---------|---------|
 | `customPrompt.value` | `prompt` | 直接映射 |
-| `sceneImageUrl.value` | `scene_image_url` | 直接映射，可为 undefined |
+| `backgroundImageUrl.value` | `background_image_url` | 直接映射，可为 undefined |
 | `selectedBaseItems[].id` | `base_item_ids` | 提取 ID 列表，可为 undefined |
 | `undefined` | `location` | 可选，后端会从 prompt 或 IP 提取 |
 
@@ -347,10 +347,10 @@
 - **来源**: Qwen-VL 模型生成
 - **用途**: 用于分类显示和逻辑处理
 
-### scene_image_url
-- **含义**: 场景参考图片的R2 URL
+### background_image_url
+- **含义**: 背景参考图片的R2 URL
 - **来源**: 
-  - 用户上传场景图片后从 `/scene-image` API 返回
+  - 用户上传背景图片后从 `/background-image` API 返回
   - 从历史图片中选择
 - **用途**: 
   - 作为多模态输入传递给 Qwen-VL 模型
@@ -387,14 +387,14 @@
 - **请求**: FormData
   - `person_image`: File
   - `garment_urls`: JSON字符串
-  - `scene_image_url`: 可选字符串
+  - `background_image_url`: 可选字符串
 - **响应**: `{ url: string }`
 - **用途**: 生成试穿效果图
 
-### POST `/scene-image`
+### POST `/background-image`
 - **请求**: FormData (`file`)
 - **响应**: `{ url: string }`
-- **用途**: 上传场景图片到R2并保存到历史
+- **用途**: 上传背景图片到R2并保存到历史
 
 ### POST `/model-image`
 - **请求**: FormData (`file`)
@@ -402,7 +402,7 @@
 - **用途**: 上传模特图片到R2并保存到历史
 
 ### GET `/user-images`
-- **请求**: Query参数 `image_type` (`scene` 或 `model`)
+- **请求**: Query参数 `image_type` (`background` 或 `model`)
 - **响应**: `List[HistoricalImage]`
 - **用途**: 获取用户的历史图片
 
@@ -421,7 +421,7 @@
 
 3. **occasion 字段**: 
    - 已完全移除
-   - 穿搭场合由模型根据用户提示词和场景图片自动判断
+   - 穿搭场合由模型根据用户提示词和背景图片自动判断
 
 4. **prompt 字段映射**: 
    - `OutfitAgentRequest.prompt` 来自 `customPrompt.value` (用户输入)
@@ -429,7 +429,7 @@
 
 4. **图片URL处理**: 
    - 所有图片都上传到 Cloudflare R2
-   - 场景图片和模特图片保存到历史记录
+   - 背景图片和模特图片保存到历史记录
    - 衣服拼图（garment_collage）设置7天自动过期
 
 5. **wardrobe_id 匹配**: 

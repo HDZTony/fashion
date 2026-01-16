@@ -18,8 +18,8 @@ _table = _client.table(TABLE_NAME)
 
 def save_user_image(user_id: str, image_url: str, image_type: str, user_token: str, r2_filename: Optional[str] = None) -> Dict[str, Any]:
     """
-    Save a user image (scene or model) to history.
-    image_type: "scene" or "model"
+    Save a user image (background or model) to history.
+    image_type: "background" or "model"
     user_token: JWT token for authenticated Supabase client (respects RLS policies)
     r2_filename: Optional R2 filename for deletion purposes
     """
@@ -29,13 +29,13 @@ def save_user_image(user_id: str, image_url: str, image_type: str, user_token: s
         table = client.table(TABLE_NAME)
         
         image_id = str(uuid.uuid4())
-        # Both model and scene images are permanent (no expiration)
+        # Both model and background images are permanent (no expiration)
         expires_at = None
         record = {
             "id": image_id,
             "user_id": user_id,
             "image_url": image_url,
-            "image_type": image_type,  # "scene" or "model"
+            "image_type": image_type,  # "background" or "model"
             "r2_filename": r2_filename,  # R2 filename for deletion
             "created_at": datetime.utcnow().isoformat() + "Z",
             "expires_at": expires_at,  # None for all images (permanent storage)
@@ -58,7 +58,7 @@ def list_user_images(user_id: str, user_token: str, image_type: Optional[str] = 
     List user images, optionally filtered by type.
     Filters out expired images automatically.
     user_token: JWT token for authenticated Supabase client (respects RLS policies)
-    image_type: "scene", "model", or None for all
+    image_type: "background", "model", or None for all
     """
     try:
         # Create authenticated client with user token
@@ -147,7 +147,7 @@ def delete_user_image(user_id: str, image_id: str, user_token: str) -> bool:
 def cleanup_expired_images():
     """
     Cleanup expired images from the database.
-    Note: Both model and scene images are now permanent (no expiration).
+    Note: Both model and background images are now permanent (no expiration).
     This function only cleans up old records that were created before the permanent storage change
     and still have expires_at set. New images will have expires_at = NULL and will never be deleted.
     This should be called periodically along with R2 cleanup.

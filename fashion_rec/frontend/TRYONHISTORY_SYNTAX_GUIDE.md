@@ -72,7 +72,7 @@ interface TryOnHistoryItem {
   id: string
   image_url: string
   garment_urls?: string[]
-  scene_image_url?: string
+  background_image_url?: string
   prompt?: string
   created_at: string
   expires_at: string

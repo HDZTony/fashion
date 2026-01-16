@@ -76,7 +76,7 @@ class OutfitAgentRequest(BaseModel):
     location: Optional[str] = None  # Optional, will be extracted from prompt or IP if not provided
     prompt: str
     base_item_ids: Optional[List[str]] = None
-    scene_image_url: Optional[str] = None
+    background_image_url: Optional[str] = None
     # Map of wardrobe_id to role for already selected items (to avoid regenerating them)
     selected_items_roles: Optional[Dict[str, str]] = None
 
@@ -112,14 +112,14 @@ class SaveLookRequest(BaseModel):
     items: List[SaveLookItem]
     location: Optional[str] = None
     prompt: str
-    scene_image_url: Optional[str] = None
+    background_image_url: Optional[str] = None
 
 
 class SaveFavoriteRequest(BaseModel):
     image_url: str  # The try-on result image URL (uploaded to R2)
     title: Optional[str] = None  # Optional title for the favorite
     garment_urls: Optional[List[str]] = None  # URLs of garment items used in try-on
-    scene_image_url: Optional[str] = None  # Scene image URL if used
+    background_image_url: Optional[str] = None  # Background image URL if used
     prompt: Optional[str] = None  # User's custom prompt
     model_image_url: Optional[str] = None  # Model image URL
     model_image_id: Optional[str] = None  # Model image ID
@@ -1367,7 +1367,7 @@ async def generate_outfit(
             location=request.location,
             user_prompt=request.prompt,
             base_item_ids=request.base_item_ids,
-            scene_image_url=request.scene_image_url,
+            background_image_url=request.background_image_url,
             client_ip=http_request.client.host if http_request.client else None,
             selected_items_roles=request.selected_items_roles,
         )
@@ -1402,7 +1402,7 @@ async def try_on(
     person_image: Optional[UploadFile] = File(None),
     person_image_url: Optional[str] = Form(None),
     garment_urls: str = Form(...),
-    scene_image_url: Optional[str] = Form(None),
+    background_image_url: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
@@ -1411,9 +1411,9 @@ async def try_on(
     - garment_urls: JSON-encoded list of garment image URLs (Image 1, garment collage)
     - person_image: the model photo (Image 2) as uploaded file (optional)
     - person_image_url: the model photo (Image 2) as URL (optional)
-    - scene_image_url: the scene image (Image 3) as URL (optional)
+    - background_image_url: the background image (Image 3) as URL (optional)
 
-    Image order: Image 1 (garment collage) → Image 2 (model photo) → Image 3 (scene, optional)
+    Image order: Image 1 (garment collage) → Image 2 (model photo) → Image 3 (background, optional)
     At least one of person_image or person_image_url must be provided.
     """
     from services.qwen_image_edit import QwenImageEditClient, _load_env_config
@@ -1753,13 +1753,13 @@ async def try_on(
             garment_desc_text = f"\nItem details in Image 1:\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
         
         image_inputs: List[Any] = [garments_collage_path, person_input]
-        # If scene image URL is provided, use it as Image 3 (background)
-        if scene_image_url:
-            image_inputs.append(scene_image_url)
+        # If background image URL is provided, use it as Image 3 (background)
+        if background_image_url:
+            image_inputs.append(background_image_url)
             prompt = (
                 "Use the person from Image 2 (model photo), have this person wear all clothes and accessories from Image 1, "
-                "then place this person wearing new clothes in the scene shown in Image 3. "
-                "Keep Image 3's environment and background as the final background, only use Image 3's scene elements, "
+                "then place this person wearing new clothes in the background shown in Image 3. "
+                "Keep Image 3's environment and background as the final background, only use Image 3's background elements, "
                 "the person must come from Image 2, do not use any person from Image 3. "
                 "All items must be correctly worn on the model: "
                 "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet and standing on the ground, "
@@ -1769,7 +1769,7 @@ async def try_on(
                 "Overall image should be natural, consistent lighting, all items should fit the human body."
                 + garment_desc_text
             )
-            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit persons from garment collage and scene image, prohibit items scattered or floating
+            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating
         else:
             # Prompt: Person from Image 2 wearing all clothes from Image 1, keep model and original background
             prompt = (
@@ -1828,7 +1828,7 @@ async def try_on(
         save_tryon_history(user_id, {
             "image_url": public_url,
             "garment_urls": garment_list,  # Use parsed list, not JSON string (selected items from Applied Outfit Items)
-            "scene_image_url": scene_image_url,
+            "background_image_url": background_image_url,
             "prompt": user_custom_prompt,  # User's original custom prompt (from Form parameter), not the system-generated prompt
             "model_image_url": person_image_url,  # Model image URL for restoration (always exists)
         }, user_token)
@@ -1841,13 +1841,13 @@ async def try_on(
     return {"url": public_url}
 
 
-@app.post("/scene-image")
-async def upload_scene_image(
+@app.post("/background-image")
+async def upload_background_image(
     file: UploadFile = File(...),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
-    Upload a scene image to R2 (with 7-day expiration) and save it to user's history.
+    Upload a background image to R2 (with 7-day expiration) and save it to user's history.
     """
     from services.storage import upload_file_to_r2
     from services.user_images import save_user_image
@@ -1869,11 +1869,11 @@ async def upload_scene_image(
             r2_filename = public_url.split('/')[-1]
 
         # Save to user history with R2 filename for deletion
-        save_user_image(user_id, public_url, "scene", user_token, r2_filename=r2_filename)
+        save_user_image(user_id, public_url, "background", user_token, r2_filename=r2_filename)
 
         return {"url": public_url}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload scene image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload background image: {e}")
 
 
 @app.post("/model-image")

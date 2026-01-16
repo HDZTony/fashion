@@ -92,7 +92,7 @@ preview_bucket_name = "blog-media"
 
 ### 方案 C：使用 Presigned URLs（更安全）
 
-如果需要更安全的访问控制，可以修改代码使用 presigned URLs。当前实现使用公共 URL，适合博客内容公开访问的场景。
+如果需要更安全的访问控制，可以修改代码使用 presigned URLs。当前实现使用公共 URL，适合博客内容公开访问的背景。
 
 ## 4. 本地开发配置
 

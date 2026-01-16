@@ -129,7 +129,7 @@ const getStatusText = (status: string | null | undefined): string => {
 // 防止重复调用的标志
 let isLoadingSubscriptionInfo = false
 const loadUserInfo = async () => {
-  // 防止重复调用（特别是在开发环境的热重载场景下）
+  // 防止重复调用（特别是在开发环境的热重载背景下）
   if (isLoadingSubscriptionInfo) {
     console.log('🔄 Subscription info already loading, skipping...')
     return

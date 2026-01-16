@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { getThumbnailUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { getThumbnailUrl, getSmallImageUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,21 +25,21 @@ const modelImageFile = ref<File | null>(null)
 const isGenerating = ref(false)
 const isTryingOn = ref(false)
 
-// Scene image file (not persisted, only URL is persisted)
-const sceneImageFile = ref<File | null>(null)
+// Background image file (not persisted, only URL is persisted)
+const backgroundImageFile = ref<File | null>(null)
 
 // Use store state (automatically persisted)
 const customPrompt = computed({
   get: () => studioStore.customPrompt,
   set: (value) => studioStore.setCustomPrompt(value)
 })
-const sceneImageUrl = computed({
-  get: () => studioStore.sceneImageUrl,
-  set: (value) => studioStore.setSceneImage(value, value)
+const backgroundImageUrl = computed({
+  get: () => studioStore.backgroundImageUrl,
+  set: (value) => studioStore.setBackgroundImage(value, value)
 })
-const sceneImagePreviewUrl = computed({
-  get: () => studioStore.sceneImagePreviewUrl,
-  set: (value) => studioStore.setSceneImage(studioStore.sceneImageUrl, value)
+const backgroundImagePreviewUrl = computed({
+  get: () => studioStore.backgroundImagePreviewUrl,
+  set: (value) => studioStore.setBackgroundImage(studioStore.backgroundImageUrl, value)
 })
 const modelImagePreviewUrl = computed({
   get: () => studioStore.modelImagePreviewUrl,
@@ -87,15 +87,15 @@ const currentFavoriteId = computed({
 interface HistoricalImage {
   id: string
   image_url: string
-  image_type: 'scene' | 'model'
+  image_type: 'background' | 'model'
   created_at: string
 }
-const historicalSceneImages = ref<HistoricalImage[]>([])
+const historicalBackgroundImages = ref<HistoricalImage[]>([])
 const historicalModelImages = ref<HistoricalImage[]>([])
-const showSceneImageHistory = ref(false)
+const showBackgroundImageHistory = ref(false)
 const showModelImageHistory = ref(false)
 const showExampleModelImages = ref(false)
-const showExampleSceneImages = ref(false)
+const showExampleBackgroundImages = ref(false)
 
 // Example model images (pre-uploaded sample photos)
 const exampleModelImages = ref<string[]>([
@@ -105,67 +105,72 @@ const exampleModelImages = ref<string[]>([
   'https://r2.fashion-rec.com/example/IMG_9954.JPG',
 ])
 
-// Example scene images (pre-uploaded sample photos)
-const exampleSceneImages = ref<string[]>([
-  'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg',
-  'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg',
-  'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg',
-  'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg',
-  'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg',
-  'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg',
-  'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg',
-  'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg',
-  'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg',
-  'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg',
-  'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg',
-  'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg',
-  'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg',
-  'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg',
-  'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg',
-  'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg',
-  'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg',
-  'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg',
-  'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg',
-  'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg',
-  'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg',
-  'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg',
-  'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg',
-  'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg',
-  'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg',
-  'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg',
-  'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg',
-  'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg',
-  'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg',
-  'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg',
-  'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg',
-  'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg',
-  'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg',
-  'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg',
-  'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg',
-  'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg',
-  'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg',
-  'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg',
-  'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg',
-  'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg',
-  'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg',
-  'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg',
-  'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg',
-  'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg',
+// Example background images with prompts (pre-uploaded sample photos)
+interface ExampleBackgroundImage {
+  url: string
+  prompt: string
+}
+
+const exampleBackgroundImages = ref<ExampleBackgroundImage[]>([
+  { url: 'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg', prompt: 'Natural landscape background with trees, mountains, and blue sky, peaceful outdoor scene' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg', prompt: 'Modern urban cityscape background with buildings and architecture' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg', prompt: 'Elegant interior design background with modern furniture and lighting' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg', prompt: 'Beautiful beach scene with sand, ocean waves, and clear sky' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg', prompt: 'Cozy cafe interior with warm lighting and comfortable seating' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg', prompt: 'Luxury hotel lobby with elegant decor and sophisticated atmosphere' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg', prompt: 'Minimalist modern office space with clean lines and natural light' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg', prompt: 'Contemporary living room with stylish furniture and decor' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg', prompt: 'Serene garden background with flowers and greenery' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg', prompt: 'Rustic countryside background with fields and countryside scenery' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg', prompt: 'Artistic studio background with creative workspace and natural lighting' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg', prompt: 'Industrial warehouse background with exposed brick and modern design' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg', prompt: 'Tropical paradise background with palm trees and exotic scenery' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg', prompt: 'Traditional Asian architecture background with cultural elements' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg', prompt: 'Boutique fashion store interior with elegant displays and lighting' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg', prompt: 'Luxury spa background with relaxing atmosphere and natural elements' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg', prompt: 'Modern apartment balcony with city view and contemporary design' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg', prompt: 'Adventure travel background with mountains and scenic landscape' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg', prompt: 'Cozy home interior with warm colors and comfortable atmosphere' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg', prompt: 'Elegant event venue background with sophisticated decor and ambiance' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg', prompt: 'Vintage style background with retro elements and classic design' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg', prompt: 'Modern art gallery background with contemporary artwork and clean space' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg', prompt: 'Luxury resort background with pool, palm trees, and tropical setting' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg', prompt: 'Bohemian style background with eclectic decor and artistic elements' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg', prompt: 'Scandinavian design background with minimalist furniture and natural light' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg', prompt: 'Winter wonderland background with snow, trees, and serene landscape' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg', prompt: 'Coastal background with ocean, cliffs, and dramatic seascape' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg', prompt: 'Urban street background with modern architecture and city life' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg', prompt: 'Elegant restaurant background with fine dining atmosphere and sophisticated decor' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg', prompt: 'Modern library background with bookshelves and reading space' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg', prompt: 'Luxury yacht background with ocean view and premium setting' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg', prompt: 'Gourmet kitchen background with modern appliances and elegant design' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg', prompt: 'Nordic landscape background with lakes, forests, and natural beauty' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg', prompt: 'Mediterranean background with white buildings, blue sea, and sunny atmosphere' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg', prompt: 'Modern rooftop background with city skyline and contemporary design' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg', prompt: 'Artistic background with creative elements and vibrant colors' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg', prompt: 'Professional photography studio background with clean white space and lighting' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg', prompt: 'Luxury villa background with pool, gardens, and elegant outdoor space' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg', prompt: 'Modern conference room background with professional setting and contemporary design' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg', prompt: 'Sunset beach background with golden hour lighting and romantic atmosphere' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg', prompt: 'Mountain resort background with alpine scenery and natural beauty' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg', prompt: 'Wild nature background with forests, rivers, and untouched wilderness' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg', prompt: 'Modern shopping mall background with retail displays and contemporary architecture' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg', prompt: 'Luxury penthouse background with panoramic city views and elegant interior' },
 ])
 
 // Upload progress
-const sceneImageUploadProgress = ref(0)
-const isUploadingSceneImage = ref(false)
+const backgroundImageUploadProgress = ref(0)
+const isUploadingBackgroundImage = ref(false)
 
-// Scene action prompt (for describing model actions in scene)
-const sceneActionPrompt = ref<string>('')
+// Background action prompt (for describing model actions in background)
+const backgroundActionPrompt = ref<string>('')
 
-// Current tab value for scene image options
-const sceneTabValue = ref<string>('no-scene')
+// Current tab value for background image options
+const backgroundTabValue = ref<string>('no-background')
 
-// Watch for tab changes and validate scene image requirement
-watch(sceneTabValue, (newValue: string) => {
-  if (newValue === 'with-scene' && !sceneImageUrl.value && !sceneImagePreviewUrl.value && !isUploadingSceneImage.value) {
+// Watch for tab changes and validate background image requirement
+watch(backgroundTabValue, (newValue: string) => {
+  if (newValue === 'with-background' && !backgroundImageUrl.value && !backgroundImagePreviewUrl.value && !isUploadingBackgroundImage.value) {
     // Auto-focus on upload button or show hint
     // The UI will show the upload button prominently
   }
@@ -274,21 +279,21 @@ const loadUserItems = async () => {
 const loadHistoricalImages = async () => {
   try {
     console.log('[loadHistoricalImages] Starting to load historical images...')
-    const [sceneResp, modelResp] = await Promise.all([
-      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=scene'),
+    const [backgroundResp, modelResp] = await Promise.all([
+      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=background'),
       apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=model'),
     ])
-    console.log('[loadHistoricalImages] Scene response:', sceneResp.data)
+    console.log('[loadHistoricalImages] Background response:', backgroundResp.data)
     console.log('[loadHistoricalImages] Model response:', modelResp.data)
     
     // Ensure we handle both response formats: { images: [...] } or direct array
-    const sceneImages = sceneResp.data?.images || sceneResp.data || []
+    const backgroundImages = backgroundResp.data?.images || backgroundResp.data || []
     const modelImages = modelResp.data?.images || modelResp.data || []
     
-    historicalSceneImages.value = Array.isArray(sceneImages) ? sceneImages : []
+    historicalBackgroundImages.value = Array.isArray(backgroundImages) ? backgroundImages : []
     historicalModelImages.value = Array.isArray(modelImages) ? modelImages : []
     
-    console.log('[loadHistoricalImages] Loaded scene images:', historicalSceneImages.value.length)
+    console.log('[loadHistoricalImages] Loaded background images:', historicalBackgroundImages.value.length)
     console.log('[loadHistoricalImages] Loaded model images:', historicalModelImages.value.length)
   } catch (error) {
     console.error('[loadHistoricalImages] Failed to load historical images:', error)
@@ -450,7 +455,7 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
     await loadHistoricalImages()
     console.log('[restoreTryOnHistory] Historical images loaded:', {
       model: historicalModelImages.value.length,
-      scene: historicalSceneImages.value.length
+      background: historicalBackgroundImages.value.length
     })
     
     // Load user items to match garment URLs with wardrobe items
@@ -468,12 +473,12 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
       console.log('[restoreTryOnHistory] Restored prompt:', restoreData.prompt)
     }
     
-    // Restore scene image
-    if (restoreData.scene_image_url) {
-      sceneImageUrl.value = restoreData.scene_image_url
-      sceneImagePreviewUrl.value = restoreData.scene_image_url
-      sceneImageFile.value = null
-      console.log('[restoreTryOnHistory] Restored scene image:', restoreData.scene_image_url)
+    // Restore background image
+    if (restoreData.background_image_url) {
+      backgroundImageUrl.value = restoreData.background_image_url
+      backgroundImagePreviewUrl.value = restoreData.background_image_url
+      backgroundImageFile.value = null
+      console.log('[restoreTryOnHistory] Restored background image:', restoreData.background_image_url)
     }
     
     // Restore try-on result image
@@ -587,7 +592,7 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
     
     console.log('[restoreTryOnHistory] Successfully restored try-on history:', {
       prompt: customPrompt.value,
-      sceneImageUrl: sceneImageUrl.value,
+      backgroundImageUrl: backgroundImageUrl.value,
       tryOnImageUrl: tryOnImageUrl.value,
       activeWardrobeIds: activeWardrobeIds.value,
     })
@@ -630,11 +635,11 @@ const restoreLookFromHistory = async (lookId: string) => {
       customPrompt.value = look.prompt
     }
     
-    // Restore scene image
-    if (look.scene_image_url) {
-      sceneImageUrl.value = look.scene_image_url
-      sceneImagePreviewUrl.value = look.scene_image_url
-      sceneImageFile.value = null // Clear file since we're using URL
+    // Restore background image
+    if (look.background_image_url) {
+      backgroundImageUrl.value = look.background_image_url
+      backgroundImagePreviewUrl.value = look.background_image_url
+      backgroundImageFile.value = null // Clear file since we're using URL
     }
     
     // Restore active wardrobe items
@@ -676,7 +681,7 @@ const restoreLookFromHistory = async (lookId: string) => {
         wardrobeIds: activeWardrobeIds.value,
         roleMap: Array.from(activeWardrobeRoleMap.value.entries()),
         prompt: customPrompt.value,
-        sceneImageUrl: sceneImageUrl.value,
+        backgroundImageUrl: backgroundImageUrl.value,
       })
     }
     
@@ -708,23 +713,23 @@ const getRecommendations = async () => {
   tryOnImageUrl.value = null
 
   try {
-    // Scene image should already be uploaded in handleSceneImageChange
+    // Background image should already be uploaded in handleBackgroundImageChange
     // If we have a file but no URL, upload it now (fallback)
-    if (sceneImageFile.value && !sceneImageUrl.value) {
+    if (backgroundImageFile.value && !backgroundImageUrl.value) {
       const formData = new FormData()
-      formData.append('file', sceneImageFile.value)
+      formData.append('file', backgroundImageFile.value)
 
       try {
-        const resp = await uploadApiClient.post<{ url: string }>('/scene-image', formData, {
+        const resp = await uploadApiClient.post<{ url: string }>('/background-image', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         })
-        sceneImageUrl.value = resp.data.url
+        backgroundImageUrl.value = resp.data.url
         await loadHistoricalImages()
       } catch (e: any) {
-        console.error('Scene image upload failed:', e)
-        alert(`Scene image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+        console.error('Background image upload failed:', e)
+        alert(`Background image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
       }
     }
 
@@ -770,8 +775,8 @@ const getRecommendations = async () => {
     const requestPayload = {
       base_item_ids: activeItemIds,
       prompt: enhancedPrompt,
-      scene_image_url: sceneImageUrl.value || undefined,
-      scene_action_prompt: sceneImageUrl.value && sceneActionPrompt.value ? sceneActionPrompt.value : undefined,
+      background_image_url: backgroundImageUrl.value || undefined,
+      background_action_prompt: backgroundImageUrl.value && backgroundActionPrompt.value ? backgroundActionPrompt.value : undefined,
       selected_items_roles: selectedItemsRoles,
     }
     
@@ -1028,15 +1033,15 @@ const removeModelImage = () => {
   modelImageFile.value = null
 }
 
-const handleSceneImageChange = async (event: Event) => {
+const handleBackgroundImageChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0] || null
   if (!file) return
 
-  sceneImageFile.value = file
-  sceneImageUrl.value = null
-  isUploadingSceneImage.value = true
-  sceneImageUploadProgress.value = 0
+  backgroundImageFile.value = file
+  backgroundImageUrl.value = null
+  isUploadingBackgroundImage.value = true
+  backgroundImageUploadProgress.value = 0
 
   // Upload to backend and save to history
   try {
@@ -1046,79 +1051,90 @@ const handleSceneImageChange = async (event: Event) => {
     // Fallback progress simulation (in case onUploadProgress doesn't fire)
     let hasRealProgress = false
     const progressInterval = setInterval(() => {
-      if (!hasRealProgress && sceneImageUploadProgress.value < 90) {
-        sceneImageUploadProgress.value += 10
+      if (!hasRealProgress && backgroundImageUploadProgress.value < 90) {
+        backgroundImageUploadProgress.value += 10
       }
     }, 200)
     
-    const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+    const resp = await uploadApiClient.post<{ url: string }>('/background-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       onUploadProgress: (progressEvent) => {
         hasRealProgress = true
         if (progressEvent.total) {
-          sceneImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          backgroundImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
         } else if (progressEvent.loaded) {
           // Estimate progress if total is unknown
-          sceneImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
+          backgroundImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
         }
       },
     })
     
     clearInterval(progressInterval)
-    sceneImageUploadProgress.value = 100
-    sceneImageUrl.value = resp.data.url
+    backgroundImageUploadProgress.value = 100
+    backgroundImageUrl.value = resp.data.url
     
     // Reload historical images
     await loadHistoricalImages()
     
     // Reset progress after a short delay
     setTimeout(() => {
-      isUploadingSceneImage.value = false
-      sceneImageUploadProgress.value = 0
+      isUploadingBackgroundImage.value = false
+      backgroundImageUploadProgress.value = 0
     }, 500)
   } catch (e: any) {
-    console.error('Scene image upload failed:', e)
-    isUploadingSceneImage.value = false
-    sceneImageUploadProgress.value = 0
-    alert(`Scene image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+    console.error('Background image upload failed:', e)
+    isUploadingBackgroundImage.value = false
+    backgroundImageUploadProgress.value = 0
+    alert(`Background image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
     return
   }
 
-  if (sceneImagePreviewUrl.value) {
-    URL.revokeObjectURL(sceneImagePreviewUrl.value)
-    sceneImagePreviewUrl.value = null
+  if (backgroundImagePreviewUrl.value) {
+    URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+    backgroundImagePreviewUrl.value = null
   }
   if (file) {
-    sceneImagePreviewUrl.value = URL.createObjectURL(file)
+    backgroundImagePreviewUrl.value = URL.createObjectURL(file)
   }
-  showSceneImageHistory.value = false
+  showBackgroundImageHistory.value = false
 }
 
-const selectHistoricalSceneImage = (image: HistoricalImage) => {
-  sceneImageUrl.value = image.image_url
-  sceneImageFile.value = null
-  if (sceneImagePreviewUrl.value) {
-    URL.revokeObjectURL(sceneImagePreviewUrl.value)
+const selectHistoricalBackgroundImage = (image: HistoricalImage) => {
+  backgroundImageUrl.value = image.image_url
+  backgroundImageFile.value = null
+  if (backgroundImagePreviewUrl.value) {
+    URL.revokeObjectURL(backgroundImagePreviewUrl.value)
   }
-  sceneImagePreviewUrl.value = image.image_url
-  showSceneImageHistory.value = false
+  backgroundImagePreviewUrl.value = image.image_url
+  showBackgroundImageHistory.value = false
 }
 
-const selectExampleSceneImage = async (imageUrl: string) => {
-  sceneImageFile.value = null
+const selectExampleBackgroundImage = async (image: ExampleBackgroundImage | string) => {
+  backgroundImageFile.value = null
+  
+  // Handle both object format (with prompt) and legacy string format
+  const imageUrl = typeof image === 'string' ? image : image.url
+  const imagePrompt = typeof image === 'string' ? '' : image.prompt
+  
+  // Fill in the background action prompt if available
+  if (imagePrompt) {
+    backgroundActionPrompt.value = imagePrompt
+  }
+  
+  // Close the dialog immediately when clicking on an image
+  showExampleBackgroundImages.value = false
   
   // If the example image is already on our server (R2), use it directly
   // Otherwise, we need to upload it to save to history
   if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
     // Already on our server, use directly (similar to historical images)
-    sceneImageUrl.value = imageUrl
-    if (sceneImagePreviewUrl.value) {
-      URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    backgroundImageUrl.value = imageUrl
+    if (backgroundImagePreviewUrl.value) {
+      URL.revokeObjectURL(backgroundImagePreviewUrl.value)
     }
-    sceneImagePreviewUrl.value = imageUrl
-    showExampleSceneImages.value = false
+    backgroundImagePreviewUrl.value = imageUrl
     return
   }
   
@@ -1130,121 +1146,119 @@ const selectExampleSceneImage = async (imageUrl: string) => {
       throw new Error('Failed to fetch example image')
     }
     const blob = await response.blob()
-    const file = new File([blob], 'example-scene.jpg', { type: blob.type })
+    const file = new File([blob], 'example-background.jpg', { type: blob.type })
     
     // Upload to backend to save to history
     const formData = new FormData()
     formData.append('file', file)
     
-    sceneImageUrl.value = null
-    isUploadingSceneImage.value = true
-    sceneImageUploadProgress.value = 0
+    backgroundImageUrl.value = null
+    isUploadingBackgroundImage.value = true
+    backgroundImageUploadProgress.value = 0
     
     let hasRealProgress = false
     const progressInterval = setInterval(() => {
-      if (!hasRealProgress && sceneImageUploadProgress.value < 90) {
-        sceneImageUploadProgress.value += 10
+      if (!hasRealProgress && backgroundImageUploadProgress.value < 90) {
+        backgroundImageUploadProgress.value += 10
       }
     }, 200)
     
-    const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+    const resp = await uploadApiClient.post<{ url: string }>('/background-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       onUploadProgress: (progressEvent) => {
         hasRealProgress = true
         if (progressEvent.total) {
-          sceneImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          backgroundImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
         } else if (progressEvent.loaded) {
-          sceneImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
+          backgroundImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
         }
       },
     })
     
     clearInterval(progressInterval)
-    sceneImageUploadProgress.value = 100
-    sceneImageUrl.value = resp.data.url
+    backgroundImageUploadProgress.value = 100
+    backgroundImageUrl.value = resp.data.url
     
     // Reload historical images
     await loadHistoricalImages()
     
-    if (sceneImagePreviewUrl.value) {
-      URL.revokeObjectURL(sceneImagePreviewUrl.value)
-      sceneImagePreviewUrl.value = null
+    if (backgroundImagePreviewUrl.value) {
+      URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+      backgroundImagePreviewUrl.value = null
     }
-    sceneImagePreviewUrl.value = resp.data.url
+    backgroundImagePreviewUrl.value = resp.data.url
     
     // Reset progress
     setTimeout(() => {
-      isUploadingSceneImage.value = false
-      sceneImageUploadProgress.value = 0
+      isUploadingBackgroundImage.value = false
+      backgroundImageUploadProgress.value = 0
     }, 500)
   } catch (e: any) {
-    console.error('Failed to use example scene image:', e)
+    console.error('Failed to use example background image:', e)
     // Fallback: use the URL directly without uploading
-    sceneImageUrl.value = imageUrl
-    if (sceneImagePreviewUrl.value) {
-      URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    backgroundImageUrl.value = imageUrl
+    if (backgroundImagePreviewUrl.value) {
+      URL.revokeObjectURL(backgroundImagePreviewUrl.value)
     }
-    sceneImagePreviewUrl.value = imageUrl
-    isUploadingSceneImage.value = false
-    sceneImageUploadProgress.value = 0
+    backgroundImagePreviewUrl.value = imageUrl
+    isUploadingBackgroundImage.value = false
+    backgroundImageUploadProgress.value = 0
     alert(`Failed to upload example image: ${e?.message || 'Unknown error'}. Using image directly.`)
   }
-  
-  showExampleSceneImages.value = false
 }
 
-const deleteHistoricalSceneImage = async (image: HistoricalImage, event: Event) => {
+const deleteHistoricalBackgroundImage = async (image: HistoricalImage, event: Event) => {
   event.stopPropagation() // Prevent selecting the image when clicking delete
   
-  if (!confirm('Delete this scene image? This action cannot be undone.')) {
+  if (!confirm('Delete this background image? This action cannot be undone.')) {
     return
   }
   
   try {
     await apiClient.delete(`/user-images/${image.id}`)
     // Remove from local state
-    historicalSceneImages.value = historicalSceneImages.value.filter(img => img.id !== image.id)
+    historicalBackgroundImages.value = historicalBackgroundImages.value.filter(img => img.id !== image.id)
     
     // If the deleted image was currently selected, clear the selection
-    if (sceneImageUrl.value === image.image_url) {
-      sceneImageUrl.value = null
-      if (sceneImagePreviewUrl.value === image.image_url) {
-        if (sceneImagePreviewUrl.value.startsWith('blob:')) {
-          URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    if (backgroundImageUrl.value === image.image_url) {
+      backgroundImageUrl.value = null
+      if (backgroundImagePreviewUrl.value === image.image_url) {
+        if (backgroundImagePreviewUrl.value.startsWith('blob:')) {
+          URL.revokeObjectURL(backgroundImagePreviewUrl.value)
         }
-        sceneImagePreviewUrl.value = null
+        backgroundImagePreviewUrl.value = null
       }
     }
   } catch (error: any) {
-    console.error('Failed to delete scene image:', error)
+    console.error('Failed to delete background image:', error)
     alert(`Delete failed: ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
   }
 }
 
-const removeSceneImage = () => {
-  if (sceneImagePreviewUrl.value) {
-    URL.revokeObjectURL(sceneImagePreviewUrl.value)
-    sceneImagePreviewUrl.value = null
+const removeBackgroundImage = () => {
+  if (backgroundImagePreviewUrl.value) {
+    URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+    backgroundImagePreviewUrl.value = null
   }
-  sceneImageFile.value = null
-  sceneImageUrl.value = null
+  backgroundImageFile.value = null
+  backgroundImageUrl.value = null
 }
 
 const performTryOn = async () => {
-  // 确保场景图片（如果有）已经上传获得 URL
-  if (sceneImageFile.value && !sceneImageUrl.value) {
+  // 确保背景图片（如果有）已经上传获得 URL
+  if (backgroundImageFile.value && !backgroundImageUrl.value) {
     try {
       const form = new FormData()
-      form.append('file', sceneImageFile.value)
-      const resp = await apiClient.post<{ url: string }>('/scene-image', form, {
+      form.append('file', backgroundImageFile.value)
+      const resp = await uploadApiClient.post<{ url: string }>('/background-image', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      sceneImageUrl.value = resp.data.url
+      backgroundImageUrl.value = resp.data.url
     } catch (e: any) {
-      console.error('Scene image upload failed before try-on:', e)
-      alert(`Scene image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+      console.error('Background image upload failed before try-on:', e)
+      alert(`Background image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
       return
     }
   }
@@ -1283,13 +1297,13 @@ const performTryOn = async () => {
   const tryOnRequestData = {
     person_image: modelImageFile.value?.name || 'file',
     garment_urls: garmentUrls,
-    scene_image_url: sceneImageUrl.value || undefined,
+    background_image_url: backgroundImageUrl.value || undefined,
   }
   
   console.log('=== Try-On Request (to qwen-image-edit) ===')
   console.log('Request data:', JSON.stringify(tryOnRequestData, null, 2))
   console.log('Garment URLs:', garmentUrls)
-  console.log('Scene image URL:', sceneImageUrl.value || 'None')
+  console.log('Background image URL:', backgroundImageUrl.value || 'None')
   console.log('==========================================')
 
   try {
@@ -1302,8 +1316,8 @@ const performTryOn = async () => {
       formData.append('person_image_url', modelImagePreviewUrl.value)
     }
     formData.append('garment_urls', JSON.stringify(garmentUrls))
-    if (sceneImageUrl.value) {
-      formData.append('scene_image_url', sceneImageUrl.value)
+    if (backgroundImageUrl.value) {
+      formData.append('background_image_url', backgroundImageUrl.value)
     }
     // Add custom prompt if provided
     if (customPrompt.value) {
@@ -1566,7 +1580,7 @@ const applyOutfit = async (outfit: AgentOutfit) => {
       })),
       location: null, // Location is optional, can be extracted from prompt if needed
       prompt: outfit.long_text || outfit.reason, // Use long_text if available, otherwise reason
-      scene_image_url: sceneImageUrl.value || null,
+      background_image_url: backgroundImageUrl.value || null,
     }
     await apiClient.post('/looks', saveLookData)
   } catch (error) {
@@ -1787,7 +1801,7 @@ const saveFavorite = async () => {
       image_url: tryOnImageUrl.value,
       title: originalAppliedOutfit.value?.title || 'Try-on result',
       garment_urls: garmentUrls.length > 0 ? garmentUrls : undefined,
-      scene_image_url: sceneImageUrl.value || undefined,
+      background_image_url: backgroundImageUrl.value || undefined,
       prompt: customPrompt.value || undefined,
       model_image_url: modelImagePreviewUrl.value || undefined,
       model_image_id: modelImageId,
@@ -1839,27 +1853,27 @@ const searchOnGoogle = (description: string) => {
         </div>
         <div class="flex flex-col gap-4">
           <div class="flex flex-col gap-4">
-            <!-- Tabs for scene image options (horizontal, fixed width, left-aligned) -->
-            <Tabs v-model="sceneTabValue" default-value="no-scene" class="w-full">
+            <!-- Tabs for background image options (horizontal, fixed width, left-aligned) -->
+            <Tabs v-model="backgroundTabValue" default-value="no-background" class="w-full">
               <TabsList class="inline-flex items-center justify-start h-auto w-auto p-1 bg-muted rounded-lg">
                 <TabsTrigger 
-                  value="no-scene"
+                  value="no-background"
                   class="min-w-[120px] max-w-[160px] px-4 py-2 text-sm font-medium text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent data-[state=active]:bg-background data-[state=active]:opacity-100 data-[state=inactive]:opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer"
                 >
-                  {{ $t('studio.noSceneImage') }}
+                  {{ $t('studio.noBackgroundImage') }}
                 </TabsTrigger>
                 <TabsTrigger 
-                  value="with-scene"
+                  value="with-background"
                   class="min-w-[120px] max-w-[160px] px-4 py-2 text-sm font-medium text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent data-[state=active]:bg-background data-[state=active]:opacity-100 data-[state=inactive]:opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer"
                 >
-                  {{ $t('studio.withSceneImage') }}
+                  {{ $t('studio.withBackgroundImage') }}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
             
             <!-- Content area -->
             <div class="w-full space-y-4">
-              <!-- Action prompt input (only shown in "with-scene" tab) -->
+              <!-- Action prompt input (only shown in "with-background" tab) -->
               <Transition
                 enter-active-class="transition-all duration-300 ease-out"
                 enter-from-class="opacity-0 -translate-y-2"
@@ -1868,92 +1882,79 @@ const searchOnGoogle = (description: string) => {
                 leave-from-class="opacity-100 translate-y-0"
                 leave-to-class="opacity-0 -translate-y-2"
               >
-                <div v-if="sceneTabValue === 'with-scene'" class="space-y-2">
+                <div v-if="backgroundTabValue === 'with-background'" class="space-y-2">
                   <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
                     <div class="flex items-center gap-2 px-4 py-3">
                       <input
-                        v-model="sceneActionPrompt"
+                        v-model="backgroundActionPrompt"
                         type="text"
                         class="flex-1 text-sm focus:outline-none border-0 placeholder:text-pink-600 bg-transparent"
-                        :placeholder="$t('studio.sceneActionPromptPlaceholder')"
+                        :placeholder="$t('studio.backgroundActionPromptPlaceholder')"
                       />
                       <div class="flex items-center gap-2 border-l border-pink-100 pl-3">
-                        <!-- Scene image preview -->
-                        <div v-if="sceneImagePreviewUrl || isUploadingSceneImage" class="relative">
+                        <!-- Background image preview -->
+                        <div v-if="backgroundImagePreviewUrl || isUploadingBackgroundImage" class="relative">
                           <div class="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
                             <img 
-                              v-if="sceneImagePreviewUrl"
-                              :src="getThumbnailUrl(sceneImagePreviewUrl)" 
+                              v-if="backgroundImagePreviewUrl"
+                              :src="getSmallImageUrl(backgroundImagePreviewUrl)" 
                               loading="lazy"
-                              alt="Scene preview" 
+                              alt="Background preview" 
                               class="w-full h-full object-cover"
                             />
                             <!-- Upload progress overlay -->
                             <div
-                              v-if="isUploadingSceneImage"
+                              v-if="isUploadingBackgroundImage"
                               class="absolute inset-0 bg-gray-900/50 flex items-center justify-center"
                             >
                               <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                             </div>
                           </div>
                           <button
-                            v-if="sceneImagePreviewUrl && !isUploadingSceneImage"
-                            @click="removeSceneImage"
+                            v-if="backgroundImagePreviewUrl && !isUploadingBackgroundImage"
+                            @click="removeBackgroundImage"
                             class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md cursor-pointer"
-                            :title="$t('studio.deleteSceneImage')"
+                            :title="$t('studio.deleteBackgroundImage')"
                           >
                             <X class="w-3 h-3" />
                           </button>
                         </div>
                         <!-- Upload button -->
                         <label
-                          for="sceneImageInput"
+                          for="backgroundImageInput"
                           class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                          :title="$t('studio.uploadSceneImage')"
+                          :title="$t('studio.uploadBackgroundImage')"
                         >
                           <Upload class="w-4 h-4" />
-                          <span class="hidden sm:inline">{{ $t('studio.uploadSceneImage') }}</span>
+                          <span class="hidden sm:inline">{{ $t('studio.uploadBackgroundImage') }}</span>
                         </label>
                         <input
-                          id="sceneImageInput"
+                          id="backgroundImageInput"
                           type="file"
                           accept="image/*"
-                          @change="handleSceneImageChange"
+                          @change="handleBackgroundImageChange"
                           class="hidden"
                         />
                         <!-- History button -->
                         <button
-                          @click="showSceneImageHistory = !showSceneImageHistory"
+                          @click="showBackgroundImageHistory = !showBackgroundImageHistory"
                           class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                          :title="$t('studio.pickFromSceneHistory')"
+                          :title="$t('studio.pickFromBackgroundHistory')"
                         >
                           <Clock class="w-4 h-4" />
                           <span class="hidden sm:inline">{{ $t('studio.viewHistory') }}</span>
                         </button>
                         <!-- Example button -->
                         <button
-                          @click="showExampleSceneImages = !showExampleSceneImages"
+                          @click="showExampleBackgroundImages = !showExampleBackgroundImages"
                           class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                          :title="$t('studio.chooseExampleScene')"
+                          :title="$t('studio.chooseExampleBackground')"
                         >
                           <Image class="w-4 h-4" />
                           <span class="hidden sm:inline">{{ $t('studio.example') }}</span>
                         </button>
                       </div>
                     </div>
-                  </div>
-                  <!-- Helper text -->
-                  <p class="text-xs text-pink-600 px-1">
-                    {{ $t('studio.uploadSceneHelper') }}
-                  </p>
-                  
-                  <!-- Warning if no scene image uploaded -->
-                  <div 
-                    v-if="!sceneImageUrl && !sceneImagePreviewUrl && !isUploadingSceneImage"
-                    class="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700"
-                  >
-                    <span class="flex-shrink-0">⚠️</span>
-                    <span>{{ $t('studio.sceneImageRequired') }}</span>
                   </div>
                 </div>
               </Transition>
@@ -1979,44 +1980,44 @@ const searchOnGoogle = (description: string) => {
             </div>
           </div>
         
-        <!-- Historical scene images modal -->
+        <!-- Historical background images modal -->
         <div
-              v-if="showSceneImageHistory"
+              v-if="showBackgroundImageHistory"
               class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-              @click.self="showSceneImageHistory = false"
+              @click.self="showBackgroundImageHistory = false"
             >
               <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-6 border-b border-gray-200">
-                  <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseHistoricalScene') }}</h3>
+                  <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseHistoricalBackground') }}</h3>
                   <button
-                    @click="showSceneImageHistory = false"
+                    @click="showBackgroundImageHistory = false"
                     class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                   >
                     <X class="w-5 h-5 text-pink-500" />
                   </button>
                 </div>
                 <div class="flex-1 overflow-y-auto p-6">
-                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-pink-400">
+                  <div v-if="historicalBackgroundImages.length === 0" class="text-center py-12 text-pink-400">
                     <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                    <p>{{ $t('studio.noHistoricalScene') }}</p>
+                    <p>{{ $t('studio.noHistoricalBackground') }}</p>
                   </div>
                   <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     <div
-                      v-for="image in historicalSceneImages"
+                      v-for="image in historicalBackgroundImages"
                       :key="image.id"
-                      @click="selectHistoricalSceneImage(image)"
+                      @click="selectHistoricalBackgroundImage(image)"
                       class="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                     >
                       <img
                         :src="getThumbnailUrl(image.image_url)"
                         loading="lazy"
-                        :alt="`Scene image ${image.id}`"
+                        :alt="`Background image ${image.id}`"
                         class="w-full h-full object-cover"
                       />
                       <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
                       <!-- Delete button -->
                       <button
-                        @click.stop="deleteHistoricalSceneImage(image, $event)"
+                        @click.stop="deleteHistoricalBackgroundImage(image, $event)"
                         class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
                         title="Delete this image"
                       >
@@ -2178,7 +2179,7 @@ const searchOnGoogle = (description: string) => {
                   <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-pink-200 hover:border-pink-500 transition-all hover:shadow-lg bg-pink-100">
                     <img
                       v-if="item.url || item.features.path"
-                      :src="getThumbnailUrl((item.url || item.features.path) || '')"
+                      :src="getSmallImageUrl((item.url || item.features.path) || '')"
                       loading="lazy"
                       class="w-full h-full object-cover"
                       :alt="`${formatFeatureValue(item.features.color)} ${formatFeatureValue(item.features.type)}`"
@@ -2438,7 +2439,7 @@ const searchOnGoogle = (description: string) => {
                   class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                 >
                   <img
-                    :src="getThumbnailUrl(imageUrl)"
+                    :src="getMediumImageUrl(imageUrl)"
                     loading="lazy"
                     :alt="`Example model ${index + 1}`"
                     class="w-full h-full object-cover"
@@ -2455,38 +2456,38 @@ const searchOnGoogle = (description: string) => {
           </div>
         </div>
 
-        <!-- Example scene images modal -->
+        <!-- Example background images modal -->
         <div
-          v-if="showExampleSceneImages"
+          v-if="showExampleBackgroundImages"
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          @click.self="showExampleSceneImages = false"
+          @click.self="showExampleBackgroundImages = false"
         >
           <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
             <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleScene') }}</h3>
+              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleBackground') }}</h3>
               <button
-                @click="showExampleSceneImages = false"
+                @click="showExampleBackgroundImages = false"
                 class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
               >
                 <X class="w-5 h-5 text-pink-500" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="exampleSceneImages.length === 0" class="text-center py-12 text-pink-400">
+              <div v-if="exampleBackgroundImages.length === 0" class="text-center py-12 text-pink-400">
                 <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                <p>{{ $t('studio.noExampleScene') }}</p>
+                <p>{{ $t('studio.noExampleBackground') }}</p>
               </div>
               <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 <div
-                  v-for="(imageUrl, index) in exampleSceneImages"
+                  v-for="(image, index) in exampleBackgroundImages"
                   :key="index"
-                  @click="selectExampleSceneImage(imageUrl)"
+                  @click="selectExampleBackgroundImage(image)"
                   class="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                 >
                   <img
-                    :src="getThumbnailUrl(imageUrl)"
+                    :src="getSmallImageUrl(image.url)"
                     loading="lazy"
-                    :alt="`Example scene ${index + 1}`"
+                    :alt="`Example background ${index + 1}`"
                     class="w-full h-full object-cover"
                   />
                   <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>

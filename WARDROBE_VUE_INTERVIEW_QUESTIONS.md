@@ -13,7 +13,7 @@
 5. [错误处理与用户体验](#5-错误处理与用户体验)
 6. [状态管理与数据持久化](#6-状态管理与数据持久化)
 7. [代码质量与最佳实践](#7-代码质量与最佳实践)
-8. [实际场景问题](#8-实际场景问题)
+8. [实际背景问题](#8-实际背景问题)
 
 ---
 
@@ -78,7 +78,7 @@ defineOptions({ name: 'Wardrobe' })
 
 ---
 
-### Q1.3: 解释 `onActivated` 的作用和使用场景
+### Q1.3: 解释 `onActivated` 的作用和使用背景
 
 **考察点：** Vue 3 keep-alive 生命周期钩子
 
@@ -86,7 +86,7 @@ defineOptions({ name: 'Wardrobe' })
 
 `onActivated` 是 `keep-alive` 组件的生命周期钩子，当被缓存的组件被激活时调用。
 
-**使用场景：**
+**使用背景：**
 1. **恢复组件状态**：从其他页面返回时恢复数据
 2. **重新加载数据**：确保数据是最新的
 3. **重新绑定事件**：某些事件监听器需要重新绑定
@@ -222,7 +222,7 @@ const uploadedFileSignatures = ref<Set<string>>(new Set())
 **何时不需要 `ref`：**
 - 纯内部状态（如缓存、标志位）
 - 不需要触发视图更新的数据
-- 性能敏感的场景
+- 性能敏感的背景
 
 ---
 
@@ -664,7 +664,7 @@ const checkBackendHealth = async (
 3. **超时控制**：每次请求 5 秒超时
 4. **优雅降级**：即使健康检查失败，也尝试加载数据
 
-**使用场景：**
+**使用背景：**
 
 ```typescript
 const loadUserItems = async () => {
@@ -788,7 +788,7 @@ watch(() => route.name, (newName) => {
 **改进建议（可选）：**
 - 使用 `storage` 事件监听跨标签页变化
 - 使用 Pinia/Vuex 进行全局状态管理
-- 使用 EventBus（简单场景）
+- 使用 EventBus（简单背景）
 
 ---
 
@@ -853,7 +853,7 @@ if (target instanceof HTMLInputElement) {
 
 **参考答案：**
 
-**问题场景：**
+**问题背景：**
 - 卡片点击：打开图片查看器
 - 按钮点击：选择/取消选择
 - 需要阻止事件冒泡，避免触发父元素事件
@@ -890,7 +890,7 @@ event.stopPropagation() 阻止冒泡
 - 点击按钮会同时触发按钮和卡片的事件
 - 导致打开图片查看器的同时切换选择状态（不符合预期）
 
-**其他使用场景：**
+**其他使用背景：**
 ```typescript
 // 选择模式下的点击
 @click="isSelectionMode ? toggleItemSelection(String(item.id), $event) : openImageViewer(index, $event)"
@@ -959,7 +959,7 @@ localStorage.setItem('fashion-rec_selected_items', ...)
 
 ---
 
-## 8. 实际场景问题
+## 8. 实际背景问题
 
 ### Q8.1: 如果用户上传了 1000 张图片，如何优化加载和渲染性能？
 
@@ -1140,13 +1140,13 @@ const handleDragLeave = (event: DragEvent) => {
 3. **错误处理**：分类处理、用户友好提示
 4. **状态管理**：跨组件同步、数据持久化
 5. **代码质量**：类型安全、事件处理、最佳实践
-6. **实际场景**：大规模数据处理、高级特性实现
+6. **实际背景**：大规模数据处理、高级特性实现
 
 **学习建议：**
 - 深入理解 Vue 3 的响应式原理
 - 掌握 TypeScript 的类型系统
 - 关注用户体验和性能优化
-- 实践复杂场景的解决方案
+- 实践复杂背景的解决方案
 
 ---
 

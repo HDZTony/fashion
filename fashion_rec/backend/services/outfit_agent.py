@@ -110,7 +110,7 @@ async def generate_outfit_suggestions(
   location: Optional[str],
   user_prompt: str,
   base_item_ids: Optional[List[str]] = None,
-  scene_image_url: Optional[str] = None,
+  background_image_url: Optional[str] = None,
   client_ip: Optional[str] = None,
   selected_items_roles: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
@@ -217,24 +217,24 @@ User extra preferences / rules (can be empty):
 {user_prompt or "(User did not provide extra preferences)"}
 
 Task:
-- Infer the occasion from user hints and scene image (if any), design 1-3 complete outfits.
+- Infer the occasion from user hints and background image (if any), design 1-3 complete outfits.
 - Reuse "User pre-selected items" when present, and complete remaining roles (pants, outerwear, shoes, accessories, etc.).
-- For each outfit, explain which wardrobe items you used and why they fit the weather/scene.
+- For each outfit, explain which wardrobe items you used and why they fit the weather/background.
 - Strictly follow the JSON structure above.
 - REMEMBER: All text in your response must be in English only. Do not use Chinese or any other language in title, description, reason, or long_text fields.
 """
 
-  # Build message content: if scene_image_url exists, include it as image input
-  if scene_image_url:
-    user_prompt_text_with_scene = f"""{user_prompt_text}
+  # Build message content: if background_image_url exists, include it as image input
+  if background_image_url:
+    user_prompt_text_with_background = f"""{user_prompt_text}
 
-The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe the environment and tailor outfits to that scene. Remember: all output text must be in English only.
+The user uploaded a background image (e.g., office, cafe, outdoor). Carefully observe the environment and tailor outfits to that background. Remember: all output text must be in English only.
 """
     # For qwen-vl, content can be a list with text and image URL
     # Format: [{"type": "text", "text": "..."}, {"type": "image_url", "image_url": {"url": "..."}}]
     user_message_content = [
-      {"type": "text", "text": user_prompt_text_with_scene},
-      {"type": "image_url", "image_url": {"url": scene_image_url}},
+      {"type": "text", "text": user_prompt_text_with_background},
+      {"type": "image_url", "image_url": {"url": background_image_url}},
     ]
   else:
     user_message_content = user_prompt_text
@@ -245,9 +245,9 @@ The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe
   print("\n[System Prompt]:")
   print(system_prompt)
   print("\n[User Prompt]:")
-  if scene_image_url:
-    print(f"[Text]: {user_prompt_text_with_scene}")
-    print(f"[Image URL]: {scene_image_url}")
+  if background_image_url:
+    print(f"[Text]: {user_prompt_text_with_background}")
+    print(f"[Image URL]: {background_image_url}")
   else:
     print(user_prompt_text)
   print("\n" + "="*80 + "\n")
