@@ -2,6 +2,7 @@
 defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search, Image } from 'lucide-vue-next'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
@@ -12,6 +13,7 @@ import { getThumbnailUrl, getSmallImageUrl, getMediumImageUrl, getLargeImageUrl 
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 // Initialize Pinia store
 const studioStore = useStudioStore()
@@ -112,50 +114,50 @@ interface ExampleBackgroundImage {
 }
 
 const exampleBackgroundImages = ref<ExampleBackgroundImage[]>([
-  { url: 'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg', prompt: 'Natural landscape background with trees, mountains, and blue sky, peaceful outdoor scene' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg', prompt: 'Modern urban cityscape background with buildings and architecture' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg', prompt: 'Elegant interior design background with modern furniture and lighting' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg', prompt: 'Beautiful beach scene with sand, ocean waves, and clear sky' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg', prompt: 'Cozy cafe interior with warm lighting and comfortable seating' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg', prompt: 'Luxury hotel lobby with elegant decor and sophisticated atmosphere' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg', prompt: 'Minimalist modern office space with clean lines and natural light' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg', prompt: 'Contemporary living room with stylish furniture and decor' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg', prompt: 'Serene garden background with flowers and greenery' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg', prompt: 'Rustic countryside background with fields and countryside scenery' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg', prompt: 'Artistic studio background with creative workspace and natural lighting' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg', prompt: 'Industrial warehouse background with exposed brick and modern design' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg', prompt: 'Tropical paradise background with palm trees and exotic scenery' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg', prompt: 'Traditional Asian architecture background with cultural elements' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg', prompt: 'Boutique fashion store interior with elegant displays and lighting' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg', prompt: 'Luxury spa background with relaxing atmosphere and natural elements' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg', prompt: 'Modern apartment balcony with city view and contemporary design' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg', prompt: 'Adventure travel background with mountains and scenic landscape' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg', prompt: 'Cozy home interior with warm colors and comfortable atmosphere' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg', prompt: 'Elegant event venue background with sophisticated decor and ambiance' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg', prompt: 'Vintage style background with retro elements and classic design' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg', prompt: 'Modern art gallery background with contemporary artwork and clean space' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg', prompt: 'Luxury resort background with pool, palm trees, and tropical setting' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg', prompt: 'Bohemian style background with eclectic decor and artistic elements' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg', prompt: 'Scandinavian design background with minimalist furniture and natural light' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg', prompt: 'Winter wonderland background with snow, trees, and serene landscape' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg', prompt: 'Coastal background with ocean, cliffs, and dramatic seascape' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg', prompt: 'Urban street background with modern architecture and city life' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg', prompt: 'Elegant restaurant background with fine dining atmosphere and sophisticated decor' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg', prompt: 'Modern library background with bookshelves and reading space' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg', prompt: 'Luxury yacht background with ocean view and premium setting' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg', prompt: 'Gourmet kitchen background with modern appliances and elegant design' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg', prompt: 'Nordic landscape background with lakes, forests, and natural beauty' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg', prompt: 'Mediterranean background with white buildings, blue sea, and sunny atmosphere' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg', prompt: 'Modern rooftop background with city skyline and contemporary design' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg', prompt: 'Artistic background with creative elements and vibrant colors' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg', prompt: 'Professional photography studio background with clean white space and lighting' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg', prompt: 'Luxury villa background with pool, gardens, and elegant outdoor space' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg', prompt: 'Modern conference room background with professional setting and contemporary design' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg', prompt: 'Sunset beach background with golden hour lighting and romantic atmosphere' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg', prompt: 'Mountain resort background with alpine scenery and natural beauty' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg', prompt: 'Wild nature background with forests, rivers, and untouched wilderness' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg', prompt: 'Modern shopping mall background with retail displays and contemporary architecture' },
-  { url: 'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg', prompt: 'Luxury penthouse background with panoramic city views and elegant interior' },
+  { url: 'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg', prompt: 'studio.exampleBackgroundPrompts.001' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg', prompt: 'studio.exampleBackgroundPrompts.002' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg', prompt: 'studio.exampleBackgroundPrompts.003' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg', prompt: 'studio.exampleBackgroundPrompts.004' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg', prompt: 'studio.exampleBackgroundPrompts.005' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg', prompt: 'studio.exampleBackgroundPrompts.006' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg', prompt: 'studio.exampleBackgroundPrompts.007' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg', prompt: 'studio.exampleBackgroundPrompts.008' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg', prompt: 'studio.exampleBackgroundPrompts.009' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg', prompt: 'studio.exampleBackgroundPrompts.010' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg', prompt: 'studio.exampleBackgroundPrompts.011' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg', prompt: 'studio.exampleBackgroundPrompts.012' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg', prompt: 'studio.exampleBackgroundPrompts.013' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg', prompt: 'studio.exampleBackgroundPrompts.014' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg', prompt: 'studio.exampleBackgroundPrompts.015' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg', prompt: 'studio.exampleBackgroundPrompts.016' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg', prompt: 'studio.exampleBackgroundPrompts.017' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg', prompt: 'studio.exampleBackgroundPrompts.018' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg', prompt: 'studio.exampleBackgroundPrompts.019' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg', prompt: 'studio.exampleBackgroundPrompts.020' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg', prompt: 'studio.exampleBackgroundPrompts.021' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg', prompt: 'studio.exampleBackgroundPrompts.022' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg', prompt: 'studio.exampleBackgroundPrompts.023' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg', prompt: 'studio.exampleBackgroundPrompts.024' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg', prompt: 'studio.exampleBackgroundPrompts.025' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg', prompt: 'studio.exampleBackgroundPrompts.026' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg', prompt: 'studio.exampleBackgroundPrompts.027' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg', prompt: 'studio.exampleBackgroundPrompts.028' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg', prompt: 'studio.exampleBackgroundPrompts.029' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg', prompt: 'studio.exampleBackgroundPrompts.030' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg', prompt: 'studio.exampleBackgroundPrompts.031' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg', prompt: 'studio.exampleBackgroundPrompts.032' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg', prompt: 'studio.exampleBackgroundPrompts.033' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg', prompt: 'studio.exampleBackgroundPrompts.034' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg', prompt: 'studio.exampleBackgroundPrompts.035' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg', prompt: 'studio.exampleBackgroundPrompts.036' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg', prompt: 'studio.exampleBackgroundPrompts.037' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg', prompt: 'studio.exampleBackgroundPrompts.038' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg', prompt: 'studio.exampleBackgroundPrompts.039' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg', prompt: 'studio.exampleBackgroundPrompts.040' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg', prompt: 'studio.exampleBackgroundPrompts.041' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg', prompt: 'studio.exampleBackgroundPrompts.042' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg', prompt: 'studio.exampleBackgroundPrompts.043' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg', prompt: 'studio.exampleBackgroundPrompts.044' },
 ])
 
 // Upload progress
@@ -165,11 +167,23 @@ const isUploadingBackgroundImage = ref(false)
 // Background action prompt (for describing model actions in background)
 const backgroundActionPrompt = ref<string>('')
 
+// Saved background action prompt when switching to "no-background" tab
+const savedBackgroundActionPrompt = ref<string>('')
+
 // Current tab value for background image options
 const backgroundTabValue = ref<string>('no-background')
 
 // Watch for tab changes and validate background image requirement
-watch(backgroundTabValue, (newValue: string) => {
+watch(backgroundTabValue, (newValue: string, oldValue: string) => {
+  // When switching from "with-background" to "no-background", save the current action prompt
+  if (oldValue === 'with-background' && newValue === 'no-background') {
+    savedBackgroundActionPrompt.value = backgroundActionPrompt.value
+  }
+  // When switching from "no-background" to "with-background", restore the saved action prompt
+  else if (oldValue === 'no-background' && newValue === 'with-background') {
+    backgroundActionPrompt.value = savedBackgroundActionPrompt.value
+  }
+  
   if (newValue === 'with-background' && !backgroundImageUrl.value && !backgroundImagePreviewUrl.value && !isUploadingBackgroundImage.value) {
     // Auto-focus on upload button or show hint
     // The UI will show the upload button prominently
@@ -1116,11 +1130,17 @@ const selectExampleBackgroundImage = async (image: ExampleBackgroundImage | stri
   
   // Handle both object format (with prompt) and legacy string format
   const imageUrl = typeof image === 'string' ? image : image.url
-  const imagePrompt = typeof image === 'string' ? '' : image.prompt
+  const imagePromptKey = typeof image === 'string' ? '' : image.prompt
   
-  // Fill in the background action prompt if available
-  if (imagePrompt) {
-    backgroundActionPrompt.value = imagePrompt
+  // Fill in the background action prompt if available (translate if it's an i18n key)
+  if (imagePromptKey) {
+    // Check if it's an i18n key (starts with 'studio.')
+    if (imagePromptKey.startsWith('studio.')) {
+      backgroundActionPrompt.value = t(imagePromptKey)
+    } else {
+      // Legacy format: direct text
+      backgroundActionPrompt.value = imagePromptKey
+    }
   }
   
   // Close the dialog immediately when clicking on an image
@@ -1319,6 +1339,10 @@ const performTryOn = async () => {
     if (backgroundImageUrl.value) {
       formData.append('background_image_url', backgroundImageUrl.value)
     }
+    // Add background action prompt (model action description) if provided
+    if (backgroundActionPrompt.value) {
+      formData.append('background_action_prompt', backgroundActionPrompt.value)
+    }
     // Add custom prompt if provided
     if (customPrompt.value) {
       formData.append('prompt', customPrompt.value)
@@ -1331,8 +1355,8 @@ const performTryOn = async () => {
     })
 
     tryOnImageUrl.value = response.data.url
-    // Check if this result is already in favorites (in case user regenerates same result)
-    await checkFavoriteStatus()
+    // Reset favorite status when generating new try-on result
+    studioStore.setFavoriteStatus(false, null)
     // State is automatically persisted by Pinia store
   } catch (error: any) {
     console.error('Try-on failed:', error)
@@ -1374,12 +1398,15 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     if (uploadedItems.value.length === 0) {
       const restored = restoreItemsFromCache()
       if (!restored) {
-        // If cache is empty, items haven't been selected in Wardrobe yet
-        // This shouldn't happen if user is applying an outfit, but handle it gracefully
-        console.warn('[Apply Outfit] No cached data - items should be selected from Wardrobe first')
-        // Don't load from backend - user should select items in Wardrobe first
-        alert('Please select items in Wardrobe first before applying an outfit.')
-        return
+        // If cache is empty, try to load all items from backend
+        // This allows users to apply outfits even if they haven't selected items in Wardrobe first
+        console.warn('[Apply Outfit] No cached data - loading items from backend...')
+        await loadUserItems()
+        if (uploadedItems.value.length === 0) {
+          alert('No items found in your wardrobe. Please add items to your wardrobe first.')
+          return
+        }
+        console.log('[Apply Outfit] Loaded items from backend:', uploadedItems.value.length)
       } else {
         console.log('[Apply Outfit] Restored items from cache')
       }

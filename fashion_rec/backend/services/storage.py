@@ -139,13 +139,13 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
         for attempt in range(max_retries):
             try:
                 # Get a fresh client for each attempt to avoid connection reuse issues
+                # Use SSL verification disabled flag if set (from previous SSL error)
+                verify_ssl = not ssl_verification_disabled
+                s3 = get_r2_client(verify_ssl=verify_ssl)
                 if attempt > 0:
-                    # If we detected SSL error in previous attempt, disable SSL verification
-                    s3 = get_r2_client(verify_ssl=not ssl_verification_disabled)
-                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} for {unique_filename} (SSL verify: {not ssl_verification_disabled})")
+                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} for {unique_filename} (SSL verify: {verify_ssl})")
                 else:
-                    s3 = get_r2_client(verify_ssl=True)  # First attempt always with SSL verification
-                    print(f"[R2] Starting upload attempt {attempt + 1}/{max_retries} for {unique_filename}")
+                    print(f"[R2] Starting upload attempt {attempt + 1}/{max_retries} for {unique_filename} (SSL verify: {verify_ssl})")
                 
                 # Reset cached file object to beginning for each attempt
                 cached_file_obj.seek(0)
@@ -182,18 +182,30 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
                 # Log detailed error information
                 print(f"[R2] Upload error on attempt {attempt + 1}/{max_retries} (type: {error_type}): {str(e)[:300]}")
                 
-                # If it's an SSL error and not the last attempt, disable SSL verification for next retry
-                if is_ssl_error and attempt < max_retries - 1:
-                    ssl_verification_disabled = True
-                    print(f"[R2] Detected SSL-related error, will retry with SSL verification disabled")
-                    # Wait a bit before retry (exponential backoff)
-                    import time
-                    wait_time = min(2 ** attempt, 10)  # Max 10 seconds
-                    print(f"[R2] Waiting {wait_time} seconds before retry...")
-                    time.sleep(wait_time)
-                    continue
+                # If it's an SSL error, disable SSL verification for next retry
+                if is_ssl_error:
+                    if not ssl_verification_disabled:
+                        # First time detecting SSL error, disable verification for next attempts
+                        ssl_verification_disabled = True
+                        print(f"[R2] Detected SSL-related error, will retry with SSL verification disabled")
+                    else:
+                        # SSL verification already disabled but still getting SSL error
+                        print(f"[R2] SSL error persists even with verification disabled. This may indicate a network or R2 service issue.")
+                    
+                    # If not the last attempt, wait and retry
+                    if attempt < max_retries - 1:
+                        # Wait a bit before retry (exponential backoff)
+                        import time
+                        wait_time = min(2 ** attempt, 10)  # Max 10 seconds
+                        print(f"[R2] Waiting {wait_time} seconds before retry...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # Last attempt failed, raise the error
+                        print(f"[R2] Failed after {max_retries} attempts with SSL error: {error_type}: {str(e)[:300]}")
+                        raise
                 else:
-                    # Not an SSL error or last attempt, raise immediately
+                    # Not an SSL error
                     if attempt == max_retries - 1:
                         print(f"[R2] Failed after {max_retries} attempts. Final error: {error_type}: {str(e)[:300]}")
                     raise

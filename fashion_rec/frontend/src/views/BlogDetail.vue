@@ -64,6 +64,7 @@
             <video
               v-else
               :src="media.url"
+              :poster="media.thumbnail"
               class="w-full h-auto rounded-lg"
               controls
               preload="metadata"
@@ -95,13 +96,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useHead } from '@vueuse/head'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
 import { marked } from 'marked'
 import { ChevronLeft } from 'lucide-vue-next'
+import { siteBaseUrl } from '../config/seo'
+import { useSEO } from '../composables/useSEO'
 
 defineOptions({ name: 'BlogDetail' })
 
@@ -141,6 +145,236 @@ const renderedContent = computed(() => {
   if (!post.value) return ''
   return marked.parse(post.value.content)
 })
+
+// Extract plain text from markdown for description
+const extractPlainText = (html: string): string => {
+  if (typeof window === 'undefined') {
+    // SSR: Simple regex-based extraction
+    return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+  }
+  // Client-side: Use DOM parsing
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  return tmp.textContent || tmp.innerText || ''
+}
+
+const postDescription = computed(() => {
+  if (!post.value) return ''
+  const plainText = extractPlainText(renderedContent.value)
+  // Get first 200 characters for description
+  return plainText.substring(0, 200).trim()
+})
+
+const postUrl = computed(() => {
+  if (!post.value) return ''
+  return `${siteBaseUrl}/blog/${post.value.id}`
+})
+
+// Generate BlogPosting structured data
+const blogPostingSchema = computed(() => {
+  if (!post.value) return null
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.value.title,
+    description: postDescription.value,
+    datePublished: post.value.created_at,
+    dateModified: post.value.updated_at,
+    url: postUrl.value,
+    author: {
+      '@type': 'Person',
+      name: 'Fashion Rec Author',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Fashion Rec',
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteBaseUrl}/images/brand/hdz.png`,
+      },
+    },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': postUrl.value,
+    },
+    image: post.value.media_urls?.filter((m) => m.type === 'image').map((m) => m.url) || [],
+    keywords: post.value.tags?.join(', ') || '',
+    articleSection: 'Fashion',
+    wordCount: post.value.content?.split(' ').length || 0,
+    timeRequired: 'PT5M', // Estimated reading time
+  }
+})
+
+// Generate Article structured data (alternative/complementary to BlogPosting)
+const articleSchema = computed(() => {
+  if (!post.value) return null
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.value.title,
+    description: postDescription.value,
+    datePublished: post.value.created_at,
+    dateModified: post.value.updated_at,
+    url: postUrl.value,
+    author: {
+      '@type': 'Person',
+      name: 'Fashion Rec Author',
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Fashion Rec',
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteBaseUrl}/images/brand/hdz.png`,
+      },
+    },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': postUrl.value,
+    },
+    image: post.value.media_urls?.filter((m) => m.type === 'image').map((m) => m.url) || [],
+    keywords: post.value.tags?.join(', ') || '',
+    articleSection: 'Fashion',
+    wordCount: post.value.content?.split(' ').length || 0,
+    timeRequired: 'PT5M',
+    // Add breadcrumb structured data
+    breadcrumb: {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: siteBaseUrl,
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Blog',
+          item: `${siteBaseUrl}/blog`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: post.value.title,
+          item: postUrl.value,
+        },
+      ],
+    },
+  }
+})
+
+// Generate VideoObject structured data for each video
+const videoSchemas = computed(() => {
+  if (!post.value || !post.value.media_urls) return []
+
+  const videos = post.value.media_urls.filter((m) => m.type === 'video')
+  if (videos.length === 0) return []
+
+  // Find first image as thumbnail fallback
+  const firstImage = post.value.media_urls.find((m) => m.type === 'image')
+
+  return videos.map((video, index) => {
+    const schema: any = {
+      '@context': 'https://schema.org',
+      '@type': 'VideoObject',
+      name: `${post.value!.title}${videos.length > 1 ? ` - Video ${index + 1}` : ''}`,
+      description: postDescription.value || post.value!.title,
+      contentUrl: video.url,
+      embedUrl: `${postUrl.value}#video-${index}`, // Link to video section on page
+      uploadDate: post.value!.created_at,
+      datePublished: post.value!.created_at,
+      dateModified: post.value!.updated_at,
+      thumbnailUrl: video.thumbnail || firstImage?.url || `${siteBaseUrl}/images/brand/hdz.png`,
+      // Default duration - in production, this should be extracted from video metadata
+      duration: 'PT5M0S', // ISO 8601 duration format (5 minutes)
+      // Add video quality information
+      videoQuality: 'HD',
+      // Add interaction statistics (can be populated from analytics)
+      interactionStatistic: {
+        '@type': 'InteractionCounter',
+        interactionType: 'https://schema.org/WatchAction',
+        userInteractionCount: 0 // Can be updated with actual view counts
+      },
+      // Add author information
+      author: {
+        '@type': 'Person',
+        name: 'Fashion Rec Author',
+      },
+      // Add publisher information
+      publisher: {
+        '@type': 'Organization',
+        name: 'Fashion Rec',
+        logo: {
+          '@type': 'ImageObject',
+          url: `${siteBaseUrl}/images/brand/hdz.png`,
+        },
+      },
+      // Add mainEntityOfPage
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        '@id': postUrl.value,
+      },
+      // Add keywords/tags
+      keywords: post.value!.tags?.join(', ') || '',
+    }
+
+    return schema
+  })
+})
+
+// Combine all structured data
+const structuredDataScripts = computed(() => {
+  const scripts: Array<{ type: string; children: string }> = []
+
+  if (blogPostingSchema.value) {
+    scripts.push({
+      type: 'application/ld+json',
+      children: JSON.stringify(blogPostingSchema.value),
+    })
+  }
+
+  if (articleSchema.value) {
+    scripts.push({
+      type: 'application/ld+json',
+      children: JSON.stringify(articleSchema.value),
+    })
+  }
+
+  videoSchemas.value.forEach((videoSchema) => {
+    scripts.push({
+      type: 'application/ld+json',
+      children: JSON.stringify(videoSchema),
+    })
+  })
+
+  return scripts
+})
+
+// Set up SEO and structured data
+watch(
+  () => post.value,
+  (newPost) => {
+    if (!newPost) return
+
+    useSEO({
+      title: `${newPost.title} | Fashion Rec Blog`,
+      description: postDescription.value || 'Read more on Fashion Rec Blog',
+      path: `/blog/${newPost.id}`,
+      image: newPost.media_urls?.find((m) => m.type === 'image')?.url || `${siteBaseUrl}/images/brand/hdz.png`,
+    })
+
+    useHead({
+      script: structuredDataScripts.value.map((script) => ({
+        type: script.type,
+        children: script.children,
+      })),
+    })
+  },
+  { immediate: true }
+)
 
 const loadPost = async () => {
   isLoading.value = true

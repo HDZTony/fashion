@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { useHead } from '@vueuse/head'
+
 defineOptions({ name: 'LVProducts' })
 import { ref, onMounted, computed } from 'vue'
 import { Search, ExternalLink, Download, Loader2, ShoppingBag } from 'lucide-vue-next'
 import { apiClient } from '../lib/api-client'
+import { useSEO } from '../composables/useSEO'
+import { siteBaseUrl } from '../config/seo'
 
 // 商品接口定义
 interface LVProduct {
@@ -34,6 +38,59 @@ const scrapeMaxProducts = ref<number | null>(null)
 const generateThumbnails = ref(true)
 const watermarkText = ref('fashion-rec.dongzhouhe.com')
 const scrapeResult = ref<any>(null)
+
+// Product structured data for the collection
+const productCollectionSchema = computed(() => ({
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Louis Vuitton Products Collection',
+  description: 'Curated collection of authentic Louis Vuitton luxury fashion products',
+  url: `${siteBaseUrl}/lv-products`,
+  provider: {
+    '@type': 'Organization',
+    name: 'Fashion Rec',
+    url: siteBaseUrl,
+  },
+  mainEntity: {
+    '@type': 'ItemList',
+    numberOfItems: totalProducts.value,
+    itemListElement: products.value.slice(0, 10).map((product, index) => ({
+      '@type': 'Product',
+      position: index + 1,
+      name: product.product_name,
+      image: product.thumbnail_url || product.original_image_url,
+      offers: product.price ? {
+        '@type': 'Offer',
+        price: product.price.replace(/[^\d.]/g, ''),
+        priceCurrency: 'USD',
+        availability: 'https://schema.org/InStock',
+        url: product.original_lv_url,
+      } : undefined,
+      brand: {
+        '@type': 'Brand',
+        name: 'Louis Vuitton',
+      },
+      url: `${siteBaseUrl}/lv-products#${product.product_id}`,
+    })),
+  },
+}))
+
+// SEO setup
+useSEO({
+  title: 'LV Products - Luxury Fashion Collection | Fashion Rec',
+  description: 'Browse our curated collection of Louis Vuitton products. Find authentic luxury fashion items with detailed information and styling inspiration.',
+  path: '/lv-products',
+})
+
+// Add structured data to head
+useHead({
+  script: [
+    {
+      type: 'application/ld+json',
+      children: JSON.stringify(productCollectionSchema.value),
+    },
+  ],
+})
 
 // 加载商品列表
 const loadProducts = async (page: number = 1) => {

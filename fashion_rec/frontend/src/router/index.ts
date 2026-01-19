@@ -84,6 +84,10 @@ export const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true }
       },
       {
+        path: 'seo',
+        redirect: () => ({ path: '/profile', query: { tab: 'seo' } })
+      },
+      {
         path: 'blog',
         name: 'blog',
         component: () => import('../views/BlogList.vue')

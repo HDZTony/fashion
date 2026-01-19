@@ -2,7 +2,8 @@
 import type { PrimitiveProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import type { ButtonVariants } from "."
-import { Primitive } from "reka-ui"
+import { reactiveOmit } from "@vueuse/core"
+import { Primitive, useForwardProps } from "reka-ui"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "."
 
@@ -15,12 +16,16 @@ interface Props extends PrimitiveProps {
 const props = withDefaults(defineProps<Props>(), {
   as: "button",
 })
+
+const delegatedProps = reactiveOmit(props, "class")
+const forwardedProps = useForwardProps(delegatedProps)
 </script>
 
 <template>
   <Primitive
     :as="as"
     :as-child="asChild"
+    v-bind="forwardedProps"
     :class="cn(buttonVariants({ variant, size }), props.class)"
   >
     <slot />

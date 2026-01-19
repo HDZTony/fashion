@@ -1,5 +1,131 @@
 # 数据库迁移说明
 
+## 迁移 003: 将 tryon_history 表的 scene_image_url 重命名为 background_image_url
+
+### 问题描述
+
+代码尝试保存 `background_image_url` 到 `tryon_history` 表，但数据库表中存在的是 `scene_image_url` 列，导致保存失败并出现错误：
+```
+Could not find the 'background_image_url' column of 'tryon_history' in the schema cache
+```
+
+### 解决方案
+
+需要将 `tryon_history` 表中的 `scene_image_url` 列重命名为 `background_image_url` 以匹配代码中的命名。
+
+### 执行步骤
+
+**推荐方法：使用 Supabase Dashboard（最简单）**
+
+1. 登录 [Supabase Dashboard](https://app.supabase.com)
+2. 选择你的项目
+3. 进入 **SQL Editor**
+4. 打开 `003_add_background_image_url_to_tryon_history.sql` 文件
+5. **复制全部内容**
+6. 粘贴到 SQL Editor 中
+7. 点击 **Run** 执行
+
+**使用 psql（如果有直接数据库访问权限）**：
+
+```bash
+psql -h <your-db-host> -U <your-user> -d <your-database> -f 003_add_background_image_url_to_tryon_history.sql
+```
+
+### 迁移内容
+
+1. **检查列状态**: 
+   - 如果 `scene_image_url` 存在且 `background_image_url` 不存在，则重命名
+   - 如果 `background_image_url` 已存在，则跳过（可能已经执行过迁移）
+   - 如果两个列都不存在，则添加 `background_image_url` 列（向后兼容）
+2. **更新注释**: 为列添加/更新文档注释
+
+### 验证
+
+迁移完成后，可以执行以下查询验证：
+
+```sql
+-- 检查列是否存在
+SELECT column_name, data_type, is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'tryon_history' AND column_name = 'background_image_url';
+
+-- 应该返回一行，显示 background_image_url 列的信息
+```
+
+### 回滚（如果需要）
+
+如果需要回滚到 `scene_image_url`，执行：
+
+```sql
+-- 如果 background_image_url 存在，重命名回 scene_image_url
+ALTER TABLE tryon_history RENAME COLUMN background_image_url TO scene_image_url;
+```
+
+---
+
+## 迁移 002: 将 looks 表的 scene_image_url 重命名为 background_image_url
+
+### 问题描述
+
+代码尝试保存 `background_image_url` 到 `looks` 表，但数据库表中存在的是 `scene_image_url` 列，导致保存失败并出现错误：
+```
+Could not find the 'background_image_url' column of 'looks' in the schema cache
+```
+
+### 解决方案
+
+需要将 `looks` 表中的 `scene_image_url` 列重命名为 `background_image_url` 以匹配代码中的命名。
+
+### 执行步骤
+
+**推荐方法：使用 Supabase Dashboard（最简单）**
+
+1. 登录 [Supabase Dashboard](https://app.supabase.com)
+2. 选择你的项目
+3. 进入 **SQL Editor**
+4. 打开 `002_add_background_image_url_to_looks.sql` 文件
+5. **复制全部内容**
+6. 粘贴到 SQL Editor 中
+7. 点击 **Run** 执行
+
+**使用 psql（如果有直接数据库访问权限）**：
+
+```bash
+psql -h <your-db-host> -U <your-user> -d <your-database> -f 002_add_background_image_url_to_looks.sql
+```
+
+### 迁移内容
+
+1. **检查列状态**: 
+   - 如果 `scene_image_url` 存在且 `background_image_url` 不存在，则重命名
+   - 如果 `background_image_url` 已存在，则跳过（可能已经执行过迁移）
+   - 如果两个列都不存在，则添加 `background_image_url` 列（向后兼容）
+2. **更新注释**: 为列添加/更新文档注释
+
+### 验证
+
+迁移完成后，可以执行以下查询验证：
+
+```sql
+-- 检查列是否存在
+SELECT column_name, data_type, is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'looks' AND column_name = 'background_image_url';
+
+-- 应该返回一行，显示 background_image_url 列的信息
+```
+
+### 回滚（如果需要）
+
+如果需要回滚到 `scene_image_url`，执行：
+
+```sql
+-- 如果 background_image_url 存在，重命名回 scene_image_url
+ALTER TABLE looks RENAME COLUMN background_image_url TO scene_image_url;
+```
+
+---
+
 ## 迁移 001: 更新 user_images.image_type 约束
 
 ### user_images 表的用途

@@ -620,14 +620,90 @@ export default {
             console.warn(`[Blog] Please set R2_PUBLIC_URL in .dev.vars or as a secret for production use`)
           }
           
-          // For video, we might want to generate a thumbnail later
-          // For now, return the URL
+          let thumbnailUrl: string | undefined
+
+          // Generate thumbnail for videos
+          if (fileType === 'video') {
+            try {
+              console.log(`[Blog] Generating thumbnail for video: ${filename}`)
+
+              // Use Cloudflare Image Resizing to generate thumbnail from video
+              // We'll create a simple thumbnail by extracting a frame (if supported) or using a placeholder
+              const thumbnailFilename = `${userId}/thumb_${timestamp}_${randomId}.jpg`
+
+              // For now, create a simple colored placeholder thumbnail
+              // In production, you might want to use a video processing service
+              const placeholderSvg = `
+                <svg width="640" height="360" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="640" height="360" fill="#f3f4f6"/>
+                  <circle cx="320" cy="180" r="60" fill="#ec4899"/>
+                  <polygon points="300,160 340,180 300,200" fill="white"/>
+                  <text x="320" y="250" text-anchor="middle" fill="#374151" font-family="Arial" font-size="24">Video Thumbnail</text>
+                </svg>
+              `
+
+              const svgBuffer = new TextEncoder().encode(placeholderSvg)
+
+              // Upload thumbnail
+              if (useS3API && s3Client) {
+                const thumbPutCommand = new PutObjectCommand({
+                  Bucket: env.R2_BUCKET_NAME!,
+                  Key: thumbnailFilename,
+                  Body: svgBuffer,
+                  ContentType: 'image/svg+xml',
+                  CacheControl: 'public, max-age=31536000',
+                  Metadata: {
+                    userId,
+                    originalName: `thumb_${file.name}`,
+                    uploadedAt: new Date().toISOString(),
+                    type: 'video-thumbnail',
+                  },
+                })
+
+                await s3Client.send(thumbPutCommand)
+              } else {
+                await env.blog_media!.put(thumbnailFilename, svgBuffer, {
+                  httpMetadata: {
+                    contentType: 'image/svg+xml',
+                    cacheControl: 'public, max-age=31536000',
+                  },
+                  customMetadata: {
+                    userId,
+                    originalName: `thumb_${file.name}`,
+                    uploadedAt: new Date().toISOString(),
+                    type: 'video-thumbnail',
+                  },
+                })
+              }
+
+              // Generate thumbnail public URL
+              if (env.R2_PUBLIC_URL) {
+                thumbnailUrl = `${env.R2_PUBLIC_URL.replace(/\/$/, '')}/${thumbnailFilename}`
+              } else {
+                let accountId = 'e92b5aac543d4f37970ad252aac3c3b7'
+                if (env.R2_ENDPOINT_URL) {
+                  const match = env.R2_ENDPOINT_URL.match(/https:\/\/([^.]+)\.r2\.cloudflarestorage\.com/)
+                  if (match && match[1]) {
+                    accountId = match[1]
+                  }
+                }
+                thumbnailUrl = `https://pub-${accountId}.r2.dev/${thumbnailFilename}`
+              }
+
+              console.log(`[Blog] Generated thumbnail: ${thumbnailUrl}`)
+            } catch (thumbnailError) {
+              console.warn(`[Blog] Failed to generate thumbnail for video ${filename}:`, thumbnailError)
+              // Continue without thumbnail - not a fatal error
+            }
+          }
+
           const mediaInfo = {
             url: publicUrl,
             type: fileType as 'image' | 'video',
             filename,
             size: file.size,
             contentType: file.type,
+            ...(thumbnailUrl && { thumbnail: thumbnailUrl }),
           }
 
           return new Response(JSON.stringify(mediaInfo), {

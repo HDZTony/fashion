@@ -397,6 +397,7 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||
          path.startsWith('/blog') ||
+         path.startsWith('/seo') ||
          path.startsWith('/cleanup-expired-files') ||
          path === '/userinfo' ||
          path === '/plans' ||
@@ -503,6 +504,7 @@ export default {
                                        path.startsWith('/products/') ||
                                        path.startsWith('/customers/')
       const isBlogServicePath = path.startsWith('/blog')
+      const isSeoServicePath = path.startsWith('/seo')
       
       // Handle OPTIONS preflight for all API endpoints
       if (request.method === 'OPTIONS' && (isApiForCors || 
@@ -511,7 +513,8 @@ export default {
           path === '/webhook' || 
           path === '/test-webhook' ||
           isSubscriptionServicePath ||
-          isBlogServicePath)) {
+          isBlogServicePath ||
+          isSeoServicePath)) {
         const origin = request.headers.get('Origin')
         return new Response(null, {
           status: 204,
@@ -819,13 +822,14 @@ export default {
         const fetchStartTime = Date.now()
         
         // Add timeout to backend fetch using AbortController
-        // For try-on and upload operations, use longer timeout (4 minutes to be under frontend's 5min timeout)
+        // For try-on, upload, and outfit operations (LLM processing with images), use longer timeout (4 minutes to be under frontend's 5min timeout)
         // For PUT/DELETE operations, use 60 seconds (to be under frontend's timeout)
         // For other operations, use 25 seconds (to be under frontend's 30s timeout)
         const isTryOnRequest = path === '/try-on'
         const isUploadRequest = path === '/upload'
+        const isOutfitRequest = path === '/outfit'
         const isPutOrDeleteRequest = request.method === 'PUT' || request.method === 'DELETE'
-        const timeoutMs = (isTryOnRequest || isUploadRequest) ? 240000 : (isPutOrDeleteRequest ? 60000 : 25000) // 4 minutes for try-on/upload, 60 seconds for PUT/DELETE, 25 seconds for others
+        const timeoutMs = (isTryOnRequest || isUploadRequest || isOutfitRequest) ? 240000 : (isPutOrDeleteRequest ? 60000 : 25000) // 4 minutes for try-on/upload/outfit, 60 seconds for PUT/DELETE, 25 seconds for others
         
         const abortController = new AbortController()
         const timeoutId = setTimeout(() => {

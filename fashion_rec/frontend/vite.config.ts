@@ -16,13 +16,27 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
-  // Configure prerender routes for public pages only
-  ssgOptions: {
-    includedRoutes: () => [
-      '/',
-      '/pricing',
-      '/privacy-policy',
-      '/terms-of-service',
-    ],
+  // Core Web Vitals optimizations
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id: string) => {
+          // Split vendor chunks for better caching
+          if (id.includes('vue') || id.includes('vue-router') || id.includes('pinia')) {
+            return 'vue-vendor'
+          }
+          if (id.includes('reka-ui') || id.includes('lucide-vue-next')) {
+            return 'ui-vendor'
+          }
+          if (id.includes('axios') || id.includes('@vueuse') || id.includes('clsx') || id.includes('tailwind-merge')) {
+            return 'utils-vendor'
+          }
+        },
+      },
+    },
+    // Enable source maps for production debugging
+    sourcemap: false,
+    // Optimize chunk size
+    chunkSizeWarningLimit: 600,
   },
 })

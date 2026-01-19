@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite-ssg build",
-    "build:spa": "vue-tsc && vite build",
+    "build": "vue-tsc --noEmit && vite-ssg build --script src/ssg-routes.ts",
+    "build:spa": "vue-tsc --noEmit && vite build",
+    "build:force": "vite build",
+    "build:ssg-force": "vite-ssg build --script src/ssg-routes.ts",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -77,6 +77,7 @@ class OutfitAgentRequest(BaseModel):
     prompt: str
     base_item_ids: Optional[List[str]] = None
     background_image_url: Optional[str] = None
+    background_action_prompt: Optional[str] = None  # User's description of actions/activities in the background image
     # Map of wardrobe_id to role for already selected items (to avoid regenerating them)
     selected_items_roles: Optional[Dict[str, str]] = None
 
@@ -1368,6 +1369,7 @@ async def generate_outfit(
             user_prompt=request.prompt,
             base_item_ids=request.base_item_ids,
             background_image_url=request.background_image_url,
+            background_action_prompt=request.background_action_prompt,
             client_ip=http_request.client.host if http_request.client else None,
             selected_items_roles=request.selected_items_roles,
         )
@@ -1403,6 +1405,7 @@ async def try_on(
     person_image_url: Optional[str] = Form(None),
     garment_urls: str = Form(...),
     background_image_url: Optional[str] = Form(None),
+    background_action_prompt: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
@@ -1753,6 +1756,14 @@ async def try_on(
             garment_desc_text = f"\nItem details in Image 1:\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
         
         image_inputs: List[Any] = [garments_collage_path, person_input]
+        # Build action/pose description section if provided
+        action_description_section = ""
+        if background_action_prompt:
+            action_description_section = f"\n\nModel(Image 2) Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
+            logger.info(f"[Try-On] Background action prompt received: {background_action_prompt}")
+        else:
+            logger.info("[Try-On] No background action prompt provided")
+        
         # If background image URL is provided, use it as Image 3 (background)
         if background_image_url:
             image_inputs.append(background_image_url)
@@ -1768,6 +1779,7 @@ async def try_on(
                 "Prohibit any items floating in the air or scattered on the ground. "
                 "Overall image should be natural, consistent lighting, all items should fit the human body."
                 + garment_desc_text
+                + action_description_section
             )
             negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating
         else:
@@ -1782,8 +1794,16 @@ async def try_on(
                 "Prohibit any items floating in the air or scattered on the ground. "
                 "All items must fit the human body, with accurate and natural positioning."
                 + garment_desc_text
+                + action_description_section
             )
             negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit person from garment collage, prohibit items scattered or floating
+        
+        # Log final prompt for debugging
+        logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
+        if action_description_section:
+            logger.info(f"[Try-On] Action description included: {action_description_section[:100]}...")
+        else:
+            logger.info("[Try-On] No action description in prompt")
     except Exception as e:
         print(f"Failed to build garment collage: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
@@ -2688,3 +2708,387 @@ async def get_userinfo(user_id: str = Depends(get_current_user)):
     except httpx.RequestError as e:
         logger.error(f"Error proxying to subscription service: {e}")
         raise HTTPException(status_code=500, detail=f"Subscription service unavailable: {str(e)}")
+
+
+# ==================== SEO & Search Console API ====================
+
+@app.get("/seo/search-console/connect")
+async def connect_search_console(user_id: str = Depends(get_current_user)):
+    """Initiate Google Search Console OAuth connection"""
+    try:
+        from services.search_console import SearchConsoleService
+        
+        service = SearchConsoleService()
+        auth_url = service.get_authorization_url()
+        
+        # Store state in session/database for later verification
+        # For now, return the URL directly
+        return {"authUrl": auth_url}
+    except Exception as e:
+        logger.error(f"Failed to initiate Search Console connection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect: {str(e)}")
+
+
+@app.get("/seo/search-console/callback")
+async def search_console_callback(code: str, state: Optional[str] = None, user_id: str = Depends(get_current_user)):
+    """Handle OAuth callback from Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        service = SearchConsoleService()
+        credentials = service.get_credentials_from_code(code)
+        
+        # Prepare credentials dictionary
+        credentials_dict = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+        
+        # Store credentials in database (encrypted)
+        db = SearchConsoleDB()
+        site_url = 'https://fashion-rec.com'  # Default site URL
+        success = db.save_credentials(user_id, credentials_dict, site_url)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save credentials")
+        
+        return {"success": True, "message": "Successfully connected to Google Search Console"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to handle Search Console callback: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect: {str(e)}")
+
+
+@app.post("/seo/search-console/disconnect")
+async def disconnect_search_console(user_id: str = Depends(get_current_user)):
+    """Disconnect Google Search Console"""
+    try:
+        from services.search_console_db import SearchConsoleDB
+        
+        db = SearchConsoleDB()
+        success = db.delete_credentials(user_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete credentials")
+        
+        return {"success": True, "message": "Disconnected from Google Search Console"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to disconnect Search Console: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disconnect: {str(e)}")
+
+
+@app.get("/seo/search-console/status")
+async def get_search_console_status(user_id: str = Depends(get_current_user)):
+    """Check Search Console connection status"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            return {"connected": False}
+        
+        # Add user_id to credentials_dict for token refresh callback
+        credentials_dict['user_id'] = user_id
+        
+        # Create callback to save refreshed token
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        # Pass callback to automatically save refreshed token
+        is_connected = service.check_connection(credentials_dict, save_refreshed_token)
+        
+        return {"connected": is_connected}
+    except Exception as e:
+        logger.error(f"Failed to check Search Console status: {e}")
+        return {"connected": False}
+
+
+@app.post("/seo/verify-site")
+async def verify_site(request: Dict[str, Any], user_id: str = Depends(get_current_user)):
+    """Verify site ownership"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        site_url = request.get('siteUrl')
+        if not site_url:
+            raise HTTPException(status_code=400, detail="siteUrl is required")
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Add user_id and create callback for token refresh
+        credentials_dict['user_id'] = user_id
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        result = service.verify_site(credentials_dict, site_url, save_refreshed_token)
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to verify site: {e}")
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
+
+@app.post("/seo/submit-sitemap")
+async def submit_sitemap(request: Dict[str, Any], user_id: str = Depends(get_current_user)):
+    """Submit sitemap to Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        sitemap_url = request.get('sitemapUrl')
+        site_url = request.get('siteUrl', 'https://fashion-rec.com')
+        
+        if not sitemap_url:
+            raise HTTPException(status_code=400, detail="sitemapUrl is required")
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Add user_id and create callback for token refresh
+        credentials_dict['user_id'] = user_id
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        result = service.submit_sitemap(credentials_dict, site_url, sitemap_url, save_refreshed_token)
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit sitemap: {e}")
+        raise HTTPException(status_code=500, detail=f"Sitemap submission failed: {str(e)}")
+
+
+@app.post("/seo/inspect-url")
+async def inspect_url(request: Dict[str, Any], user_id: str = Depends(get_current_user)):
+    """Inspect URL using Google Search Console URL Inspection API"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        url = request.get('url')
+        if not url:
+            raise HTTPException(status_code=400, detail="url is required")
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Add user_id and create callback for token refresh
+        credentials_dict['user_id'] = user_id
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        result = service.inspect_url(credentials_dict, url, save_refreshed_token)
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to inspect URL: {e}")
+        raise HTTPException(status_code=500, detail=f"URL inspection failed: {str(e)}")
+
+
+@app.get("/seo/video-analytics")
+async def get_video_seo_analytics(
+    startDate: str,
+    endDate: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Get video search analytics from Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+
+        # Get site_url from credentials or use default
+        site_url = credentials_dict.get('site_url', 'https://fashion-rec.com')
+
+        service = SearchConsoleService()
+        result = service.get_video_search_analytics(
+            credentials_dict,
+            site_url,
+            startDate,
+            endDate
+        )
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get video analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get video analytics: {str(e)}")
+
+
+@app.get("/seo/analytics")
+async def get_seo_analytics(
+    startDate: str,
+    endDate: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Get search analytics from Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Get site_url from credentials or use default
+        site_url = credentials_dict.get('site_url', 'https://fashion-rec.com')
+        
+        service = SearchConsoleService()
+        result = service.get_search_analytics(
+            credentials_dict,
+            site_url,
+            startDate,
+            endDate
+        )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get analytics: {str(e)}")
+
+
+@app.get("/video-sitemap.xml")
+async def get_video_sitemap():
+    """Generate video sitemap for Google Search Console"""
+    try:
+        import aiohttp
+
+        # Fetch blog posts from Cloudflare Workers API
+        blog_api_url = "https://blog.fashion-rec.workers.dev/posts?status=published&limit=1000"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(blog_api_url) as response:
+                if response.status != 200:
+                    logger.warning(f"Failed to fetch blog posts: {response.status}")
+                    # Return empty sitemap
+                    return Response(
+                        content='''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+</urlset>''',
+                        media_type="application/xml"
+                    )
+
+                data = await response.json()
+                posts = data.get('posts', [])
+
+        # Build video sitemap XML
+        xml_parts = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',
+            '        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">'
+        ]
+
+        base_url = "https://fashion-rec.com"
+        blog_base_url = "https://blog.fashion-rec.com"
+
+        for post in posts:
+            if post.get('media_urls'):
+                # Check if post contains videos
+                has_video = any(media.get('type') == 'video' for media in post['media_urls'])
+
+                if has_video:
+                    xml_parts.append('  <url>')
+                    xml_parts.append(f'    <loc>{blog_base_url}/blog/{post["id"]}</loc>')
+                    xml_parts.append(f'    <lastmod>{post["updated_at"][:10]}</lastmod>')
+
+                    # Add video entries for each video in the post
+                    for media in post['media_urls']:
+                        if media.get('type') == 'video':
+                            xml_parts.append('    <video:video>')
+
+                            # Use thumbnail if available, otherwise use a default or video URL
+                            thumbnail_url = media.get('thumbnail') or media['url'].replace('.mp4', '.jpg').replace('.webm', '.jpg').replace('.mov', '.jpg')
+                            xml_parts.append(f'      <video:thumbnail_loc>{thumbnail_url}</video:thumbnail_loc>')
+
+                            # Title: Post title + Video
+                            xml_parts.append(f'      <video:title>{post["title"]} - Video</video:title>')
+
+                            # Description: First 500 characters of post content
+                            description = post.get("content", "")[:500]
+                            if not description:
+                                description = post["title"]
+                            xml_parts.append(f'      <video:description>{description}</video:description>')
+
+                            # Content location: Direct video file URL
+                            xml_parts.append(f'      <video:content_loc>{media["url"]}</video:content_loc>')
+
+                            # Player location: Blog post URL with video anchor
+                            xml_parts.append(f'      <video:player_loc>{blog_base_url}/blog/{post["id"]}#video</video:player_loc>')
+
+                            # Duration: Default to 300 seconds (5 minutes) - should be calculated from actual video metadata
+                            xml_parts.append('      <video:duration>300</video:duration>')
+
+                            # Publication date
+                            xml_parts.append('      <video:publication_date>')
+                            xml_parts.append(f'        <video:nested>{post["created_at"][:19]}+00:00</video:nested>')
+                            xml_parts.append('      </video:publication_date>')
+
+                            xml_parts.append('    </video:video>')
+
+                    xml_parts.append('  </url>')
+
+        xml_parts.append('</urlset>')
+
+        return Response(
+            content='\n'.join(xml_parts),
+            media_type="application/xml"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate video sitemap: {e}")
+        # Return empty sitemap on error
+        return Response(
+            content='''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+</urlset>''',
+            media_type="application/xml"
+        )
