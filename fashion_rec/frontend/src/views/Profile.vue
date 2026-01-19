@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
 import { subscriptionClient, apiClient } from '../lib/api-client'
 import { useAuthStore } from '../stores/auth'
+import { useStudioStore } from '../stores/studio'
 import type { UserInfo } from '../types'
 import {
   SidebarProvider,
@@ -29,6 +30,7 @@ defineOptions({ name: 'Profile' })
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
+const studioStore = useStudioStore()
 
 // Current active tab
 const activeTab = ref<'account' | 'seo'>('account')
@@ -196,6 +198,17 @@ const signOut = async () => {
     userEmail.value = '—'
     userinfo.value = null
     error.value = null
+    
+    // Clear Studio store state (模特图、提示词、传达建议等)
+    studioStore.clearState()
+    
+    // Clear sessionStorage caches
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('studio-store')
+      sessionStorage.removeItem('wardrobe_items_cache')
+      localStorage.removeItem('fashion-rec_selected_items')
+    }
+    
     await supabase.auth.signOut()
     router.push('/login')
   } catch (e) {
