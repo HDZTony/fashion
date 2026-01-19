@@ -230,6 +230,50 @@
       "generateFailed": "Failed to generate outfit",
       "tryOnFailed": "Failed to try on",
       "saveFavoriteFailed": "Failed to save favorite"
+    },
+    "outfitPlans": {
+      "title": "AI Outfit Plans",
+      "applyOutfit": "Apply outfit",
+      "searchRole": "Search {role}",
+      "inWardrobe": "(in wardrobe)",
+      "selected": "(selected)",
+      "searchOnGoogle": "Search for {description} on Google",
+      "pleaseChooseOutfit": "Please choose an outfit via Apply outfit before trying on.",
+      "missingImageUrls": "Some items in this outfit are missing usable image URLs.",
+      "applyFailed": "Apply outfit failed: {error}",
+      "roles": {
+        "top": "top",
+        "bottom": "bottom",
+        "outer": "outer",
+        "shoes": "shoes",
+        "accessory": "accessory"
+      }
+    },
+    "appliedOutfitItems": {
+      "title": "Applied Outfit Items",
+      "description": "Items currently in this outfit. Remove items or generate suggestions for missing roles.",
+      "itemsCount": "Applied outfit items ({count})",
+      "rolesRemoved": "{count} roles removed; re-generate to fill them.",
+      "noItemsSelected": "No items selected yet",
+      "goToWardrobePrompt": "Go to Wardrobe and add items to the Outfit Generator.",
+      "goToWardrobe": "Go to Wardrobe",
+      "deleteItem": "Delete this item"
+    },
+    "modelPhoto": {
+      "title": "Model photo",
+      "description": "Upload a half-body or full-body photo of you. All try-ons will use this model photo.",
+      "deleteModelPhoto": "Delete model photo",
+      "uploadNewPhoto": "Upload new photo",
+      "history": "History",
+      "modelPreview": "Model preview",
+      "pleaseUploadFirst": "Please upload your model photo first."
+    },
+    "virtualTryOn": {
+      "title": "Virtual Try-On Result",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "favorite": "Favorite",
+      "tryOnResult": "Try-on result"
     }
   },
   "favorites": {

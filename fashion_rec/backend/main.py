@@ -1777,11 +1777,15 @@ async def try_on(
                 "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
                 "bags on the shoulder or held in hand. "
                 "Prohibit any items floating in the air or scattered on the ground. "
-                "Overall image should be natural, consistent lighting, all items should fit the human body."
+                "CRITICAL: Pay careful attention to perspective and spatial consistency. "
+                "The model's perspective, scale, and pose must match the background's perspective and vanishing points. "
+                "Ensure the model's feet align with the ground plane in the background, and the model's size and proportions are consistent with the background's depth and scale. "
+                "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
+                "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
                 + garment_desc_text
                 + action_description_section
             )
-            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating
+            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating, prohibit perspective issues
         else:
             # Prompt: Person from Image 2 wearing all clothes from Image 1, keep model and original background
             prompt = (
@@ -1792,11 +1796,15 @@ async def try_on(
                 "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
                 "bags on the shoulder or held in hand. "
                 "Prohibit any items floating in the air or scattered on the ground. "
-                "All items must fit the human body, with accurate and natural positioning."
+                "CRITICAL: Maintain the original perspective and spatial relationships from Image 2. "
+                "The model's pose, scale, and perspective must remain consistent with the original background. "
+                "Ensure the model's feet align with the ground plane, and all proportions match the original scene's depth and perspective. "
+                "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
+                "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
                 + garment_desc_text
                 + action_description_section
             )
-            negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit person from garment collage, prohibit items scattered or floating
+            negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit person from garment collage, prohibit items scattered or floating, prohibit perspective issues
         
         # Log final prompt for debugging
         logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")

@@ -1285,7 +1285,7 @@ const performTryOn = async () => {
 
   if (!modelImageFile.value && !modelImagePreviewUrl.value) {
     showModelImageError.value = true
-    alert('Please upload your model photo first.')
+    alert(t('studio.modelPhoto.pleaseUploadFirst'))
     // Scroll to model image uploader
     setTimeout(() => {
       const modelUploader = document.querySelector('[data-model-uploader]')
@@ -1296,7 +1296,7 @@ const performTryOn = async () => {
     return
   }
   if (!activeWardrobeItems.value.length) {
-    alert('Please choose an outfit via Apply outfit before trying on.')
+    alert(t('studio.outfitPlans.pleaseChooseOutfit'))
     return
   }
 
@@ -1305,7 +1305,7 @@ const performTryOn = async () => {
     .filter((u): u is string => !!u)
 
   if (!garmentUrls.length) {
-    alert('Some items in this outfit are missing usable image URLs.')
+    alert(t('studio.outfitPlans.missingImageUrls'))
     return
   }
 
@@ -1618,7 +1618,8 @@ const applyOutfit = async (outfit: AgentOutfit) => {
   // State is automatically persisted by Pinia store
   } catch (error) {
     console.error('[Apply Outfit] Error:', error)
-    alert(`Apply outfit failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const errorMessage = error instanceof Error ? error.message : t('errors.generic')
+    alert(t('studio.outfitPlans.applyFailed', { error: errorMessage }))
   }
 }
 
@@ -1853,6 +1854,19 @@ const getMissingItems = (outfit: AgentOutfit): AgentOutfitItem[] => {
   })
 }
 
+// Helper function to translate role names
+const translateRole = (role: string): string => {
+  const roleKey = role.toLowerCase()
+  const roleMap: Record<string, string> = {
+    top: t('studio.outfitPlans.roles.top'),
+    bottom: t('studio.outfitPlans.roles.bottom'),
+    outer: t('studio.outfitPlans.roles.outer'),
+    shoes: t('studio.outfitPlans.roles.shoes'),
+    accessory: t('studio.outfitPlans.roles.accessory'),
+  }
+  return roleMap[roleKey] || role
+}
+
 const hasAnyWardrobeItem = (outfit: AgentOutfit): boolean => {
   // Check if at least one item in the outfit exists in the wardrobe
   return outfit.items.some(item => {
@@ -1861,10 +1875,29 @@ const hasAnyWardrobeItem = (outfit: AgentOutfit): boolean => {
   })
 }
 
-const searchOnGoogle = (description: string) => {
-  const searchQuery = encodeURIComponent(description)
-  const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`
-  window.open(googleSearchUrl, '_blank', 'noopener,noreferrer')
+const searchOnGoogle = (description: string, event?: Event) => {
+  // Prevent any event propagation that might affect the UI
+  if (event) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  
+  try {
+    const searchQuery = encodeURIComponent(description)
+    const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`
+    const newWindow = window.open(googleSearchUrl, '_blank', 'noopener,noreferrer')
+    
+    // If popup was blocked, show a fallback message
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+      // Popup was blocked, provide alternative: copy search query or show message
+      console.warn('Popup blocked, search query:', description)
+      // Optionally: show a toast or copy to clipboard
+      alert(`Search query: ${description}\n\nPlease allow popups or search manually on Google.`)
+    }
+  } catch (error) {
+    console.error('Failed to open search:', error)
+    // Don't let errors affect the UI state
+  }
 }
 
 
@@ -2084,7 +2117,7 @@ const searchOnGoogle = (description: string) => {
           <div v-if="agentOutfits.length && !isGenerating" class="mt-6 space-y-6">
             <div>
               <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-semibold">AI Outfit Plans</h3>
+                <h3 class="text-lg font-semibold">{{ $t('studio.outfitPlans.title') }}</h3>
                 <!-- AI branding and transparency note -->
                 
               </div>
@@ -2099,16 +2132,17 @@ const searchOnGoogle = (description: string) => {
                     <ul class="text-xs text-gray-700 space-y-1 mb-2">
                       <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
                         <div class="flex-1">
-                          <span class="font-medium capitalize">{{ it.role }}:</span>
+                          <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
                           <span> {{ it.description }}</span>
-                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">(in wardrobe)</span>
-                          <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">(selected)</span>
+                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
+                          <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
                         </div>
                         <button
                           v-if="!findWardrobeItemById(it.wardrobe_id)"
-                          @click.stop="searchOnGoogle(it.description)"
+                          @click.stop="searchOnGoogle(it.description, $event)"
+                          type="button"
                           class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
-                          :title="`Search for ${it.description} on Google`"
+                          :title="$t('studio.outfitPlans.searchOnGoogle', { description: it.description })"
                         >
                           <Search class="w-3.5 h-3.5 text-pink-600" />
                         </button>
@@ -2129,18 +2163,19 @@ const searchOnGoogle = (description: string) => {
                       @click.prevent="applyOutfit(outfit)"
                       class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
                     >
-                      Apply outfit
+                      {{ $t('studio.outfitPlans.applyOutfit') }}
                     </button>
                     <!-- Google search buttons for missing items -->
                     <div v-if="getMissingItems(outfit).length > 0" class="flex flex-wrap gap-2">
                       <button
                         v-for="(missingItem, idx) in getMissingItems(outfit)"
                         :key="idx"
-                        @click.stop="searchOnGoogle(missingItem.description)"
+                        @click.stop="searchOnGoogle(missingItem.description, $event)"
+                        type="button"
                         class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
                       >
                         <Search class="w-3 h-3" />
-                        <span>Search {{ missingItem.role }}</span>
+                        <span>{{ $t('studio.outfitPlans.searchRole', { role: translateRole(missingItem.role) }) }}</span>
                       </button>
                     </div>
                   </div>
@@ -2161,33 +2196,33 @@ const searchOnGoogle = (description: string) => {
       <!-- Applied Outfit Items - Independent Section -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Applied Outfit Items</h2>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.appliedOutfitItems.title') }}</h2>
           <p class="text-sm text-gray-700">
-            Items currently in this outfit. Remove items or generate suggestions for missing roles.
+            {{ $t('studio.appliedOutfitItems.description') }}
           </p>
         </div>
         
         <div class="p-4 border border-pink-100 rounded-xl bg-pink-50/50">
           <div class="flex items-center justify-between mb-3">
             <p class="text-sm font-medium text-gray-700">
-              Applied outfit items ({{ activeWardrobeItems.length }})
+              {{ $t('studio.appliedOutfitItems.itemsCount', { count: activeWardrobeItems.length }) }}
             </p>
             <p v-if="getMissingRoles().length > 0" class="text-xs text-pink-600">
-              {{ getMissingRoles().length }} roles removed; re-generate to fill them.
+              {{ $t('studio.appliedOutfitItems.rolesRemoved', { count: getMissingRoles().length }) }}
             </p>
           </div>
           
           <!-- Empty state -->
           <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
             <Shirt class="w-12 h-12 mx-auto mb-3 text-pink-600" />
-            <p class="text-sm text-gray-700 mb-2">No items selected yet</p>
-            <p class="text-xs text-pink-600 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
+            <p class="text-sm text-gray-700 mb-2">{{ $t('studio.appliedOutfitItems.noItemsSelected') }}</p>
+            <p class="text-xs text-pink-600 mb-4">{{ $t('studio.appliedOutfitItems.goToWardrobePrompt') }}</p>
             <button
               @click="$router.push('/wardrobe')"
               class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-pink-200 text-gray-700 hover:border-pink-600 hover:text-gray-900 transition-colors"
             >
               <Shirt class="w-4 h-4" />
-              Go to Wardrobe
+              {{ $t('studio.appliedOutfitItems.goToWardrobe') }}
             </button>
           </div>
           
@@ -2218,7 +2253,7 @@ const searchOnGoogle = (description: string) => {
                 <button
                   @click.stop="removeActiveItem(String(item.id))"
                   class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md z-10"
-                  title="删除此单品"
+                  :title="$t('studio.appliedOutfitItems.deleteItem')"
                 >
                   <X class="w-4 h-4" />
                 </button>
@@ -2258,16 +2293,16 @@ const searchOnGoogle = (description: string) => {
           <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
             <div class="flex items-center justify-between mb-3">
               <div>
-                <p class="text-sm font-medium text-gray-700 mb-1">Model photo</p>
+                <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.modelPhoto.title') }}</p>
                 <p class="text-xs text-pink-500">
-                  Upload a half-body or full-body photo of you. All try-ons will use this model photo.
+                  {{ $t('studio.modelPhoto.description') }}
                 </p>
               </div>
               <button
                 v-if="modelImagePreviewUrl && !isUploadingModelImage"
                 @click="removeModelImage"
                 class="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md flex-shrink-0"
-                title="Delete model photo"
+                :title="$t('studio.modelPhoto.deleteModelPhoto')"
               >
                 <X class="w-4 h-4" />
               </button>
@@ -2277,7 +2312,7 @@ const searchOnGoogle = (description: string) => {
                 v-if="modelImagePreviewUrl"
                 :src="getMediumImageUrl(modelImagePreviewUrl)" 
                 loading="lazy"
-                alt="Model preview" 
+                :alt="$t('studio.modelPhoto.modelPreview')" 
                 class="w-full h-full object-cover"
               />
               <!-- Upload progress overlay -->
@@ -2315,7 +2350,7 @@ const searchOnGoogle = (description: string) => {
                     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
                   >
                     <Upload class="w-4 h-4" />
-                    <span>Upload new photo</span>
+                    <span>{{ $t('studio.modelPhoto.uploadNewPhoto') }}</span>
                   </label>
                   <input
                     id="modelImageInput"
@@ -2330,7 +2365,7 @@ const searchOnGoogle = (description: string) => {
                     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
                   >
                     <Clock class="w-4 h-4" />
-                    <span>History</span>
+                    <span>{{ $t('studio.modelPhoto.history') }}</span>
                   </button>
                   <button
                     @click="showExampleModelImages = !showExampleModelImages"
@@ -2341,7 +2376,7 @@ const searchOnGoogle = (description: string) => {
                   </button>
                 </div>
                 <p class="text-xs text-pink-600">
-                  Upload a half-body or full-body photo; all try-ons will use this model photo.
+                  {{ $t('studio.modelPhoto.description') }}
                 </p>
               </div>
             </div>
@@ -2370,7 +2405,7 @@ const searchOnGoogle = (description: string) => {
                 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <Clock class="w-4 h-4" />
-                <span>History</span>
+                <span>{{ $t('studio.modelPhoto.history') }}</span>
               </button>
               <button
                 @click="showExampleModelImages = !showExampleModelImages"
@@ -2584,7 +2619,7 @@ const searchOnGoogle = (description: string) => {
         <!-- Try-on Result -->
         <div v-if="tryOnImageUrl" class="border-t border-gray-100 pt-6">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-semibold">Virtual Try-On Result</h3>
+            <h3 class="text-lg font-semibold">{{ $t('studio.virtualTryOn.title') }}</h3>
             <button
               @click="saveFavorite"
               :disabled="isSavingFavorite"
@@ -2602,13 +2637,13 @@ const searchOnGoogle = (description: string) => {
                   favoriteSaved ? 'fill-current text-pink-600' : ''
                 ]"
               />
-              <span v-if="isSavingFavorite">Saving...</span>
-              <span v-else-if="favoriteSaved">Saved</span>
-              <span v-else>Favorite</span>
+              <span v-if="isSavingFavorite">{{ $t('studio.virtualTryOn.saving') }}</span>
+              <span v-else-if="favoriteSaved">{{ $t('studio.virtualTryOn.saved') }}</span>
+              <span v-else>{{ $t('studio.virtualTryOn.favorite') }}</span>
             </button>
           </div>
           <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:border-gray-300 transition-colors" @click="openTryOnImageViewer">
-            <img :src="getLargeImageUrl(tryOnImageUrl || '')" loading="lazy" alt="Try-on result" class="w-full object-contain" />
+            <img :src="getLargeImageUrl(tryOnImageUrl || '')" loading="lazy" :alt="$t('studio.virtualTryOn.tryOnResult')" class="w-full object-contain" />
           </div>
         </div>
       </section>

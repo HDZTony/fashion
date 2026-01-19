@@ -230,6 +230,50 @@
       "generateFailed": "生成穿搭失败",
       "tryOnFailed": "试穿失败",
       "saveFavoriteFailed": "保存收藏失败"
+    },
+    "outfitPlans": {
+      "title": "AI 穿搭方案",
+      "applyOutfit": "应用穿搭",
+      "searchRole": "搜索{role}",
+      "inWardrobe": "（在衣橱中）",
+      "selected": "（已选择）",
+      "searchOnGoogle": "在 Google 上搜索 {description}",
+      "pleaseChooseOutfit": "请先通过应用穿搭选择一套穿搭，然后再试穿。",
+      "missingImageUrls": "此穿搭中的某些物品缺少可用的图片URL。",
+      "applyFailed": "应用穿搭失败：{error}",
+      "roles": {
+        "top": "上装",
+        "bottom": "下装",
+        "outer": "外套",
+        "shoes": "鞋子",
+        "accessory": "配饰"
+      }
+    },
+    "appliedOutfitItems": {
+      "title": "已应用的穿搭物品",
+      "description": "当前穿搭中的物品。移除物品或为缺失的角色生成建议。",
+      "itemsCount": "已应用的穿搭物品（{count}）",
+      "rolesRemoved": "{count} 个角色已移除；重新生成以填充它们。",
+      "noItemsSelected": "尚未选择物品",
+      "goToWardrobePrompt": "前往衣橱并添加物品到穿搭生成器。",
+      "goToWardrobe": "前往衣橱",
+      "deleteItem": "删除此物品"
+    },
+    "modelPhoto": {
+      "title": "模特照片",
+      "description": "上传您的半身或全身照片。所有试穿将使用此模特照片。",
+      "deleteModelPhoto": "删除模特照片",
+      "uploadNewPhoto": "上传新照片",
+      "history": "历史记录",
+      "modelPreview": "模特预览",
+      "pleaseUploadFirst": "请先上传您的模特照片。"
+    },
+    "virtualTryOn": {
+      "title": "虚拟试穿结果",
+      "saving": "保存中...",
+      "saved": "已保存",
+      "favorite": "收藏",
+      "tryOnResult": "试穿结果"
     }
   },
   "favorites": {
