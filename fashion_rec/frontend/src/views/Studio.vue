@@ -311,20 +311,38 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // Load items when component mounts
 onMounted(async () => {
+  // Detect if this is a page refresh (not a route navigation)
+  // If it's a refresh, clear all studio state
+  const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+  const isPageRefresh = navigationEntry?.type === 'reload' || 
+                        (performance.navigation && (performance.navigation as any).type === 1)
+  
+  if (isPageRefresh) {
+    console.log('[onMounted] Page refresh detected, clearing studio state')
+    studioStore.clearState()
+    // Also clear sessionStorage to ensure clean state
+    sessionStorage.removeItem('studio-store')
+    sessionStorage.removeItem('tryon_history_restore')
+  }
+  
   // Load local selection state first and sync to activeWardrobeIds
-  syncSelectedItemsToActiveWardrobe()
+  // Skip if page refresh (user wants clean state)
+  if (!isPageRefresh) {
+    syncSelectedItemsToActiveWardrobe()
 
-  // Try to restore items from cache first for instant display of Applied outfit items
-  // These items are already loaded in Wardrobe page and saved to sessionStorage
-  // Studio page doesn't need to load all items from backend - only items selected in Wardrobe are needed
-  restoreItemsFromCache()
+    // Try to restore items from cache first for instant display of Applied outfit items
+    // These items are already loaded in Wardrobe page and saved to sessionStorage
+    // Studio page doesn't need to load all items from backend - only items selected in Wardrobe are needed
+    restoreItemsFromCache()
+  }
   
   // Studio state is automatically restored by Pinia store (no manual restore needed)
   // But we need to check favorite status if try-on image exists
   const lookId = route.query.lookId as string | undefined
   const tryonHistoryId = route.query.tryonHistoryId as string | undefined
   
-  if (!lookId && !tryonHistoryId && tryOnImageUrl.value) {
+  // Skip favorite status check on page refresh (state is already cleared)
+  if (!isPageRefresh && !lookId && !tryonHistoryId && tryOnImageUrl.value) {
     // If not restoring from history and try-on image exists, check favorite status
     checkFavoriteStatus()
   }
@@ -356,14 +374,16 @@ onMounted(async () => {
   }
   
   // Check if we need to restore a look from history
-  if (lookId) {
+  // Skip restoration if this is a page refresh (user wants clean state on refresh)
+  if (lookId && !isPageRefresh) {
     console.log('[onMounted] Found lookId in query, restoring look:', lookId)
     // Items should be in cache from Wardrobe page, but if not, restoreLookFromHistory will handle it
     await restoreLookFromHistory(lookId)
   }
   
   // Check if we need to restore try-on history
-  if (tryonHistoryId) {
+  // Skip restoration if this is a page refresh (user wants clean state on refresh)
+  if (tryonHistoryId && !isPageRefresh) {
     console.log('[onMounted] Found tryonHistoryId in query, restoring try-on history:', tryonHistoryId)
     await restoreTryOnHistory(tryonHistoryId)
   }
@@ -695,29 +715,13 @@ const getRecommendations = async () => {
   tryOnImageUrl.value = null
 
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:723',message:'getRecommendations started',data:{uploadedItemsCount:uploadedItems.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     // Ensure uploadedItems is loaded before generating outfits
     if (uploadedItems.value.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:730',message:'uploadedItems empty, trying to restore from cache',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       const restored = restoreItemsFromCache()
       if (!restored) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:733',message:'cache empty, loading from backend',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         await loadUserItems()
-      } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:737',message:'restored from cache',data:{uploadedItemsCount:uploadedItems.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-      }        
+      }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:740',message:'before generating outfits',data:{uploadedItemsCount:uploadedItems.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     // Background image should already be uploaded in handleBackgroundImageChange
     // If we have a file but no URL, upload it now (fallback)
     if (backgroundImageFile.value && !backgroundImageUrl.value) {
@@ -802,9 +806,6 @@ const getRecommendations = async () => {
 
     console.log('Agent raw outfit text:', response.data.raw_text)
     agentOutfits.value = response.data.outfits || []
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:815',message:'outfits received',data:{outfitsCount:agentOutfits.value.length,uploadedItemsCount:uploadedItems.value.length,firstOutfitItems:agentOutfits.value[0]?.items?.map((it:any)=>({wardrobe_id:it.wardrobe_id,description:it.description}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     // State is automatically persisted by Pinia store
   } catch (error: any) {
     console.error('Recommendation failed:', error)
@@ -825,15 +826,8 @@ const formatFeatureValue = (value: string | string[] | undefined): string => {
 // Category helpers are currently unused on Studio; kept for potential future UI.
 
 const findWardrobeItemById = (wardrobeId?: string | null): Item | null => {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:833',message:'findWardrobeItemById called',data:{wardrobeId,uploadedItemsCount:uploadedItems.value.length,uploadedItemIds:uploadedItems.value.map(it=>String(it.id)).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   if (!wardrobeId) return null
-  const found = uploadedItems.value.find((it) => String(it.id) === String(wardrobeId)) || null
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:836',message:'findWardrobeItemById result',data:{wardrobeId,found:!!found,foundId:found?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  return found
+  return uploadedItems.value.find((it) => String(it.id) === String(wardrobeId)) || null
 }
 
 const activeWardrobeItems = computed(() =>
@@ -1837,22 +1831,11 @@ const saveFavorite = async () => {
 
 // Helper functions for outfit items
 const getMissingItems = (outfit: AgentOutfit): AgentOutfitItem[] => {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:1849',message:'getMissingItems called',data:{outfitTitle:outfit.title,itemsCount:outfit.items.length,uploadedItemsCount:uploadedItems.value.length,itemsWithWardrobeId:outfit.items.filter(it=>it.wardrobe_id).map(it=>({wardrobe_id:it.wardrobe_id,description:it.description}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-  // #endregion
-  const missing = outfit.items.filter(item => {
+  return outfit.items.filter(item => {
     // Item is missing if it has no wardrobe_id or the wardrobe_id doesn't exist in uploadedItems
     if (!item.wardrobe_id) return true
-    const found = findWardrobeItemById(item.wardrobe_id)
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:1853',message:'checking item in getMissingItems',data:{wardrobe_id:item.wardrobe_id,description:item.description,found:!!found},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    return !found
+    return !findWardrobeItemById(item.wardrobe_id)
   })
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:1856',message:'getMissingItems result',data:{missingCount:missing.length,missingItems:missing.map(it=>({wardrobe_id:it.wardrobe_id,description:it.description}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-  // #endregion
-  return missing
 }
 
 // Helper function to translate role names
