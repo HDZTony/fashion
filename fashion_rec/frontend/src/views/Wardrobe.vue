@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { Item, PendingItem, ItemFeatures } from '../types'
 import { apiClient, uploadApiClient, longUploadApiClient } from '../lib/api-client'
+import { useStudioStore } from '../stores/studio'
 import { API_URL } from '../config/api'
 
 const { t } = useI18n()
@@ -27,7 +28,13 @@ import {
 
 const route = useRoute()
 
-const uploadedItems = ref<Item[]>([])
+const studioStore = useStudioStore()
+
+// Persisted wardrobe items via Pinia (sessionStorage-backed)
+const uploadedItems = computed({
+  get: () => studioStore.uploadedItems,
+  set: (value) => studioStore.setUploadedItems(value),
+})
 const hasLoadedItems = ref(false)
 const typeFilters = computed(() => [
   t('wardrobe.categories.all'),
@@ -63,25 +70,28 @@ const isImporting = ref(false)
 const GENDER_WOMENS = "Women's"
 const GENDER_MENS = "Man's"
 
-// Persistent selection for outfit generation (synced with Studio.vue)
-const selectedForOutfitIds = ref<Set<string>>(new Set())
+// Persistent selection for outfit generation (synced with Studio.vue via Pinia)
+const selectedItemIds = computed({
+  get: () => studioStore.selectedItemIds,
+  set: (value) => studioStore.setSelectedItemIds(value),
+})
+const selectedForOutfitIds = ref<Set<string>>(new Set(selectedItemIds.value))
 
-// Load selection from localStorage on mount
+// Load selection from Pinia on mount
 const loadOutfitSelection = () => {
-  try {
-    const saved = localStorage.getItem('fashion-rec_selected_items')
-    if (saved) {
-      const ids = JSON.parse(saved)
-      if (Array.isArray(ids)) {
-        selectedForOutfitIds.value = new Set(ids)
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load selection from localStorage:', e)
+  const ids = selectedItemIds.value
+  if (Array.isArray(ids)) {
+    selectedForOutfitIds.value = new Set(ids)
   }
 }
 
-// Toggle selection and save to localStorage
+watch(selectedItemIds, (ids) => {
+  if (Array.isArray(ids)) {
+    selectedForOutfitIds.value = new Set(ids)
+  }
+})
+
+// Toggle selection and save to Pinia
 const toggleOutfitSelection = (itemId: string, event?: Event) => {
   if (event) {
     event.stopPropagation()
@@ -93,15 +103,8 @@ const toggleOutfitSelection = (itemId: string, event?: Event) => {
     selectedForOutfitIds.value.add(itemId)
   }
   
-  // Save to localStorage
-  try {
-    localStorage.setItem(
-      'fashion-rec_selected_items', 
-      JSON.stringify(Array.from(selectedForOutfitIds.value))
-    )
-  } catch (e) {
-    console.error('Failed to save selection to localStorage:', e)
-  }
+  // Save to Pinia
+  selectedItemIds.value = Array.from(selectedForOutfitIds.value)
 }
 
 const isOutfitSelected = (itemId: string) => selectedForOutfitIds.value.has(itemId)
@@ -209,7 +212,7 @@ const loadUserItems = async () => {
       }
     })
     hasLoadedItems.value = true
-    // Save to sessionStorage for persistence across component recreations
+    // Save to Pinia for persistence across component recreations
     saveItemsToCache()
     // Mark that we've successfully loaded (clear the attempt flag)
     sessionStorage.removeItem('wardrobe_load_attempted')
@@ -661,13 +664,13 @@ const filteredItems = computed(() => {
 
 // Batch delete functionality
 const isSelectionMode = ref(false)
-const selectedItemIds = ref<Set<string>>(new Set())
+const selectedItemIdsSet = ref<Set<string>>(new Set())
 const isDeleting = ref(false)
 
 const toggleSelectionMode = () => {
   isSelectionMode.value = !isSelectionMode.value
   if (!isSelectionMode.value) {
-    selectedItemIds.value.clear()
+    selectedItemIdsSet.value.clear()
   }
 }
 
@@ -675,35 +678,35 @@ const toggleItemSelection = (itemId: string, event?: Event) => {
   if (event) {
     event.stopPropagation()
   }
-  if (selectedItemIds.value.has(itemId)) {
-    selectedItemIds.value.delete(itemId)
+  if (selectedItemIdsSet.value.has(itemId)) {
+    selectedItemIdsSet.value.delete(itemId)
   } else {
-    selectedItemIds.value.add(itemId)
+    selectedItemIdsSet.value.add(itemId)
   }
 }
 
 const toggleSelectAll = () => {
-  if (selectedItemIds.value.size === filteredItems.value.length) {
-    selectedItemIds.value.clear()
+  if (selectedItemIdsSet.value.size === filteredItems.value.length) {
+    selectedItemIdsSet.value.clear()
   } else {
     filteredItems.value.forEach(item => {
-      selectedItemIds.value.add(String(item.id))
+      selectedItemIdsSet.value.add(String(item.id))
     })
   }
 }
 
-const selectedCount = computed(() => selectedItemIds.value.size)
+const selectedCount = computed(() => selectedItemIdsSet.value.size)
 const isAllSelected = computed(() => {
-  return filteredItems.value.length > 0 && selectedItemIds.value.size === filteredItems.value.length
+  return filteredItems.value.length > 0 && selectedItemIdsSet.value.size === filteredItems.value.length
 })
 
 const deleteSelectedItems = async () => {
-  if (selectedItemIds.value.size === 0) {
+  if (selectedItemIdsSet.value.size === 0) {
     alert('Select items to delete first.')
     return
   }
 
-  const itemIdsArray = Array.from(selectedItemIds.value)
+  const itemIdsArray = Array.from(selectedItemIdsSet.value)
   
   // 乐观更新：先保存要删除的物品，用于可能的回滚
   const itemsToDelete = uploadedItems.value.filter(item => 
@@ -715,11 +718,11 @@ const deleteSelectedItems = async () => {
     !itemIdsArray.includes(String(item.id))
   )
   
-  // 更新缓存
+  // 更新 Pinia 持久化数据
   saveItemsToCache()
   
   // 清除选择状态并退出选择模式
-  selectedItemIds.value.clear()
+  selectedItemIdsSet.value.clear()
   isSelectionMode.value = false
   
   // 异步调用后端删除（不阻塞UI）
@@ -950,70 +953,49 @@ onMounted(() => {
     (typeof (performance as any).navigation !== 'undefined' && (performance as any).navigation.type === 1)
   
   if (isPageRefresh) {
-    // Manual page refresh: clear cache and force reload from server
-    console.log('[Wardrobe] Page refresh detected, clearing cache and loading fresh data from server...')
-    try {
-      sessionStorage.removeItem('wardrobe_items_cache')
-      sessionStorage.removeItem('wardrobe_load_attempted')
-    } catch (e) {
-      console.warn('[Wardrobe] Failed to clear cache:', e)
-    }
+    // Manual page refresh: clear Pinia items and force reload from server
+    console.log('[Wardrobe] Page refresh detected, clearing Pinia items and loading fresh data from server...')
     hasLoadedItems.value = false
-    uploadedItems.value = []
+    studioStore.setUploadedItems([])
+    sessionStorage.removeItem('wardrobe_load_attempted')
     loadUserItems()
   } else {
-    // Normal mount: try to restore from cache first
-    if (uploadedItems.value.length === 0) {
-      restoreItemsFromCache()
+    // Normal mount: use persisted Pinia data if available; otherwise load
+    const restored = restoreItemsFromCache()
+    if (!restored) {
+      loadUserItems()
     }
   }
   loadOutfitSelection()
   window.addEventListener('keydown', handleKeyDown)
 })
 
-// Save items to sessionStorage
+// Save items to Pinia (Pinia persistence handles storage)
 const saveItemsToCache = () => {
-  try {
-    sessionStorage.setItem('wardrobe_items_cache', JSON.stringify(uploadedItems.value))
-  } catch (e) {
-    console.warn('Failed to save items to sessionStorage:', e)
-  }
+  studioStore.setUploadedItems([...uploadedItems.value])
 }
 
-// Restore items from sessionStorage if available
+// Restore items from Pinia if available
 const restoreItemsFromCache = () => {
-  try {
-    const cached = sessionStorage.getItem('wardrobe_items_cache')
-    if (cached) {
-      const items = JSON.parse(cached)
-      if (Array.isArray(items) && items.length > 0) {
-        uploadedItems.value = items
-        hasLoadedItems.value = true
-        console.log('[Wardrobe] Restored items from sessionStorage:', items.length)
-        return true
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to restore items from sessionStorage:', e)
+  if (Array.isArray(uploadedItems.value) && uploadedItems.value.length > 0) {
+    hasLoadedItems.value = true
+    console.log('[Wardrobe] Using persisted Pinia items:', uploadedItems.value.length)
+    return true
   }
   return false
 }
 
 onActivated(() => {
-  // Reload selection from localStorage when component is activated
-  // This ensures the selection state is synced when user returns from Studio page
+  // Reload selection from Pinia when component is activated
   loadOutfitSelection()
   
-  // Restore items from cache if memory is empty (keep-alive may have failed)
+  // Restore items from Pinia if available; otherwise load once
   if (uploadedItems.value.length === 0) {
     const restored = restoreItemsFromCache()
-    if (restored) {
-      console.log('[Wardrobe onActivated] Restored items from sessionStorage, count:', uploadedItems.value.length)
-    } else {
-      // Only load if we haven't tried loading before (check sessionStorage flag)
+    if (!restored) {
       const hasTriedLoading = sessionStorage.getItem('wardrobe_load_attempted') === 'true'
       if (!hasTriedLoading && !hasLoadedItems.value) {
-        console.log('[Wardrobe onActivated] No cached data, loading items...')
+        console.log('[Wardrobe onActivated] No persisted data, loading items...')
         sessionStorage.setItem('wardrobe_load_attempted', 'true')
         loadUserItems()
       } else {
@@ -1021,17 +1003,17 @@ onActivated(() => {
       }
     }
   } else {
-    console.log('[Wardrobe onActivated] Using cached data, items count:', uploadedItems.value.length)
+    console.log('[Wardrobe onActivated] Using persisted data, items count:', uploadedItems.value.length)
   }
   
-  console.log('[Wardrobe onActivated] Reloaded outfit selection from localStorage')
+  console.log('[Wardrobe onActivated] Reloaded outfit selection from Pinia')
 })
 
 // Watch for route changes to reload selection when navigating to this page
 watch(() => route.name, (newName) => {
   if (newName === 'wardrobe') {
     loadOutfitSelection()
-    console.log('[Wardrobe watch route] Reloaded outfit selection from localStorage')
+    console.log('[Wardrobe watch route] Reloaded outfit selection from Pinia')
   }
 })
 
@@ -1207,7 +1189,7 @@ onUnmounted(() => {
             :key="item.id"
             @click="isSelectionMode ? toggleItemSelection(String(item.id), $event) : openImageViewer(index, $event)"
             class="group relative rounded-xl overflow-hidden border aspect-[3/4] cursor-pointer transition-all hover:shadow-md"
-            :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'border-pink-500 border-2 ring-2 ring-pink-200' : 'border-pink-200'"
+            :class="isSelectionMode && selectedItemIdsSet.has(String(item.id)) ? 'border-pink-500 border-2 ring-2 ring-pink-200' : 'border-pink-200'"
           >
             <!-- Selection checkbox -->
             <div
@@ -1217,10 +1199,10 @@ onUnmounted(() => {
             >
               <div
                 class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
-                :class="selectedItemIds.has(String(item.id)) ? 'bg-pink-500 border-pink-500' : 'bg-white/90 border-pink-300'"
+                :class="selectedItemIdsSet.has(String(item.id)) ? 'bg-pink-500 border-pink-500' : 'bg-white/90 border-pink-300'"
               >
                 <svg
-                  v-if="selectedItemIds.has(String(item.id))"
+                  v-if="selectedItemIdsSet.has(String(item.id))"
                   class="w-4 h-4 text-white"
                   fill="none"
                   stroke="currentColor"
@@ -1233,10 +1215,10 @@ onUnmounted(() => {
             
             <img
               v-if="item.url || item.features.path"
-              :src="getThumbnailUrl(item.url || item.features.path)"
+              :src="getThumbnailUrl((item.url || item.features.path)!)"
               loading="lazy"
               class="absolute inset-0 w-full h-full object-cover"
-              :class="isSelectionMode && selectedItemIds.has(String(item.id)) ? 'opacity-75' : ''"
+              :class="isSelectionMode && selectedItemIdsSet.has(String(item.id)) ? 'opacity-75' : ''"
               alt="Clothing item"
             />
             <div v-else class="absolute inset-0 bg-gray-100 flex items-center justify-center text-pink-400">
@@ -1437,11 +1419,15 @@ onUnmounted(() => {
           <!-- Item Image -->
           <div class="flex justify-center">
             <img
-              :src="getMediumImageUrl(currentItem.url || currentItem.features.path)"
+              v-if="currentItem.url || currentItem.features.path"
+              :src="getMediumImageUrl((currentItem.url || currentItem.features.path)!)"
               loading="lazy"
               :alt="formatFeatureValue(currentItem.features.type)"
               class="w-full max-w-sm rounded-lg object-cover shadow-lg"
             />
+            <div v-else class="w-full max-w-sm h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+              <span>No image available</span>
+            </div>
           </div>
           
           <!-- Item Information -->

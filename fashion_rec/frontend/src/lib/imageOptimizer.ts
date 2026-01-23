@@ -70,7 +70,7 @@ export function getOptimizedImageUrl(
 }
 
 // 便捷函数
-export const getThumbnailUrl = (url: string) => getOptimizedImageUrl(url, 'thumbnail')
-export const getSmallImageUrl = (url: string) => getOptimizedImageUrl(url, 'small')
-export const getMediumImageUrl = (url: string) => getOptimizedImageUrl(url, 'medium')
-export const getLargeImageUrl = (url: string) => getOptimizedImageUrl(url, 'large')
+export const getThumbnailUrl = (url: string | null | undefined) => getOptimizedImageUrl(url, 'thumbnail')
+export const getSmallImageUrl = (url: string | null | undefined) => getOptimizedImageUrl(url, 'small')
+export const getMediumImageUrl = (url: string | null | undefined) => getOptimizedImageUrl(url, 'medium')
+export const getLargeImageUrl = (url: string | null | undefined) => getOptimizedImageUrl(url, 'large')

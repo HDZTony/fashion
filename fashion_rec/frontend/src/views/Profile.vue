@@ -205,8 +205,6 @@ const signOut = async () => {
     // Clear sessionStorage caches
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('studio-store')
-      sessionStorage.removeItem('wardrobe_items_cache')
-      localStorage.removeItem('fashion-rec_selected_items')
     }
     
     await supabase.auth.signOut()
@@ -565,7 +563,7 @@ onMounted(async () => {
                   <span class="group-data-[state=collapsed]/sidebar-wrapper:hidden">Account</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
+              <!-- <SidebarMenuItem>
                 <SidebarMenuButton
                   :is-active="activeTab === 'seo'"
                   @click="activeTab = 'seo'"
@@ -573,7 +571,7 @@ onMounted(async () => {
                   <Search class="size-4" />
                   <span class="group-data-[state=collapsed]/sidebar-wrapper:hidden">SEO</span>
                 </SidebarMenuButton>
-              </SidebarMenuItem>
+              </SidebarMenuItem> -->
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -107,14 +107,10 @@ export const useAuthStore = defineStore('auth', () => {
             const studioStore = useStudioStore()
             studioStore.clearState()
             sessionStorage.removeItem('studio-store')
-            sessionStorage.removeItem('wardrobe_items_cache')
-            localStorage.removeItem('fashion-rec_selected_items')
           } catch (e) {
             // If studio store is not available (e.g., during SSR), just clear storage directly
             console.warn('[Auth Store] Failed to clear studio store, clearing storage directly:', e)
             sessionStorage.removeItem('studio-store')
-            sessionStorage.removeItem('wardrobe_items_cache')
-            localStorage.removeItem('fashion-rec_selected_items')
           }
         }
       }

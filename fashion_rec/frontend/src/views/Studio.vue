@@ -18,10 +18,17 @@ const { t } = useI18n()
 // Initialize Pinia store
 const studioStore = useStudioStore()
 
+// Uploaded wardrobe items (persisted via store)
+const uploadedItems = computed({
+  get: () => studioStore.uploadedItems,
+  set: (value) => studioStore.setUploadedItems(value)
+})
 // Local state (not persisted)
-const uploadedItems = ref<Item[]>([])
 const selectedItem = ref<Item | null>(null)
-const selectedItemIds = ref<string[]>([])
+const selectedItemIds = computed({
+  get: () => studioStore.selectedItemIds,
+  set: (value) => studioStore.setSelectedItemIds(value)
+})
 const recommendations = ref<Recommendation[]>([])
 const modelImageFile = ref<File | null>(null)
 const isGenerating = ref(false)
@@ -63,6 +70,12 @@ const activeWardrobeIds = computed({
 const activeWardrobeRoleMap = computed({
   get: () => studioStore.getActiveWardrobeRoleMap(),
   set: (value) => studioStore.setActiveWardrobeRoleMap(value)
+})
+
+// Background action prompt (persisted via store)
+const backgroundActionPrompt = computed({
+  get: () => studioStore.backgroundActionPrompt,
+  set: (value) => studioStore.setBackgroundActionPrompt(value)
 })
 
 // Helper functions to update role map (since computed doesn't support Map methods directly)
@@ -164,30 +177,10 @@ const exampleBackgroundImages = ref<ExampleBackgroundImage[]>([
 const backgroundImageUploadProgress = ref(0)
 const isUploadingBackgroundImage = ref(false)
 
-// Background action prompt (for describing model actions in background)
-const backgroundActionPrompt = ref<string>('')
-
-// Saved background action prompt when switching to "no-background" tab
-const savedBackgroundActionPrompt = ref<string>('')
-
-// Current tab value for background image options
-const backgroundTabValue = ref<string>('no-background')
-
-// Watch for tab changes and validate background image requirement
-watch(backgroundTabValue, (newValue: string, oldValue: string) => {
-  // When switching from "with-background" to "no-background", save the current action prompt
-  if (oldValue === 'with-background' && newValue === 'no-background') {
-    savedBackgroundActionPrompt.value = backgroundActionPrompt.value
-  }
-  // When switching from "no-background" to "with-background", restore the saved action prompt
-  else if (oldValue === 'no-background' && newValue === 'with-background') {
-    backgroundActionPrompt.value = savedBackgroundActionPrompt.value
-  }
-  
-  if (newValue === 'with-background' && !backgroundImageUrl.value && !backgroundImagePreviewUrl.value && !isUploadingBackgroundImage.value) {
-    // Auto-focus on upload button or show hint
-    // The UI will show the upload button prominently
-  }
+// Current tab value for background image options (persisted via store)
+const backgroundTabValue = computed({
+  get: () => studioStore.backgroundTabValue,
+  set: (value) => studioStore.setBackgroundTabValue(value)
 })
 
 // Model image upload progress
@@ -233,31 +226,15 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
-// Save items to sessionStorage
+// Persist items via Pinia (sessionStorage-backed)
 const saveItemsToCache = () => {
-  try {
-    sessionStorage.setItem('wardrobe_items_cache', JSON.stringify(uploadedItems.value))
-  } catch (e) {
-    console.warn('Failed to save items to sessionStorage:', e)
-  }
+  // Pinia persistence handles storage; setter ensures reactivity
+  studioStore.setUploadedItems([...uploadedItems.value])
 }
 
-// Restore items from sessionStorage if available
 const restoreItemsFromCache = () => {
-  try {
-    const cached = sessionStorage.getItem('wardrobe_items_cache')
-    if (cached) {
-      const items = JSON.parse(cached)
-      if (Array.isArray(items) && items.length > 0) {
-        uploadedItems.value = items
-        console.log('[Studio] Restored items from sessionStorage:', items.length)
-        return true
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to restore items from sessionStorage:', e)
-  }
-  return false
+  // If store already has data (from persisted session), treat as restored
+  return Array.isArray(uploadedItems.value) && uploadedItems.value.length > 0
 }
 
 // State is automatically persisted by Pinia store, no need for manual save/restore
@@ -394,25 +371,16 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeyDown)
 })
 
-// Sync selectedItemIds from localStorage to activeWardrobeIds when component is activated
+// Sync selectedItemIds from store to activeWardrobeIds when component is activated
 // This ensures items selected from Wardrobe page appear in Applied Outfit Items
 const syncSelectedItemsToActiveWardrobe = () => {
-  try {
-    const saved = localStorage.getItem('fashion-rec_selected_items')
-    if (saved) {
-      const ids = JSON.parse(saved)
-      if (Array.isArray(ids)) {
-        selectedItemIds.value = ids
-        // Merge selectedItemIds into activeWardrobeIds (add items that are not already there)
-        const newIds = ids.filter(id => !activeWardrobeIds.value.includes(String(id)))
-        if (newIds.length > 0) {
-          activeWardrobeIds.value.push(...newIds.map(id => String(id)))
-          console.log('[syncSelectedItemsToActiveWardrobe] Added new items to activeWardrobeIds:', newIds)
-        }
-      }
+  const ids = selectedItemIds.value
+  if (Array.isArray(ids) && ids.length > 0) {
+    const newIds = ids.filter(id => !activeWardrobeIds.value.includes(String(id)))
+    if (newIds.length > 0) {
+      activeWardrobeIds.value.push(...newIds.map(id => String(id)))
+      console.log('[syncSelectedItemsToActiveWardrobe] Added new items to activeWardrobeIds:', newIds)
     }
-  } catch (e) {
-    console.error('Failed to sync selected items from localStorage:', e)
   }
 }
 
@@ -727,6 +695,29 @@ const getRecommendations = async () => {
   tryOnImageUrl.value = null
 
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:723',message:'getRecommendations started',data:{uploadedItemsCount:uploadedItems.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    // Ensure uploadedItems is loaded before generating outfits
+    if (uploadedItems.value.length === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:730',message:'uploadedItems empty, trying to restore from cache',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      const restored = restoreItemsFromCache()
+      if (!restored) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:733',message:'cache empty, loading from backend',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        await loadUserItems()
+      } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:737',message:'restored from cache',data:{uploadedItemsCount:uploadedItems.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      }        
+    }
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:740',message:'before generating outfits',data:{uploadedItemsCount:uploadedItems.value.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     // Background image should already be uploaded in handleBackgroundImageChange
     // If we have a file but no URL, upload it now (fallback)
     if (backgroundImageFile.value && !backgroundImageUrl.value) {
@@ -811,6 +802,9 @@ const getRecommendations = async () => {
 
     console.log('Agent raw outfit text:', response.data.raw_text)
     agentOutfits.value = response.data.outfits || []
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:815',message:'outfits received',data:{outfitsCount:agentOutfits.value.length,uploadedItemsCount:uploadedItems.value.length,firstOutfitItems:agentOutfits.value[0]?.items?.map((it:any)=>({wardrobe_id:it.wardrobe_id,description:it.description}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     // State is automatically persisted by Pinia store
   } catch (error: any) {
     console.error('Recommendation failed:', error)
@@ -831,8 +825,15 @@ const formatFeatureValue = (value: string | string[] | undefined): string => {
 // Category helpers are currently unused on Studio; kept for potential future UI.
 
 const findWardrobeItemById = (wardrobeId?: string | null): Item | null => {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:833',message:'findWardrobeItemById called',data:{wardrobeId,uploadedItemsCount:uploadedItems.value.length,uploadedItemIds:uploadedItems.value.map(it=>String(it.id)).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   if (!wardrobeId) return null
-  return uploadedItems.value.find((it) => String(it.id) === String(wardrobeId)) || null
+  const found = uploadedItems.value.find((it) => String(it.id) === String(wardrobeId)) || null
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:836',message:'findWardrobeItemById result',data:{wardrobeId,found:!!found,foundId:found?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  return found
 }
 
 const activeWardrobeItems = computed(() =>
@@ -932,6 +933,9 @@ const selectExampleModelImage = async (imageUrl: string) => {
   modelImageFile.value = null
   showModelImageError.value = false // Reset error state when user selects example image
   
+  // Close the dialog immediately when clicking on an image
+  showExampleModelImages.value = false
+  
   // If the example image is already on our server (R2), use it directly
   // Otherwise, we need to upload it to save to history
   if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
@@ -940,7 +944,6 @@ const selectExampleModelImage = async (imageUrl: string) => {
       URL.revokeObjectURL(modelImagePreviewUrl.value)
     }
     modelImagePreviewUrl.value = imageUrl
-    showExampleModelImages.value = false
     return
   }
   
@@ -987,6 +990,7 @@ const selectExampleModelImage = async (imageUrl: string) => {
     
     if (modelImagePreviewUrl.value) {
       URL.revokeObjectURL(modelImagePreviewUrl.value)
+      modelImagePreviewUrl.value = null
     }
     modelImagePreviewUrl.value = resp.data.url
     modelImageFile.value = null
@@ -1008,10 +1012,7 @@ const selectExampleModelImage = async (imageUrl: string) => {
     modelImagePreviewUrl.value = imageUrl
     isUploadingModelImage.value = false
     modelImageUploadProgress.value = 0
-    alert(`Failed to upload example image: ${e?.message || 'Unknown error'}. Using image directly.`)
   }
-  
-  showExampleModelImages.value = false
 }
 
 const deleteHistoricalModelImage = async (image: HistoricalImage, event: Event) => {
@@ -1548,7 +1549,6 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     
     selectedItem.value = null
     selectedItemIds.value = [] // Clear selected base items after applying
-    localStorage.removeItem('fashion-rec_selected_items')
     
     console.log('=== Apply Outfit (Supplement Mode) ===')
     console.log('Active wardrobe IDs after supplement:', activeWardrobeIds.value)
@@ -1569,7 +1569,6 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     activeWardrobeIds.value = ids
     selectedItem.value = null
     selectedItemIds.value = []
-    localStorage.removeItem('fashion-rec_selected_items')
 
     // Store the original outfit for tracking missing roles
     originalAppliedOutfit.value = outfit
@@ -1674,17 +1673,8 @@ const removeActiveItem = (itemId: string) => {
     map.delete(itemIdStr)
   })
   
-  // Sync to localStorage so Wardrobe page can reflect the change
+  // Sync to Pinia so Wardrobe page can reflect the change
   selectedItemIds.value = selectedItemIds.value.filter(id => String(id) !== itemIdStr)
-  try {
-    localStorage.setItem(
-      'fashion-rec_selected_items',
-      JSON.stringify(selectedItemIds.value)
-    )
-    console.log('[removeActiveItem] Updated localStorage, removed item:', itemIdStr)
-  } catch (e) {
-    console.error('Failed to update localStorage after removing item:', e)
-  }
   
   // If all items are removed, clear the original outfit
   if (activeWardrobeIds.value.length === 0) {
@@ -1847,11 +1837,22 @@ const saveFavorite = async () => {
 
 // Helper functions for outfit items
 const getMissingItems = (outfit: AgentOutfit): AgentOutfitItem[] => {
-  return outfit.items.filter(item => {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:1849',message:'getMissingItems called',data:{outfitTitle:outfit.title,itemsCount:outfit.items.length,uploadedItemsCount:uploadedItems.value.length,itemsWithWardrobeId:outfit.items.filter(it=>it.wardrobe_id).map(it=>({wardrobe_id:it.wardrobe_id,description:it.description}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+  const missing = outfit.items.filter(item => {
     // Item is missing if it has no wardrobe_id or the wardrobe_id doesn't exist in uploadedItems
     if (!item.wardrobe_id) return true
-    return !findWardrobeItemById(item.wardrobe_id)
+    const found = findWardrobeItemById(item.wardrobe_id)
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:1853',message:'checking item in getMissingItems',data:{wardrobe_id:item.wardrobe_id,description:item.description,found:!!found},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+    return !found
   })
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/ff850057-d7e7-4655-a0f3-68f736b35f1d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Studio.vue:1856',message:'getMissingItems result',data:{missingCount:missing.length,missingItems:missing.map(it=>({wardrobe_id:it.wardrobe_id,description:it.description}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+  return missing
 }
 
 // Helper function to translate role names
@@ -2187,7 +2188,7 @@ const searchOnGoogle = (description: string, event?: Event) => {
           <!-- Loading State (only show when actively generating) -->
           <div v-else-if="isGenerating" class="mt-6 py-12 flex flex-col items-center justify-center">
              <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p class="text-pink-600 animate-pulse mb-2">Consulting fashion knowledge base...</p>
+             <p class="text-pink-600 animate-pulse mb-2">{{ $t('studio.consultingKnowledgeBase') }}</p>
              
           </div>
         </div>
@@ -2591,13 +2592,13 @@ const searchOnGoogle = (description: string, event?: Event) => {
         <!-- Try-on Loading State -->
         <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-pink-100 rounded-xl bg-pink-50">
           <div class="w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p class="text-gray-700 animate-pulse mb-2">Generating virtual try-on...</p>
+          <p class="text-gray-700 animate-pulse mb-2">{{ $t('studio.generatingVirtualTryOn') }}</p>
           <!-- AI branding and transparency note (loading) -->
         </div>
 
         <!-- Recommendations -->
         <div v-if="selectedItem && recommendations.length > 0">
-          <h3 class="text-lg font-semibold mb-4">AI Suggestions</h3>
+          <h3 class="text-lg font-semibold mb-4">{{ $t('studio.aiSuggestions') }}</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div v-for="rec in recommendations" :key="rec.id" class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
               <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-pink-400 overflow-hidden">
