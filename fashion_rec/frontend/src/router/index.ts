@@ -129,7 +129,7 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 export const setupRouterGuards = (router: Router) => {
-  router.beforeEach(async (to, _from, next) => {
+  router.beforeEach(async (to, from, next) => {
     // Skip auth check in SSR (server-side rendering)
     // SSR should only render public pages, authenticated pages are rendered on client
     if (typeof window === 'undefined') {
@@ -137,6 +137,13 @@ export const setupRouterGuards = (router: Router) => {
       // This ensures SSR only renders public pages (which don't require auth)
       next()
       return
+    }
+
+    // Mark route navigation (not page refresh) for Studio page
+    // This helps Studio.vue distinguish between route navigation and page refresh
+    if (to.name === 'studio' && from.name) {
+      // Only set marker if navigating from another route (not initial load)
+      sessionStorage.setItem('studio-route-navigation', 'true')
     }
 
     const authStore = useAuthStore()

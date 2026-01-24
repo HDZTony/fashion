@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
-import { getThumbnailUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -287,7 +287,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             class="aspect-square bg-gray-100 cursor-pointer overflow-hidden relative"
           >
             <img
-              :src="getThumbnailUrl(item.image_url)"
+              :src="getMediumImageUrl(item.image_url)"
               loading="lazy"
               alt="Try-on result"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

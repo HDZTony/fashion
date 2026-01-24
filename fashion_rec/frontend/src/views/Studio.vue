@@ -311,18 +311,42 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // Load items when component mounts
 onMounted(async () => {
-  // Detect if this is a page refresh (not a route navigation)
-  // If it's a refresh, clear all studio state
-  const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-  const isPageRefresh = navigationEntry?.type === 'reload' || 
-                        (performance.navigation && (performance.navigation as any).type === 1)
+  // Check if this is a route navigation (from another page) or a page refresh (F5/Ctrl+R)
+  // Route navigation sets a marker in router guard, page refresh doesn't
+  const isRouteNavigation = sessionStorage.getItem('studio-route-navigation') === 'true'
   
-  if (isPageRefresh) {
-    console.log('[onMounted] Page refresh detected, clearing studio state')
+  // Detect if this is a true page refresh (F5/Ctrl+R)
+  let isPageRefresh = false
+  if (!isRouteNavigation) {
+    // Only check navigation type if it's not a route navigation
+    try {
+      const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      if (navigationEntry) {
+        // 'reload' means user pressed F5 or Ctrl+R
+        // 'navigate' means normal navigation (including initial load)
+        isPageRefresh = navigationEntry.type === 'reload'
+      } else if (performance.navigation) {
+        // Fallback for older browsers
+        // 1 = TYPE_RELOAD (refresh), 0 = TYPE_NAVIGATE (normal navigation)
+        isPageRefresh = (performance.navigation as any).type === 1
+      }
+    } catch (e) {
+      console.warn('[onMounted] Failed to detect navigation type:', e)
+    }
+  }
+  
+  // Clear route navigation marker after checking
+  if (isRouteNavigation) {
+    sessionStorage.removeItem('studio-route-navigation')
+    console.log('[onMounted] Route navigation detected (from another page), preserving studio state')
+  } else if (isPageRefresh) {
+    console.log('[onMounted] Page refresh detected (F5/Ctrl+R), clearing studio state')
     studioStore.clearState()
     // Also clear sessionStorage to ensure clean state
     sessionStorage.removeItem('studio-store')
     sessionStorage.removeItem('tryon_history_restore')
+  } else {
+    console.log('[onMounted] Initial page load, preserving studio state')
   }
   
   // Load local selection state first and sync to activeWardrobeIds
@@ -2374,7 +2398,7 @@ const searchOnGoogle = (description: string, event?: Event) => {
                 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
               >
                 <Upload class="w-4 h-4" />
-                <span>Replace photo</span>
+                <span>{{ t('studio.modelPhoto.replacePhoto') }}</span>
               </label>
               <input
                 id="modelImageInputReplace"

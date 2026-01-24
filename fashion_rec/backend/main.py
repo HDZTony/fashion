@@ -1517,58 +1517,57 @@ async def try_on(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         person_img_path = None  # Will use URL for resolution calculation
 
-    # Determine output resolution based on subscription plan
-    # Premium Plus and Premium Pro get 2K resolution while maintaining aspect ratio
+    # Determine output resolution - default to 2K for all users
+    # Calculate 2K resolution while maintaining aspect ratio
     output_size = None
-    if user_plan in ["premium_plus", "premium_pro"]:
-        # Get person image dimensions to maintain aspect ratio
-        try:
-            person_width, person_height = None, None
+    # Get person image dimensions to maintain aspect ratio
+    try:
+        person_width, person_height = None, None
+        
+        if person_img_path and Path(person_img_path).exists():
+            # Get dimensions from local file
+            with Image.open(person_img_path) as img:
+                person_width, person_height = img.size
+        elif person_image_url:
+            # Get dimensions from URL
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(person_image_url, timeout=10.0)
+                    if resp.status_code == 200:
+                        img = Image.open(BytesIO(resp.content))
+                        person_width, person_height = img.size
+            except Exception as e:
+                logger.warning(f"Failed to get image dimensions from URL: {e}, using default aspect ratio")
+        
+        # Calculate 2K resolution maintaining aspect ratio
+        # Target: max dimension = 2048, maintain aspect ratio
+        if person_width and person_height:
+            aspect_ratio = person_width / person_height
+            max_dimension = 2048
             
-            if person_img_path and Path(person_img_path).exists():
-                # Get dimensions from local file
-                with Image.open(person_img_path) as img:
-                    person_width, person_height = img.size
-            elif person_image_url:
-                # Get dimensions from URL
-                try:
-                    async with httpx.AsyncClient() as client:
-                        resp = await client.get(person_image_url, timeout=10.0)
-                        if resp.status_code == 200:
-                            img = Image.open(BytesIO(resp.content))
-                            person_width, person_height = img.size
-                except Exception as e:
-                    logger.warning(f"Failed to get image dimensions from URL: {e}, using default aspect ratio")
+            if aspect_ratio >= 1:  # Landscape or square
+                # Width is larger or equal
+                width = min(max_dimension, int(max_dimension * aspect_ratio))
+                height = min(max_dimension, int(max_dimension / aspect_ratio))
+            else:  # Portrait
+                # Height is larger
+                height = min(max_dimension, int(max_dimension / aspect_ratio))
+                width = min(max_dimension, int(max_dimension * aspect_ratio))
             
-            # Calculate 2K resolution maintaining aspect ratio
-            # Target: max dimension = 2048, maintain aspect ratio
-            if person_width and person_height:
-                aspect_ratio = person_width / person_height
-                max_dimension = 2048
-                
-                if aspect_ratio >= 1:  # Landscape or square
-                    # Width is larger or equal
-                    width = min(max_dimension, int(max_dimension * aspect_ratio))
-                    height = min(max_dimension, int(max_dimension / aspect_ratio))
-                else:  # Portrait
-                    # Height is larger
-                    height = min(max_dimension, int(max_dimension / aspect_ratio))
-                    width = min(max_dimension, int(max_dimension * aspect_ratio))
-                
-                # Ensure dimensions are within API limits [512, 2048]
-                width = max(512, min(2048, width))
-                height = max(512, min(2048, height))
-                
-                output_size = f"{width}*{height}"
-                logger.info(f"[Try-On] Using 2K resolution {output_size} (maintaining aspect ratio {aspect_ratio:.2f}) for {user_plan} plan")
-            else:
-                # Fallback to square 2K if dimensions unavailable
-                output_size = "2048*2048"
-                logger.info(f"[Try-On] Using default 2K resolution {output_size} for {user_plan} plan (could not determine input aspect ratio)")
-        except Exception as e:
-            # Fallback to square 2K on error
+            # Ensure dimensions are within API limits [512, 2048]
+            width = max(512, min(2048, width))
+            height = max(512, min(2048, height))
+            
+            output_size = f"{width}*{height}"
+            logger.info(f"[Try-On] Using 2K resolution {output_size} (maintaining aspect ratio {aspect_ratio:.2f})")
+        else:
+            # Fallback to square 2K if dimensions unavailable
             output_size = "2048*2048"
-            logger.warning(f"[Try-On] Failed to calculate aspect-ratio-preserving resolution: {e}, using default {output_size}")
+            logger.info(f"[Try-On] Using default 2K resolution {output_size} (could not determine input aspect ratio)")
+    except Exception as e:
+        # Fallback to square 2K on error
+        output_size = "2048*2048"
+        logger.warning(f"[Try-On] Failed to calculate aspect-ratio-preserving resolution: {e}, using default {output_size}")
 
     # Prepare Qwen Image Edit client
     try:
@@ -1759,7 +1758,7 @@ async def try_on(
         # Build action/pose description section if provided
         action_description_section = ""
         if background_action_prompt:
-            action_description_section = f"\n\nModel(Image 2) Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
+            action_description_section = f"Image 2 Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
             logger.info(f"[Try-On] Background action prompt received: {background_action_prompt}")
         else:
             logger.info("[Try-On] No background action prompt provided")
@@ -1770,7 +1769,8 @@ async def try_on(
             prompt = (
                 "Use the person from Image 2 (model photo), have this person wear all clothes and accessories from Image 1, "
                 "then place this person wearing new clothes in the background shown in Image 3. "
-                "Keep Image 3's environment and background as the final background, only use Image 3's background elements, "
+                + action_description_section
+                + " Keep Image 3's environment and background as the final background, only use Image 3's background elements, "
                 "the person must come from Image 2, do not use any person from Image 3. "
                 "All items must be correctly worn on the model: "
                 "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
@@ -1783,7 +1783,6 @@ async def try_on(
                 "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
                 "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
                 + garment_desc_text
-                + action_description_section
             )
             negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating, prohibit perspective issues
         else:
@@ -1802,12 +1801,12 @@ async def try_on(
                 "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
                 "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
                 + garment_desc_text
-                + action_description_section
             )
             negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit person from garment collage, prohibit items scattered or floating, prohibit perspective issues
         
         # Log final prompt for debugging
         logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
+        logger.info(f"[Try-On] Full prompt sent to API:\n{prompt}")
         if action_description_section:
             logger.info(f"[Try-On] Action description included: {action_description_section[:100]}...")
         else:
