@@ -3,7 +3,7 @@ defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search, Image } from 'lucide-vue-next'
+import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search, Image, RotateCw } from 'lucide-vue-next'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
@@ -1908,6 +1908,7 @@ const searchOnGoogle = (description: string, event?: Event) => {
   }
 }
 
+// Note: Multi-angle generation is now in separate MultiAngle.vue page
 
 </script>
 
@@ -2652,6 +2653,17 @@ const searchOnGoogle = (description: string, event?: Event) => {
           </div>
           <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:border-gray-300 transition-colors" @click="openTryOnImageViewer">
             <img :src="getLargeImageUrl(tryOnImageUrl || '')" loading="lazy" :alt="$t('studio.virtualTryOn.tryOnResult')" class="w-full object-contain" />
+          </div>
+          
+          <!-- Multi-Angle Link -->
+          <div class="mt-4 flex justify-center">
+            <router-link 
+              :to="{ path: '/multi-angle', query: { sourceImage: tryOnImageUrl } }"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm text-pink-600 hover:text-pink-800 hover:bg-pink-50 rounded-lg transition-colors"
+            >
+              <RotateCw class="w-4 h-4" />
+              <span>{{ $t('studio.virtualTryOn.viewMultiAngle') }}</span>
+            </router-link>
           </div>
         </div>
       </section>

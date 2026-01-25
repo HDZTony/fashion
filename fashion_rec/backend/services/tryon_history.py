@@ -265,7 +265,11 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
             "model_image_url": history.get("model_image_url"),  # Model image URL for restoration
             "created_at": created_at.isoformat() + "Z",
             "expires_at": expires_at.isoformat() + "Z",
+            # Note: Multi-angle generation is now stored in separate multiangle_history table
         }
+        
+        # Remove None values to avoid inserting nulls for optional columns
+        record = {k: v for k, v in record.items() if v is not None}
         
         # Insert into database
         response = table.insert(record).execute()

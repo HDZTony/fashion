@@ -394,6 +394,9 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/user-images') ||
          path.startsWith('/background-image') ||
          path.startsWith('/tryon-history') ||
+         path.startsWith('/multiangle-history') ||
+         path.startsWith('/multiangle-source') ||
+         path.startsWith('/generate-angles') ||
          path.startsWith('/lv-products') ||
          path.startsWith('/subscription') ||
          path.startsWith('/blog') ||
@@ -822,14 +825,15 @@ export default {
         const fetchStartTime = Date.now()
         
         // Add timeout to backend fetch using AbortController
-        // For try-on, upload, and outfit operations (LLM processing with images), use longer timeout (4 minutes to be under frontend's 5min timeout)
+        // For try-on, upload, outfit, and generate-angles operations (LLM/AI processing with images), use longer timeout (4 minutes to be under frontend's 5min timeout)
         // For PUT/DELETE operations, use 60 seconds (to be under frontend's timeout)
         // For other operations, use 25 seconds (to be under frontend's 30s timeout)
         const isTryOnRequest = path === '/try-on'
         const isUploadRequest = path === '/upload'
         const isOutfitRequest = path === '/outfit'
+        const isGenerateAnglesRequest = path === '/generate-angles'
         const isPutOrDeleteRequest = request.method === 'PUT' || request.method === 'DELETE'
-        const timeoutMs = (isTryOnRequest || isUploadRequest || isOutfitRequest) ? 240000 : (isPutOrDeleteRequest ? 60000 : 25000) // 4 minutes for try-on/upload/outfit, 60 seconds for PUT/DELETE, 25 seconds for others
+        const timeoutMs = (isTryOnRequest || isUploadRequest || isOutfitRequest || isGenerateAnglesRequest) ? 240000 : (isPutOrDeleteRequest ? 60000 : 25000) // 4 minutes for try-on/upload/outfit/generate-angles, 60 seconds for PUT/DELETE, 25 seconds for others
         
         const abortController = new AbortController()
         const timeoutId = setTimeout(() => {

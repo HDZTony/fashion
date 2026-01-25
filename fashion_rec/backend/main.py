@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -1866,6 +1866,267 @@ async def try_on(
         print(f"[Try-On History] Traceback: {traceback.format_exc()}")
 
     return {"url": public_url}
+
+
+@app.post("/generate-angles")
+async def generate_angles(
+    image_url: str = Form(...),
+    preset: Optional[str] = Form(None),
+    horizontal_angle: Optional[float] = Form(None),
+    vertical_angle: Optional[float] = Form(None),
+    zoom: Optional[float] = Form(5.0),
+    additional_prompt: Optional[str] = Form(None),
+    parent_tryon_id: Optional[str] = Form(None),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Generate multi-angle view of a try-on result using fal.ai.
+    
+    Args:
+        image_url: URL of the source try-on result image
+        preset: Optional preset name (front, left, right, back, top, low)
+        horizontal_angle: Horizontal rotation 0-360° (ignored if preset is set)
+        vertical_angle: Vertical angle -30° to 90° (ignored if preset is set)
+        zoom: Camera zoom 0-10 (default 5)
+        additional_prompt: Optional additional prompt text
+        parent_tryon_id: Optional ID of the parent try-on record
+    
+    Returns:
+        Dict with generated image URL and metadata
+    """
+    from services.fal_multi_angle import (
+        AngleParams,
+        generate_multi_angle,
+        get_preset_params,
+        PRESET_ANGLES,
+    )
+    from services.storage import upload_file_to_r2
+    from services.tryon_history import save_tryon_history
+    import httpx
+    from io import BytesIO
+    
+    user_id, user_token = auth
+    
+    # Check subscription and consume try-on count
+    SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{SUBSCRIPTION_SERVICE_URL}/subscription/check-try",
+                json={"user_id": user_id},
+                timeout=5.0
+            )
+            if response.status_code == 403:
+                raise HTTPException(
+                    status_code=403,
+                    detail=response.json().get("error", "Insufficient try-on count for multi-angle generation")
+                )
+            elif not response.is_success:
+                raise HTTPException(status_code=500, detail="Failed to check try-on count")
+    except httpx.RequestError as e:
+        logger.warning(f"Failed to check subscription service: {e}, allowing multi-angle to proceed")
+    
+    # Determine angle parameters
+    try:
+        if preset:
+            if preset not in PRESET_ANGLES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown preset: {preset}. Available: {list(PRESET_ANGLES.keys())}"
+                )
+            params = get_preset_params(preset)
+            # Override zoom if provided
+            if zoom is not None:
+                params.zoom = zoom
+            if additional_prompt:
+                params.additional_prompt = additional_prompt
+        else:
+            # Use custom parameters
+            if horizontal_angle is None or vertical_angle is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Either preset or both horizontal_angle and vertical_angle must be provided"
+                )
+            params = AngleParams(
+                horizontal_angle=horizontal_angle,
+                vertical_angle=vertical_angle,
+                zoom=zoom or 5.0,
+                additional_prompt=additional_prompt,
+            )
+        
+        # Validate parameters
+        params.validate()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Generate multi-angle image
+    try:
+        logger.info(f"[Multi-Angle] Generating for user {user_id}: preset={preset}, h={params.horizontal_angle}, v={params.vertical_angle}")
+        result = await generate_multi_angle(
+            image_url=image_url,
+            params=params,
+        )
+    except RuntimeError as e:
+        # FAL_KEY not set or other config error
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[Multi-Angle] Generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Multi-angle generation failed: {e}")
+    
+    # Extract generated image URL from result
+    generated_images = result.get("images", [])
+    if not generated_images:
+        raise HTTPException(status_code=500, detail="No images generated")
+    
+    fal_image_url = generated_images[0].get("url")
+    if not fal_image_url:
+        raise HTTPException(status_code=500, detail="Generated image URL not found")
+    
+    # Download and re-upload to R2 for consistent storage
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(fal_image_url, timeout=60.0)
+            resp.raise_for_status()
+            image_data = BytesIO(resp.content)
+        
+        # Generate unique filename
+        import uuid
+        filename = f"multiangle_{user_id}_{uuid.uuid4().hex[:8]}.png"
+        
+        public_url = await upload_file_to_r2(
+            image_data,
+            filename,
+            "image/png",
+            expires_in_days=7  # Same as try-on results
+        )
+    except Exception as e:
+        logger.error(f"[Multi-Angle] Failed to upload to R2: {e}")
+        # Fall back to using fal.ai URL directly
+        public_url = fal_image_url
+    
+    # Save to multiangle_history table (separate from tryon_history)
+    angle_type = preset if preset else "custom"
+    angle_params_dict = {
+        "horizontal_angle": params.horizontal_angle,
+        "vertical_angle": params.vertical_angle,
+        "zoom": params.zoom,
+        "additional_prompt": params.additional_prompt,
+    }
+    
+    try:
+        from services.multiangle_history import save_multiangle_history
+        save_multiangle_history(
+            user_id=user_id,
+            source_tryon_url=image_url,
+            result_url=public_url,
+            angle_type=angle_type,
+            angle_params=angle_params_dict,
+            user_token=user_token,
+        )
+    except Exception as e:
+        logger.warning(f"[Multi-Angle] Failed to save history: {e}")
+    
+    return {
+        "url": public_url,
+        "angle_type": angle_type,
+        "angle_params": angle_params_dict,
+        "seed": result.get("seed"),
+        "prompt": result.get("prompt"),
+    }
+
+
+@app.get("/generate-angles/presets")
+async def get_angle_presets():
+    """Get available angle presets."""
+    from services.fal_multi_angle import get_available_presets
+    return {"presets": get_available_presets()}
+
+
+@app.get("/multiangle-history")
+async def get_multiangle_history(
+    source_url: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Get multi-angle generation history for the current user.
+    
+    Args:
+        source_url: Optional filter by source try-on URL
+        page: Page number (1-based)
+        limit: Items per page
+    """
+    from services.multiangle_history import list_multiangle_history, count_multiangle_history
+    
+    user_id, user_token = auth
+    offset = (page - 1) * limit
+    
+    try:
+        total = count_multiangle_history(user_id, user_token)
+        history = list_multiangle_history(
+            user_id=user_id,
+            user_token=user_token,
+            source_url=source_url,
+            limit=limit,
+            offset=offset,
+        )
+        
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
+        
+        return {
+            "history": history,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+        }
+    except Exception as e:
+        logger.error(f"[MultiAngle History] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get multi-angle history: {e}")
+
+
+@app.delete("/multiangle-history/{history_id}")
+async def delete_multiangle_history_item(
+    history_id: str,
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Delete a multi-angle history record by ID."""
+    from services.multiangle_history import delete_multiangle_history
+    
+    user_id, user_token = auth
+    
+    success = delete_multiangle_history(user_id, history_id, user_token)
+    if success:
+        return {"success": True, "message": "Record deleted"}
+    else:
+        raise HTTPException(status_code=404, detail="Record not found or already deleted")
+
+
+@app.post("/multiangle-source")
+async def upload_multiangle_source(
+    file: UploadFile = File(...),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Upload a source image for multi-angle generation to R2 (with 7-day expiration).
+    This is a temporary upload - the result will be saved to multiangle_history when generation completes.
+    """
+    from services.storage import upload_file_to_r2
+
+    user_id, user_token = auth
+
+    try:
+        # Upload to R2 with 7-day expiration
+        public_url = await upload_file_to_r2(
+            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=7
+        )
+        
+        logger.info(f"[MultiAngle] Source image uploaded for user {user_id}: {public_url}")
+        return {"url": public_url}
+    except Exception as e:
+        logger.error(f"[MultiAngle] Failed to upload source image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload source image: {e}")
 
 
 @app.post("/background-image")

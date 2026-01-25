@@ -1,5 +1,73 @@
 # 数据库迁移说明
 
+## 迁移 004: 添加多角度生成字段到 tryon_history 表
+
+### 功能描述
+
+为虚拟试穿历史记录添加多角度生成支持，允许用户基于试穿结果生成不同角度的照片。
+
+### 新增字段
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| `angle_type` | VARCHAR(20) | 预设名称（front, left, right, back, top, low）或 "custom" |
+| `parent_tryon_id` | UUID | 引用原始试穿记录的 ID（外键） |
+| `angle_params` | JSONB | 角度参数：{horizontal_angle, vertical_angle, zoom, additional_prompt} |
+
+### 执行步骤
+
+**推荐方法：使用 Supabase Dashboard（最简单）**
+
+1. 登录 [Supabase Dashboard](https://app.supabase.com)
+2. 选择你的项目
+3. 进入 **SQL Editor**
+4. 打开 `004_add_multiangle_columns_to_tryon_history.sql` 文件
+5. **复制全部内容**
+6. 粘贴到 SQL Editor 中
+7. 点击 **Run** 执行
+
+**使用 psql（如果有直接数据库访问权限）**：
+
+```bash
+psql -h <your-db-host> -U <your-user> -d <your-database> -f 004_add_multiangle_columns_to_tryon_history.sql
+```
+
+### 迁移内容
+
+1. **添加 angle_type 列**: 记录角度类型（预设名或 custom）
+2. **添加 parent_tryon_id 列**: 引用父试穿记录（带外键约束）
+3. **添加 angle_params 列**: JSONB 存储角度参数
+4. **创建索引**: 优化 parent_tryon_id 和 angle_type 的查询
+
+### 验证
+
+迁移完成后，可以执行以下查询验证：
+
+```sql
+-- 检查新列是否存在
+SELECT column_name, data_type, is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'tryon_history' 
+  AND column_name IN ('angle_type', 'parent_tryon_id', 'angle_params');
+
+-- 应该返回三行，分别显示三个新列的信息
+```
+
+### 回滚（如果需要）
+
+```sql
+-- 删除索引
+DROP INDEX IF EXISTS idx_tryon_history_parent_tryon_id;
+DROP INDEX IF EXISTS idx_tryon_history_angle_type;
+
+-- 删除列
+ALTER TABLE tryon_history DROP COLUMN IF EXISTS angle_type;
+ALTER TABLE tryon_history DROP COLUMN IF EXISTS parent_tryon_id;
+ALTER TABLE tryon_history DROP COLUMN IF EXISTS angle_params;
+```
+
+---
+
 ## 迁移 003: 将 tryon_history 表的 scene_image_url 重命名为 background_image_url
 
 ### 问题描述

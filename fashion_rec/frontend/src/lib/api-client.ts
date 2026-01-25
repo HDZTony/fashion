@@ -22,6 +22,12 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
   // Priority: localStorage (fastest, synchronous) -> Pinia store -> Supabase session -> reject request
   // Note: In SSR, this interceptor will skip token injection (no token available)
   client.interceptors.request.use(async (config) => {
+    // CRITICAL: When sending FormData, remove Content-Type header to let browser set it correctly
+    // with the proper multipart/form-data boundary. This is required for file uploads to work.
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    }
+    
     // Skip token injection in SSR (server-side rendering)
     // SSR should only render public pages that don't require authentication
     if (typeof window === 'undefined') {
@@ -39,9 +45,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         if (token) {
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${token}`
-          if (import.meta.env.DEV) {
-            console.debug(`[API Client] Using token from cookie (fast path) for ${config.method?.toUpperCase()} ${config.url}`)
-          }
           return config
         }
         
@@ -50,9 +53,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
         if (token) {
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${token}`
-          if (import.meta.env.DEV) {
-            console.debug(`[API Client] Using token from localStorage (fast path) for ${config.method?.toUpperCase()} ${config.url}`)
-          }
           return config
         }
       }
@@ -95,9 +95,6 @@ export function createAuthenticatedApiClient(baseURL: string, timeout?: number) 
       if (token) {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
-        if (import.meta.env.DEV) {
-          console.debug(`[API Client] Added auth token to ${config.method?.toUpperCase()} ${config.url}`)
-        }
       } else {
         // If no token after all attempts, reject the request to prevent 401
         console.error('[API Client] No auth token available for request after all attempts:', config.method?.toUpperCase(), config.url, '- Rejecting request')

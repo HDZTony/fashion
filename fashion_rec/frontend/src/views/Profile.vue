@@ -2,28 +2,12 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { User, Search } from 'lucide-vue-next'
 import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
 import { subscriptionClient, apiClient } from '../lib/api-client'
 import { useAuthStore } from '../stores/auth'
 import { useStudioStore } from '../stores/studio'
 import type { UserInfo } from '../types'
-import {
-  SidebarProvider,
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarTrigger,
-  SidebarRail,
-} from '@/components/ui/sidebar'
 
 defineOptions({ name: 'Profile' })
 
@@ -547,396 +531,359 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SidebarProvider :default-open="true">
-    <Sidebar collapsible="icon">
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  :is-active="activeTab === 'account'"
-                  @click="activeTab = 'account'"
-                >
-                  <User class="size-4" />
-                  <span class="group-data-[state=collapsed]/sidebar-wrapper:hidden">Account</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <!-- <SidebarMenuItem>
-                <SidebarMenuButton
-                  :is-active="activeTab === 'seo'"
-                  @click="activeTab = 'seo'"
-                >
-                  <Search class="size-4" />
-                  <span class="group-data-[state=collapsed]/sidebar-wrapper:hidden">SEO</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem> -->
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarRail />
-    </Sidebar>
-    <SidebarInset>
-      <header class="flex h-16 shrink-0 items-center gap-2 px-4">
-        <SidebarTrigger class="-ml-1" />
-      </header>
-      <div class="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
-        <!-- Account Content -->
-        <div v-if="activeTab === 'account'" class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 -m-4 p-4">
-          <div class="max-w-4xl mx-auto space-y-8 py-8">
-            <div>
-              <h2 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                {{ $t('profile.title') }}
-              </h2>
-              <p class="text-xl text-gray-600 mt-2">{{ $t('profile.subtitle') }}</p>
+  <div class="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
+    <!-- Account Content -->
+    <div v-if="activeTab === 'account'" class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 -m-4 p-4">
+      <div class="max-w-4xl mx-auto space-y-8 py-8">
+        <div>
+          <h2 class="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            {{ $t('profile.title') }}
+          </h2>
+          <p class="text-xl text-gray-600 mt-2">{{ $t('profile.subtitle') }}</p>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2">
+          <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.subscription') }}</h3>
+              <span class="text-sm text-pink-600 font-medium">{{ isLoading ? $t('profile.loading') : $t('profile.updated') }}</span>
             </div>
-
-            <div class="grid gap-6 md:grid-cols-2">
-              <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.subscription') }}</h3>
-                  <span class="text-sm text-pink-600 font-medium">{{ isLoading ? $t('profile.loading') : $t('profile.updated') }}</span>
-                </div>
-                <div class="space-y-3">
-                  <div class="flex justify-between text-sm text-gray-700">
-                    <span>{{ $t('profile.currentPlan') }}</span>
-                    <span class="font-semibold text-gray-900">{{ planDisplay }}</span>
-                  </div>
-                  <div class="flex justify-between text-sm text-gray-700">
-                    <span>{{ $t('profile.status') }}</span>
-                    <span class="font-semibold text-gray-900">{{ status }}</span>
-                  </div>
-                  <div class="flex justify-between text-sm text-gray-700">
-                    <span>{{ $t('profile.remainingFreeCredits') }}</span>
-                    <span class="font-semibold text-gray-900">
-                      {{ freeRemainingTries }}/3 ({{ $t('profile.dailyLimit') }})
-                    </span>
-                  </div>
-                  <div class="flex justify-between text-sm text-gray-700">
-                    <span>{{ $t('profile.remainingCredits') }}</span>
-                    <span class="font-semibold text-gray-900">{{ remainingCredits }}</span>
-                  </div>
-                  <div class="flex justify-between text-sm text-gray-700" v-if="nextResetDate">
-                    <span>{{ $t('profile.nextReset') }}</span>
-                    <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
-                  </div>
-                </div>
-                <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-pink-200">
-                  <Button 
-                    variant="outline" 
-                    class="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
-                    :disabled="isLoading"
-                    @click="cancelSubscription"
-                  >
-                    {{ $t('profile.cancelSubscription') }}
-                  </Button>
-                </div>
-                <p v-if="error" class="mt-3 text-sm text-red-600 font-medium">{{ error }}</p>
+            <div class="space-y-3">
+              <div class="flex justify-between text-sm text-gray-700">
+                <span>{{ $t('profile.currentPlan') }}</span>
+                <span class="font-semibold text-gray-900">{{ planDisplay }}</span>
               </div>
-
-              <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.account') }}</h3>
-                </div>
-                <div class="space-y-3 text-sm text-gray-700">
-                  <p>{{ $t('profile.signInEmail') }}: <span class="font-semibold">{{ userEmail }}</span></p>
-                  <p v-if="userinfo?.subscriptionId">{{ $t('profile.billingPeriod') }}: <span class="font-semibold">{{ $t('profile.monthly') }}</span></p>
-                  <p v-if="userinfo?.period">{{ $t('profile.creditsResetPeriod') }}: <span class="font-semibold">{{ userinfo.period }}</span></p>
-                </div>
-                <div class="mt-6 space-y-3">
-                  <Button variant="outline" class="w-full" @click="openPortal">{{ $t('profile.customerPortal') }}</Button>
-                  <Button variant="secondary" class="w-full" @click="signOut">{{ $t('profile.signOut') }}</Button>
-                </div>
+              <div class="flex justify-between text-sm text-gray-700">
+                <span>{{ $t('profile.status') }}</span>
+                <span class="font-semibold text-gray-900">{{ status }}</span>
+              </div>
+              <div class="flex justify-between text-sm text-gray-700">
+                <span>{{ $t('profile.remainingFreeCredits') }}</span>
+                <span class="font-semibold text-gray-900">
+                  {{ freeRemainingTries }}/3 ({{ $t('profile.dailyLimit') }})
+                </span>
+              </div>
+              <div class="flex justify-between text-sm text-gray-700">
+                <span>{{ $t('profile.remainingCredits') }}</span>
+                <span class="font-semibold text-gray-900">{{ remainingCredits }}</span>
+              </div>
+              <div class="flex justify-between text-sm text-gray-700" v-if="nextResetDate">
+                <span>{{ $t('profile.nextReset') }}</span>
+                <span class="font-semibold text-gray-900">{{ nextResetDate }}</span>
               </div>
             </div>
-
-            <!-- Subscription Plans -->
-            <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
-              <div class="flex items-center justify-between">
-                <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.subscriptionPlans') }}</h3>
-                <span class="text-sm text-pink-600 font-medium">{{ $t('profile.monthlyRecurring') }}</span>
-              </div>
-              <div class="grid gap-4 md:grid-cols-1">
-                <div
-                  v-for="plan in plans"
-                  :key="plan.slug"
-                  class="border-2 rounded-xl p-4 space-y-3 transition-all"
-                  :class="plan.slug === planSlug ? 'border-pink-500 bg-gradient-to-br from-pink-50 to-purple-50 shadow-lg' : 'border-pink-200 hover:border-pink-300 hover:shadow-md'"
-                >
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <p class="font-semibold text-gray-900">{{ plan.name }}</p>
-                      <p class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">{{ plan.price }}</p>
-                    </div>
-                    <span
-                      v-if="plan.slug === planSlug"
-                      class="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold shadow-md"
-                    >{{ $t('profile.current') }}</span>
-                  </div>
-                  <p class="text-sm text-gray-600">{{ plan.desc }}</p>
-                  <Button
-                    class="w-full"
-                    :class="plan.slug === planSlug && planSlug !== 'free' && (status === 'Active' || status === 'Trialing') 
-                      ? 'text-red-600 hover:text-red-700 hover:bg-red-50' 
-                      : ''"
-                    :variant="plan.slug === planSlug ? 'outline' : 'default'"
-                    :disabled="isActionDisabled(plan.slug)"
-                    @click="plan.action()"
-                  >
-                    {{ actionLabel(plan.slug) }}
-                  </Button>
-                </div>
-              </div>
+            <div v-if="planSlug !== 'free' && (status === 'Active' || status === 'Trialing')" class="mt-4 pt-4 border-t border-pink-200">
+              <Button 
+                variant="outline" 
+                class="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
+                :disabled="isLoading"
+                @click="cancelSubscription"
+              >
+                {{ $t('profile.cancelSubscription') }}
+              </Button>
             </div>
+            <p v-if="error" class="mt-3 text-sm text-red-600 font-medium">{{ error }}</p>
+          </div>
 
-            <!-- Credits -->
-            <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
-              <div class="flex items-center justify-between">
-                <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.credits') }}</h3>
-                <span class="text-sm text-pink-600 font-medium">{{ $t('profile.oneTimePurchase') }}</span>
-              </div>
-              <div class="grid gap-4 md:grid-cols-3">
-                <div
-                  v-for="credit in creditsData"
-                  :key="credit.id"
-                  class="border-2 rounded-xl p-4 space-y-3 border-pink-200 hover:border-pink-400 hover:shadow-lg transition-all transform hover:-translate-y-1"
-                >
-                  <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                      <p class="font-semibold text-gray-900">{{ credit.name }}</p>
-                      <div v-if="getCreditDiscountInfo(credit)" class="flex items-center gap-2 mt-1">
-                        <span class="text-xs line-through text-gray-400">${{ getCreditDiscountInfo(credit)!.originalPrice.toFixed(2) }}</span>
-                        <span class="text-sm font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">${{ credit.price.toFixed(2) }}</span>
-                        <span class="px-1.5 py-0.5 bg-red-500 text-white text-xs font-bold rounded">-{{ ((1 - getCreditDiscountInfo(credit)!.discount) * 100).toFixed(0) }}%</span>
-                      </div>
-                      <p v-else class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">${{ credit.price.toFixed(2) }}</p>
-                    </div>
-                  </div>
-                  <p class="text-sm text-gray-700 font-medium">{{ credit.credits }} credits</p>
-                  <p class="text-sm text-gray-600">{{ $t('profile.creditsNeverExpire') }}</p>
-                  <Button
-                    class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl rounded-full"
-                    :disabled="isLoading"
-                    @click="purchaseCredits(credit.id)"
-                  >
-                    {{ isLoading ? $t('profile.processing') : $t('profile.purchase') }}
-                  </Button>
-                </div>
-              </div>
+          <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 hover:shadow-xl transition-all">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.account') }}</h3>
+            </div>
+            <div class="space-y-3 text-sm text-gray-700">
+              <p>{{ $t('profile.signInEmail') }}: <span class="font-semibold">{{ userEmail }}</span></p>
+              <p v-if="userinfo?.subscriptionId">{{ $t('profile.billingPeriod') }}: <span class="font-semibold">{{ $t('profile.monthly') }}</span></p>
+              <p v-if="userinfo?.period">{{ $t('profile.creditsResetPeriod') }}: <span class="font-semibold">{{ userinfo.period }}</span></p>
+            </div>
+            <div class="mt-6 space-y-3">
+              <Button variant="outline" class="w-full" @click="openPortal">{{ $t('profile.customerPortal') }}</Button>
+              <Button variant="secondary" class="w-full" @click="signOut">{{ $t('profile.signOut') }}</Button>
             </div>
           </div>
         </div>
 
-        <!-- SEO Content -->
-        <div v-if="activeTab === 'seo'" class="container mx-auto px-4 py-8 max-w-7xl">
-          <div class="mb-8">
-            <h2 class="text-4xl font-bold text-gray-900 mb-2">{{ $t('seo.title') }}</h2>
-            <p class="text-gray-600">{{ $t('seo.subtitle') }}</p>
+        <!-- Subscription Plans -->
+        <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.subscriptionPlans') }}</h3>
+            <span class="text-sm text-pink-600 font-medium">{{ $t('profile.monthlyRecurring') }}</span>
           </div>
-
-          <!-- Connection Status -->
-          <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900 mb-2">{{ $t('seo.connectionStatus') }}</h3>
-                <p class="text-gray-600 text-sm">
-                  <span v-if="isConnected" class="text-green-600 font-medium">{{ $t('seo.connected') }}</span>
-                  <span v-else class="text-gray-500">{{ $t('seo.notConnected') }}</span>
-                </p>
+          <div class="grid gap-4 md:grid-cols-1">
+            <div
+              v-for="plan in plans"
+              :key="plan.slug"
+              class="border-2 rounded-xl p-4 space-y-3 transition-all"
+              :class="plan.slug === planSlug ? 'border-pink-500 bg-gradient-to-br from-pink-50 to-purple-50 shadow-lg' : 'border-pink-200 hover:border-pink-300 hover:shadow-md'"
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="font-semibold text-gray-900">{{ plan.name }}</p>
+                  <p class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">{{ plan.price }}</p>
+                </div>
+                <span
+                  v-if="plan.slug === planSlug"
+                  class="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold shadow-md"
+                >{{ $t('profile.current') }}</span>
               </div>
+              <p class="text-sm text-gray-600">{{ plan.desc }}</p>
               <Button
-                v-if="!isConnected"
-                @click="connectSearchConsole"
+                class="w-full"
+                :class="plan.slug === planSlug && planSlug !== 'free' && (status === 'Active' || status === 'Trialing') 
+                  ? 'text-red-600 hover:text-red-700 hover:bg-red-50' 
+                  : ''"
+                :variant="plan.slug === planSlug ? 'outline' : 'default'"
+                :disabled="isActionDisabled(plan.slug)"
+                @click="plan.action()"
+              >
+                {{ actionLabel(plan.slug) }}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Credits -->
+        <div class="bg-white rounded-2xl border border-pink-100 shadow-lg p-6 space-y-4 hover:shadow-xl transition-all">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.credits') }}</h3>
+            <span class="text-sm text-pink-600 font-medium">{{ $t('profile.oneTimePurchase') }}</span>
+          </div>
+          <div class="grid gap-4 md:grid-cols-3">
+            <div
+              v-for="credit in creditsData"
+              :key="credit.id"
+              class="border-2 rounded-xl p-4 space-y-3 border-pink-200 hover:border-pink-400 hover:shadow-lg transition-all transform hover:-translate-y-1"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <p class="font-semibold text-gray-900">{{ credit.name }}</p>
+                  <div v-if="getCreditDiscountInfo(credit)" class="flex items-center gap-2 mt-1">
+                    <span class="text-xs line-through text-gray-400">${{ getCreditDiscountInfo(credit)!.originalPrice.toFixed(2) }}</span>
+                    <span class="text-sm font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">${{ credit.price.toFixed(2) }}</span>
+                    <span class="px-1.5 py-0.5 bg-red-500 text-white text-xs font-bold rounded">-{{ ((1 - getCreditDiscountInfo(credit)!.discount) * 100).toFixed(0) }}%</span>
+                  </div>
+                  <p v-else class="text-sm bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent font-medium">${{ credit.price.toFixed(2) }}</p>
+                </div>
+              </div>
+              <p class="text-sm text-gray-700 font-medium">{{ credit.credits }} credits</p>
+              <p class="text-sm text-gray-600">{{ $t('profile.creditsNeverExpire') }}</p>
+              <Button
+                class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl rounded-full"
+                :disabled="isLoading"
+                @click="purchaseCredits(credit.id)"
+              >
+                {{ isLoading ? $t('profile.processing') : $t('profile.purchase') }}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEO Content -->
+    <div v-if="activeTab === 'seo'" class="container mx-auto px-4 py-8 max-w-7xl">
+      <div class="mb-8">
+        <h2 class="text-4xl font-bold text-gray-900 mb-2">{{ $t('seo.title') }}</h2>
+        <p class="text-gray-600">{{ $t('seo.subtitle') }}</p>
+      </div>
+
+      <!-- Connection Status -->
+      <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">{{ $t('seo.connectionStatus') }}</h3>
+            <p class="text-gray-600 text-sm">
+              <span v-if="isConnected" class="text-green-600 font-medium">{{ $t('seo.connected') }}</span>
+              <span v-else class="text-gray-500">{{ $t('seo.notConnected') }}</span>
+            </p>
+          </div>
+          <Button
+            v-if="!isConnected"
+            @click="connectSearchConsole"
+            class="bg-pink-600 hover:bg-pink-700"
+          >
+            {{ $t('seo.connect') }}
+          </Button>
+          <Button
+            v-else
+            variant="outline"
+            @click="disconnectSearchConsole"
+          >
+            {{ $t('seo.disconnect') }}
+          </Button>
+        </div>
+      </div>
+
+      <!-- Site Verification -->
+      <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
+        <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.siteVerification') }}</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.verifyWebsite') }}</label>
+            <div class="flex gap-4">
+              <input
+                v-model="siteUrl"
+                type="text"
+                placeholder="https://fashion-rec.com"
+                class="flex-1 px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+              />
+              <Button
+                @click="verifySite"
+                :disabled="isVerifying"
                 class="bg-pink-600 hover:bg-pink-700"
               >
-                {{ $t('seo.connect') }}
+                {{ isVerifying ? $t('seo.verifying') : $t('seo.verify') }}
               </Button>
+            </div>
+          </div>
+          <div v-if="verificationStatus" class="p-4 rounded-lg" :class="verificationStatus.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">
+            {{ verificationStatus.message }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Sitemap Submission -->
+      <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
+        <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.sitemapSubmission') }}</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.submitSitemap') }}</label>
+            <div class="flex gap-4">
+              <input
+                v-model="sitemapUrl"
+                type="text"
+                placeholder="https://fashion-rec.com/sitemap.xml"
+                class="flex-1 px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+              />
               <Button
-                v-else
-                variant="outline"
-                @click="disconnectSearchConsole"
+                @click="submitSitemap"
+                :disabled="isSubmittingSitemap"
+                class="bg-pink-600 hover:bg-pink-700"
               >
-                {{ $t('seo.disconnect') }}
+                {{ isSubmittingSitemap ? $t('seo.submitting') : $t('seo.submit') }}
               </Button>
             </div>
           </div>
+          <div v-if="sitemapStatus" class="p-4 rounded-lg" :class="sitemapStatus.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">
+            {{ sitemapStatus.message }}
+          </div>
+        </div>
+      </div>
 
-          <!-- Site Verification -->
-          <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
-            <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.siteVerification') }}</h3>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.verifyWebsite') }}</label>
-                <div class="flex gap-4">
-                  <input
-                    v-model="siteUrl"
-                    type="text"
-                    placeholder="https://fashion-rec.com"
-                    class="flex-1 px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  />
-                  <Button
-                    @click="verifySite"
-                    :disabled="isVerifying"
-                    class="bg-pink-600 hover:bg-pink-700"
-                  >
-                    {{ isVerifying ? $t('seo.verifying') : $t('seo.verify') }}
-                  </Button>
-                </div>
-              </div>
-              <div v-if="verificationStatus" class="p-4 rounded-lg" :class="verificationStatus.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">
-                {{ verificationStatus.message }}
-              </div>
+      <!-- URL Inspection Tool -->
+      <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
+        <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.urlInspection') }}</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.checkUrlIndexing') }}</label>
+            <div class="flex gap-4">
+              <input
+                v-model="inspectionUrl"
+                type="text"
+                placeholder="https://fashion-rec.com/blog/example"
+                class="flex-1 px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+              />
+              <Button
+                @click="inspectUrl"
+                :disabled="isInspecting"
+                class="bg-pink-600 hover:bg-pink-700"
+              >
+                {{ isInspecting ? $t('seo.checking') : $t('seo.inspect') }}
+              </Button>
             </div>
           </div>
-
-          <!-- Sitemap Submission -->
-          <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
-            <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.sitemapSubmission') }}</h3>
-            <div class="space-y-4">
+          <div v-if="inspectionResult" class="p-4 bg-gray-50 rounded-lg">
+            <h4 class="font-semibold text-gray-900 mb-2">{{ $t('seo.inspectionResult') }}</h4>
+            <div class="space-y-2 text-sm">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.submitSitemap') }}</label>
-                <div class="flex gap-4">
-                  <input
-                    v-model="sitemapUrl"
-                    type="text"
-                    placeholder="https://fashion-rec.com/sitemap.xml"
-                    class="flex-1 px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  />
-                  <Button
-                    @click="submitSitemap"
-                    :disabled="isSubmittingSitemap"
-                    class="bg-pink-600 hover:bg-pink-700"
-                  >
-                    {{ isSubmittingSitemap ? $t('seo.submitting') : $t('seo.submit') }}
-                  </Button>
-                </div>
+                <span class="font-medium">{{ $t('seo.indexingStatus') }}:</span>
+                <span :class="inspectionResult.indexingStatus === 'INDEXED' ? 'text-green-600' : 'text-yellow-600'">
+                  {{ inspectionResult.indexingStatus || 'Unknown' }}
+                </span>
               </div>
-              <div v-if="sitemapStatus" class="p-4 rounded-lg" :class="sitemapStatus.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">
-                {{ sitemapStatus.message }}
+              <div v-if="inspectionResult.lastCrawlTime">
+                <span class="font-medium">{{ $t('seo.lastCrawl') }}:</span>
+                <span class="text-gray-600">{{ new Date(inspectionResult.lastCrawlTime).toLocaleString() }}</span>
               </div>
-            </div>
-          </div>
-
-          <!-- URL Inspection Tool -->
-          <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
-            <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.urlInspection') }}</h3>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.checkUrlIndexing') }}</label>
-                <div class="flex gap-4">
-                  <input
-                    v-model="inspectionUrl"
-                    type="text"
-                    placeholder="https://fashion-rec.com/blog/example"
-                    class="flex-1 px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  />
-                  <Button
-                    @click="inspectUrl"
-                    :disabled="isInspecting"
-                    class="bg-pink-600 hover:bg-pink-700"
-                  >
-                    {{ isInspecting ? $t('seo.checking') : $t('seo.inspect') }}
-                  </Button>
-                </div>
-              </div>
-              <div v-if="inspectionResult" class="p-4 bg-gray-50 rounded-lg">
-                <h4 class="font-semibold text-gray-900 mb-2">{{ $t('seo.inspectionResult') }}</h4>
-                <div class="space-y-2 text-sm">
-                  <div>
-                    <span class="font-medium">{{ $t('seo.indexingStatus') }}:</span>
-                    <span :class="inspectionResult.indexingStatus === 'INDEXED' ? 'text-green-600' : 'text-yellow-600'">
-                      {{ inspectionResult.indexingStatus || 'Unknown' }}
-                    </span>
-                  </div>
-                  <div v-if="inspectionResult.lastCrawlTime">
-                    <span class="font-medium">{{ $t('seo.lastCrawl') }}:</span>
-                    <span class="text-gray-600">{{ new Date(inspectionResult.lastCrawlTime).toLocaleString() }}</span>
-                  </div>
-                  <div v-if="inspectionResult.errors && inspectionResult.errors.length > 0">
-                    <span class="font-medium text-red-600">{{ $t('seo.errors') }}:</span>
-                    <ul class="list-disc list-inside text-red-600">
-                      <li v-for="error in inspectionResult.errors" :key="error">{{ error }}</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Analytics Reports -->
-          <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
-            <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.searchPerformance') }}</h3>
-            <div class="space-y-4">
-              <div class="flex gap-4 items-end">
-                <div class="flex-1">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.dateRange') }}</label>
-                  <div class="flex gap-2">
-                    <input
-                      v-model="dateRange.start"
-                      type="date"
-                      class="px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                    />
-                    <span class="self-center text-gray-500">to</span>
-                    <input
-                      v-model="dateRange.end"
-                      type="date"
-                      class="px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-                <Button
-                  @click="loadAnalytics"
-                  :disabled="isLoadingAnalytics"
-                  class="bg-pink-600 hover:bg-pink-700"
-                >
-                  {{ isLoadingAnalytics ? $t('seo.loading') : $t('seo.loadReport') }}
-                </Button>
-              </div>
-
-              <div v-if="analyticsData" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                <div class="p-4 bg-pink-50 rounded-lg">
-                  <div class="text-sm text-gray-600 mb-1">{{ $t('seo.totalClicks') }}</div>
-                  <div class="text-2xl font-bold text-pink-600">{{ analyticsData.clicks || 0 }}</div>
-                </div>
-                <div class="p-4 bg-purple-50 rounded-lg">
-                  <div class="text-sm text-gray-600 mb-1">{{ $t('seo.totalImpressions') }}</div>
-                  <div class="text-2xl font-bold text-purple-600">{{ analyticsData.impressions || 0 }}</div>
-                </div>
-                <div class="p-4 bg-blue-50 rounded-lg">
-                  <div class="text-sm text-gray-600 mb-1">{{ $t('seo.averageCTR') }}</div>
-                  <div class="text-2xl font-bold text-blue-600">{{ analyticsData.ctr ? (analyticsData.ctr * 100).toFixed(2) + '%' : '0%' }}</div>
-                </div>
-              </div>
-
-              <div v-if="analyticsData && analyticsData.topQueries && analyticsData.topQueries.length > 0" class="mt-6">
-                <h4 class="font-semibold text-gray-900 mb-3">{{ $t('seo.topQueries') }}</h4>
-                <div class="overflow-x-auto">
-                  <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                      <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.query') }}</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.clicks') }}</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.impressions') }}</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.ctr') }}</th>
-                      </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                      <tr v-for="query in analyticsData.topQueries" :key="query.query">
-                        <td class="px-4 py-3 text-sm text-gray-900">{{ query.query }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">{{ query.clicks }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">{{ query.impressions }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">{{ (query.ctr * 100).toFixed(2) }}%</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+              <div v-if="inspectionResult.errors && inspectionResult.errors.length > 0">
+                <span class="font-medium text-red-600">{{ $t('seo.errors') }}:</span>
+                <ul class="list-disc list-inside text-red-600">
+                  <li v-for="error in inspectionResult.errors" :key="error">{{ error }}</li>
+                </ul>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </SidebarInset>
-  </SidebarProvider>
+
+      <!-- Analytics Reports -->
+      <div class="bg-white rounded-lg shadow-sm border border-pink-200 p-6 mb-6">
+        <h3 class="text-xl font-semibold text-gray-900 mb-4">{{ $t('seo.searchPerformance') }}</h3>
+        <div class="space-y-4">
+          <div class="flex gap-4 items-end">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('seo.dateRange') }}</label>
+              <div class="flex gap-2">
+                <input
+                  v-model="dateRange.start"
+                  type="date"
+                  class="px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                />
+                <span class="self-center text-gray-500">to</span>
+                <input
+                  v-model="dateRange.end"
+                  type="date"
+                  class="px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <Button
+              @click="loadAnalytics"
+              :disabled="isLoadingAnalytics"
+              class="bg-pink-600 hover:bg-pink-700"
+            >
+              {{ isLoadingAnalytics ? $t('seo.loading') : $t('seo.loadReport') }}
+            </Button>
+          </div>
+
+          <div v-if="analyticsData" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div class="p-4 bg-pink-50 rounded-lg">
+              <div class="text-sm text-gray-600 mb-1">{{ $t('seo.totalClicks') }}</div>
+              <div class="text-2xl font-bold text-pink-600">{{ analyticsData.clicks || 0 }}</div>
+            </div>
+            <div class="p-4 bg-purple-50 rounded-lg">
+              <div class="text-sm text-gray-600 mb-1">{{ $t('seo.totalImpressions') }}</div>
+              <div class="text-2xl font-bold text-purple-600">{{ analyticsData.impressions || 0 }}</div>
+            </div>
+            <div class="p-4 bg-blue-50 rounded-lg">
+              <div class="text-sm text-gray-600 mb-1">{{ $t('seo.averageCTR') }}</div>
+              <div class="text-2xl font-bold text-blue-600">{{ analyticsData.ctr ? (analyticsData.ctr * 100).toFixed(2) + '%' : '0%' }}</div>
+            </div>
+          </div>
+
+          <div v-if="analyticsData && analyticsData.topQueries && analyticsData.topQueries.length > 0" class="mt-6">
+            <h4 class="font-semibold text-gray-900 mb-3">{{ $t('seo.topQueries') }}</h4>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.query') }}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.clicks') }}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.impressions') }}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('seo.ctr') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr v-for="query in analyticsData.topQueries" :key="query.query">
+                    <td class="px-4 py-3 text-sm text-gray-900">{{ query.query }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">{{ query.clicks }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">{{ query.impressions }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">{{ (query.ctr * 100).toFixed(2) }}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>

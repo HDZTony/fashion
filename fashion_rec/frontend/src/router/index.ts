@@ -68,6 +68,18 @@ export const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true }
       },
       {
+        path: 'multi-angle',
+        name: 'multi-angle',
+        component: () => import('../views/MultiAngle.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'multiangle-history',
+        name: 'multiangle-history',
+        component: () => import('../views/MultiAngleHistory.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'privacy-policy',
         name: 'privacy-policy',
         component: PrivacyPolicy
