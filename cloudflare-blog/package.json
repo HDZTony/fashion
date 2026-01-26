@@ -1,0 +1,30 @@
+{
+  "name": "fashion-rec-blog",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for blog API",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:remote": "wrangler dev --remote --port 8787",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging"
+  },
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "blog",
+    "api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.966.0",
+    "@supabase/supabase-js": "^2.90.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260111.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.58.0"
+  }
+}

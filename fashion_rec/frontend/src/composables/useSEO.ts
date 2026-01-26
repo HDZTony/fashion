@@ -45,6 +45,8 @@ export function useSEO(options: SEOOptions = {}) {
       { name: 'author', content: author.value },
       { name: 'robots', content: robots.value },
       { name: 'theme-color', content: '#ec4899' },
+      // Google Explore large image preview
+      { name: 'max-image-preview', content: 'large' },
       // Open Graph tags
       { property: 'og:title', content: pageTitle.value },
       { property: 'og:description', content: description.value },

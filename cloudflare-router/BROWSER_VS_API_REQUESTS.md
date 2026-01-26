@@ -209,7 +209,7 @@ const isDirectNavigation = !referer || referer.includes(origin)
 
 ## 在你的项目中的应用
 
-### 问题场景
+### 问题背景
 
 **之前的问题：**
 ```
@@ -287,7 +287,7 @@ function isApiRequest(url: URL, request: Request): boolean {
 
 ### 例子 1: 用户刷新页面
 
-**场景：** 用户在 `/favorites` 页面按 F5 刷新
+**背景：** 用户在 `/favorites` 页面按 F5 刷新
 
 **请求：**
 ```http
@@ -308,7 +308,7 @@ Cookie: auth_token=...
 
 ### 例子 2: JavaScript 获取数据
 
-**场景：** Favorites.vue 组件加载时获取数据
+**背景：** Favorites.vue 组件加载时获取数据
 
 **代码：**
 ```typescript
@@ -338,7 +338,7 @@ Authorization: Bearer eyJhbGci...
 
 ### 例子 3: 直接访问 API（特殊情况）
 
-**场景：** 开发者在浏览器直接访问 API URL
+**背景：** 开发者在浏览器直接访问 API URL
 
 **请求：**
 ```http

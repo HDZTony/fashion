@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -76,7 +76,8 @@ class OutfitAgentRequest(BaseModel):
     location: Optional[str] = None  # Optional, will be extracted from prompt or IP if not provided
     prompt: str
     base_item_ids: Optional[List[str]] = None
-    scene_image_url: Optional[str] = None
+    background_image_url: Optional[str] = None
+    background_action_prompt: Optional[str] = None  # User's description of actions/activities in the background image
     # Map of wardrobe_id to role for already selected items (to avoid regenerating them)
     selected_items_roles: Optional[Dict[str, str]] = None
 
@@ -112,14 +113,14 @@ class SaveLookRequest(BaseModel):
     items: List[SaveLookItem]
     location: Optional[str] = None
     prompt: str
-    scene_image_url: Optional[str] = None
+    background_image_url: Optional[str] = None
 
 
 class SaveFavoriteRequest(BaseModel):
     image_url: str  # The try-on result image URL (uploaded to R2)
     title: Optional[str] = None  # Optional title for the favorite
     garment_urls: Optional[List[str]] = None  # URLs of garment items used in try-on
-    scene_image_url: Optional[str] = None  # Scene image URL if used
+    background_image_url: Optional[str] = None  # Background image URL if used
     prompt: Optional[str] = None  # User's custom prompt
     model_image_url: Optional[str] = None  # Model image URL
     model_image_id: Optional[str] = None  # Model image ID
@@ -1367,7 +1368,8 @@ async def generate_outfit(
             location=request.location,
             user_prompt=request.prompt,
             base_item_ids=request.base_item_ids,
-            scene_image_url=request.scene_image_url,
+            background_image_url=request.background_image_url,
+            background_action_prompt=request.background_action_prompt,
             client_ip=http_request.client.host if http_request.client else None,
             selected_items_roles=request.selected_items_roles,
         )
@@ -1402,7 +1404,8 @@ async def try_on(
     person_image: Optional[UploadFile] = File(None),
     person_image_url: Optional[str] = Form(None),
     garment_urls: str = Form(...),
-    scene_image_url: Optional[str] = Form(None),
+    background_image_url: Optional[str] = Form(None),
+    background_action_prompt: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
@@ -1411,9 +1414,9 @@ async def try_on(
     - garment_urls: JSON-encoded list of garment image URLs (Image 1, garment collage)
     - person_image: the model photo (Image 2) as uploaded file (optional)
     - person_image_url: the model photo (Image 2) as URL (optional)
-    - scene_image_url: the scene image (Image 3) as URL (optional)
+    - background_image_url: the background image (Image 3) as URL (optional)
 
-    Image order: Image 1 (garment collage) → Image 2 (model photo) → Image 3 (scene, optional)
+    Image order: Image 1 (garment collage) → Image 2 (model photo) → Image 3 (background, optional)
     At least one of person_image or person_image_url must be provided.
     """
     from services.qwen_image_edit import QwenImageEditClient, _load_env_config
@@ -1514,58 +1517,57 @@ async def try_on(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         person_img_path = None  # Will use URL for resolution calculation
 
-    # Determine output resolution based on subscription plan
-    # Premium Plus and Premium Pro get 2K resolution while maintaining aspect ratio
+    # Determine output resolution - default to 2K for all users
+    # Calculate 2K resolution while maintaining aspect ratio
     output_size = None
-    if user_plan in ["premium_plus", "premium_pro"]:
-        # Get person image dimensions to maintain aspect ratio
-        try:
-            person_width, person_height = None, None
+    # Get person image dimensions to maintain aspect ratio
+    try:
+        person_width, person_height = None, None
+        
+        if person_img_path and Path(person_img_path).exists():
+            # Get dimensions from local file
+            with Image.open(person_img_path) as img:
+                person_width, person_height = img.size
+        elif person_image_url:
+            # Get dimensions from URL
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(person_image_url, timeout=10.0)
+                    if resp.status_code == 200:
+                        img = Image.open(BytesIO(resp.content))
+                        person_width, person_height = img.size
+            except Exception as e:
+                logger.warning(f"Failed to get image dimensions from URL: {e}, using default aspect ratio")
+        
+        # Calculate 2K resolution maintaining aspect ratio
+        # Target: max dimension = 2048, maintain aspect ratio
+        if person_width and person_height:
+            aspect_ratio = person_width / person_height
+            max_dimension = 2048
             
-            if person_img_path and Path(person_img_path).exists():
-                # Get dimensions from local file
-                with Image.open(person_img_path) as img:
-                    person_width, person_height = img.size
-            elif person_image_url:
-                # Get dimensions from URL
-                try:
-                    async with httpx.AsyncClient() as client:
-                        resp = await client.get(person_image_url, timeout=10.0)
-                        if resp.status_code == 200:
-                            img = Image.open(BytesIO(resp.content))
-                            person_width, person_height = img.size
-                except Exception as e:
-                    logger.warning(f"Failed to get image dimensions from URL: {e}, using default aspect ratio")
+            if aspect_ratio >= 1:  # Landscape or square
+                # Width is larger or equal
+                width = min(max_dimension, int(max_dimension * aspect_ratio))
+                height = min(max_dimension, int(max_dimension / aspect_ratio))
+            else:  # Portrait
+                # Height is larger
+                height = min(max_dimension, int(max_dimension / aspect_ratio))
+                width = min(max_dimension, int(max_dimension * aspect_ratio))
             
-            # Calculate 2K resolution maintaining aspect ratio
-            # Target: max dimension = 2048, maintain aspect ratio
-            if person_width and person_height:
-                aspect_ratio = person_width / person_height
-                max_dimension = 2048
-                
-                if aspect_ratio >= 1:  # Landscape or square
-                    # Width is larger or equal
-                    width = min(max_dimension, int(max_dimension * aspect_ratio))
-                    height = min(max_dimension, int(max_dimension / aspect_ratio))
-                else:  # Portrait
-                    # Height is larger
-                    height = min(max_dimension, int(max_dimension / aspect_ratio))
-                    width = min(max_dimension, int(max_dimension * aspect_ratio))
-                
-                # Ensure dimensions are within API limits [512, 2048]
-                width = max(512, min(2048, width))
-                height = max(512, min(2048, height))
-                
-                output_size = f"{width}*{height}"
-                logger.info(f"[Try-On] Using 2K resolution {output_size} (maintaining aspect ratio {aspect_ratio:.2f}) for {user_plan} plan")
-            else:
-                # Fallback to square 2K if dimensions unavailable
-                output_size = "2048*2048"
-                logger.info(f"[Try-On] Using default 2K resolution {output_size} for {user_plan} plan (could not determine input aspect ratio)")
-        except Exception as e:
-            # Fallback to square 2K on error
+            # Ensure dimensions are within API limits [512, 2048]
+            width = max(512, min(2048, width))
+            height = max(512, min(2048, height))
+            
+            output_size = f"{width}*{height}"
+            logger.info(f"[Try-On] Using 2K resolution {output_size} (maintaining aspect ratio {aspect_ratio:.2f})")
+        else:
+            # Fallback to square 2K if dimensions unavailable
             output_size = "2048*2048"
-            logger.warning(f"[Try-On] Failed to calculate aspect-ratio-preserving resolution: {e}, using default {output_size}")
+            logger.info(f"[Try-On] Using default 2K resolution {output_size} (could not determine input aspect ratio)")
+    except Exception as e:
+        # Fallback to square 2K on error
+        output_size = "2048*2048"
+        logger.warning(f"[Try-On] Failed to calculate aspect-ratio-preserving resolution: {e}, using default {output_size}")
 
     # Prepare Qwen Image Edit client
     try:
@@ -1753,23 +1755,36 @@ async def try_on(
             garment_desc_text = f"\nItem details in Image 1:\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
         
         image_inputs: List[Any] = [garments_collage_path, person_input]
-        # If scene image URL is provided, use it as Image 3 (background)
-        if scene_image_url:
-            image_inputs.append(scene_image_url)
+        # Build action/pose description section if provided
+        action_description_section = ""
+        if background_action_prompt:
+            action_description_section = f"Image 2 Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
+            logger.info(f"[Try-On] Background action prompt received: {background_action_prompt}")
+        else:
+            logger.info("[Try-On] No background action prompt provided")
+        
+        # If background image URL is provided, use it as Image 3 (background)
+        if background_image_url:
+            image_inputs.append(background_image_url)
             prompt = (
                 "Use the person from Image 2 (model photo), have this person wear all clothes and accessories from Image 1, "
-                "then place this person wearing new clothes in the scene shown in Image 3. "
-                "Keep Image 3's environment and background as the final background, only use Image 3's scene elements, "
+                "then place this person wearing new clothes in the background shown in Image 3. "
+                + action_description_section
+                + " Keep Image 3's environment and background as the final background, only use Image 3's background elements, "
                 "the person must come from Image 2, do not use any person from Image 3. "
                 "All items must be correctly worn on the model: "
-                "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet and standing on the ground, "
+                "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
                 "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
                 "bags on the shoulder or held in hand. "
                 "Prohibit any items floating in the air or scattered on the ground. "
-                "Overall image should be natural, consistent lighting, all items should fit the human body."
+                "CRITICAL: Pay careful attention to perspective and spatial consistency. "
+                "The model's perspective, scale, and pose must match the background's perspective and vanishing points. "
+                "The model's size and proportions are consistent with the background's depth and scale. "
+                "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
+                "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
                 + garment_desc_text
             )
-            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit persons from garment collage and scene image, prohibit items scattered or floating
+            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating, prohibit perspective issues
         else:
             # Prompt: Person from Image 2 wearing all clothes from Image 1, keep model and original background
             prompt = (
@@ -1780,10 +1795,22 @@ async def try_on(
                 "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
                 "bags on the shoulder or held in hand. "
                 "Prohibit any items floating in the air or scattered on the ground. "
-                "All items must fit the human body, with accurate and natural positioning."
+                "CRITICAL: Maintain the original perspective and spatial relationships from Image 2. "
+                "The model's pose, scale, and perspective must remain consistent with the original background. "
+                "All proportions match the original scene's depth and perspective. "
+                "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
+                "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
                 + garment_desc_text
             )
-            negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model."  # Prohibit person from garment collage, prohibit items scattered or floating
+            negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit person from garment collage, prohibit items scattered or floating, prohibit perspective issues
+        
+        # Log final prompt for debugging
+        logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
+        logger.info(f"[Try-On] Full prompt sent to API:\n{prompt}")
+        if action_description_section:
+            logger.info(f"[Try-On] Action description included: {action_description_section[:100]}...")
+        else:
+            logger.info("[Try-On] No action description in prompt")
     except Exception as e:
         print(f"Failed to build garment collage: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
@@ -1828,7 +1855,7 @@ async def try_on(
         save_tryon_history(user_id, {
             "image_url": public_url,
             "garment_urls": garment_list,  # Use parsed list, not JSON string (selected items from Applied Outfit Items)
-            "scene_image_url": scene_image_url,
+            "background_image_url": background_image_url,
             "prompt": user_custom_prompt,  # User's original custom prompt (from Form parameter), not the system-generated prompt
             "model_image_url": person_image_url,  # Model image URL for restoration (always exists)
         }, user_token)
@@ -1841,13 +1868,274 @@ async def try_on(
     return {"url": public_url}
 
 
-@app.post("/scene-image")
-async def upload_scene_image(
+@app.post("/generate-angles")
+async def generate_angles(
+    image_url: str = Form(...),
+    preset: Optional[str] = Form(None),
+    horizontal_angle: Optional[float] = Form(None),
+    vertical_angle: Optional[float] = Form(None),
+    zoom: Optional[float] = Form(5.0),
+    additional_prompt: Optional[str] = Form(None),
+    parent_tryon_id: Optional[str] = Form(None),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Generate multi-angle view of a try-on result using fal.ai.
+    
+    Args:
+        image_url: URL of the source try-on result image
+        preset: Optional preset name (front, left, right, back, top, low)
+        horizontal_angle: Horizontal rotation 0-360° (ignored if preset is set)
+        vertical_angle: Vertical angle -30° to 90° (ignored if preset is set)
+        zoom: Camera zoom 0-10 (default 5)
+        additional_prompt: Optional additional prompt text
+        parent_tryon_id: Optional ID of the parent try-on record
+    
+    Returns:
+        Dict with generated image URL and metadata
+    """
+    from services.fal_multi_angle import (
+        AngleParams,
+        generate_multi_angle,
+        get_preset_params,
+        PRESET_ANGLES,
+    )
+    from services.storage import upload_file_to_r2
+    from services.tryon_history import save_tryon_history
+    import httpx
+    from io import BytesIO
+    
+    user_id, user_token = auth
+    
+    # Check subscription and consume try-on count
+    SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{SUBSCRIPTION_SERVICE_URL}/subscription/check-try",
+                json={"user_id": user_id},
+                timeout=5.0
+            )
+            if response.status_code == 403:
+                raise HTTPException(
+                    status_code=403,
+                    detail=response.json().get("error", "Insufficient try-on count for multi-angle generation")
+                )
+            elif not response.is_success:
+                raise HTTPException(status_code=500, detail="Failed to check try-on count")
+    except httpx.RequestError as e:
+        logger.warning(f"Failed to check subscription service: {e}, allowing multi-angle to proceed")
+    
+    # Determine angle parameters
+    try:
+        if preset:
+            if preset not in PRESET_ANGLES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown preset: {preset}. Available: {list(PRESET_ANGLES.keys())}"
+                )
+            params = get_preset_params(preset)
+            # Override zoom if provided
+            if zoom is not None:
+                params.zoom = zoom
+            if additional_prompt:
+                params.additional_prompt = additional_prompt
+        else:
+            # Use custom parameters
+            if horizontal_angle is None or vertical_angle is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Either preset or both horizontal_angle and vertical_angle must be provided"
+                )
+            params = AngleParams(
+                horizontal_angle=horizontal_angle,
+                vertical_angle=vertical_angle,
+                zoom=zoom or 5.0,
+                additional_prompt=additional_prompt,
+            )
+        
+        # Validate parameters
+        params.validate()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Generate multi-angle image
+    try:
+        logger.info(f"[Multi-Angle] Generating for user {user_id}: preset={preset}, h={params.horizontal_angle}, v={params.vertical_angle}")
+        result = await generate_multi_angle(
+            image_url=image_url,
+            params=params,
+        )
+    except RuntimeError as e:
+        # FAL_KEY not set or other config error
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[Multi-Angle] Generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Multi-angle generation failed: {e}")
+    
+    # Extract generated image URL from result
+    generated_images = result.get("images", [])
+    if not generated_images:
+        raise HTTPException(status_code=500, detail="No images generated")
+    
+    fal_image_url = generated_images[0].get("url")
+    if not fal_image_url:
+        raise HTTPException(status_code=500, detail="Generated image URL not found")
+    
+    # Download and re-upload to R2 for consistent storage
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(fal_image_url, timeout=60.0)
+            resp.raise_for_status()
+            image_data = BytesIO(resp.content)
+        
+        # Generate unique filename
+        import uuid
+        filename = f"multiangle_{user_id}_{uuid.uuid4().hex[:8]}.png"
+        
+        public_url = await upload_file_to_r2(
+            image_data,
+            filename,
+            "image/png",
+            expires_in_days=7  # Same as try-on results
+        )
+    except Exception as e:
+        logger.error(f"[Multi-Angle] Failed to upload to R2: {e}")
+        # Fall back to using fal.ai URL directly
+        public_url = fal_image_url
+    
+    # Save to multiangle_history table (separate from tryon_history)
+    angle_type = preset if preset else "custom"
+    angle_params_dict = {
+        "horizontal_angle": params.horizontal_angle,
+        "vertical_angle": params.vertical_angle,
+        "zoom": params.zoom,
+        "additional_prompt": params.additional_prompt,
+    }
+    
+    try:
+        from services.multiangle_history import save_multiangle_history
+        save_multiangle_history(
+            user_id=user_id,
+            source_tryon_url=image_url,
+            result_url=public_url,
+            angle_type=angle_type,
+            angle_params=angle_params_dict,
+            user_token=user_token,
+        )
+    except Exception as e:
+        logger.warning(f"[Multi-Angle] Failed to save history: {e}")
+    
+    return {
+        "url": public_url,
+        "angle_type": angle_type,
+        "angle_params": angle_params_dict,
+        "seed": result.get("seed"),
+        "prompt": result.get("prompt"),
+    }
+
+
+@app.get("/generate-angles/presets")
+async def get_angle_presets():
+    """Get available angle presets."""
+    from services.fal_multi_angle import get_available_presets
+    return {"presets": get_available_presets()}
+
+
+@app.get("/multiangle-history")
+async def get_multiangle_history(
+    source_url: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Get multi-angle generation history for the current user.
+    
+    Args:
+        source_url: Optional filter by source try-on URL
+        page: Page number (1-based)
+        limit: Items per page
+    """
+    from services.multiangle_history import list_multiangle_history, count_multiangle_history
+    
+    user_id, user_token = auth
+    offset = (page - 1) * limit
+    
+    try:
+        total = count_multiangle_history(user_id, user_token)
+        history = list_multiangle_history(
+            user_id=user_id,
+            user_token=user_token,
+            source_url=source_url,
+            limit=limit,
+            offset=offset,
+        )
+        
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
+        
+        return {
+            "history": history,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+        }
+    except Exception as e:
+        logger.error(f"[MultiAngle History] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get multi-angle history: {e}")
+
+
+@app.delete("/multiangle-history/{history_id}")
+async def delete_multiangle_history_item(
+    history_id: str,
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Delete a multi-angle history record by ID."""
+    from services.multiangle_history import delete_multiangle_history
+    
+    user_id, user_token = auth
+    
+    success = delete_multiangle_history(user_id, history_id, user_token)
+    if success:
+        return {"success": True, "message": "Record deleted"}
+    else:
+        raise HTTPException(status_code=404, detail="Record not found or already deleted")
+
+
+@app.post("/multiangle-source")
+async def upload_multiangle_source(
     file: UploadFile = File(...),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
-    Upload a scene image to R2 (with 7-day expiration) and save it to user's history.
+    Upload a source image for multi-angle generation to R2 (with 7-day expiration).
+    This is a temporary upload - the result will be saved to multiangle_history when generation completes.
+    """
+    from services.storage import upload_file_to_r2
+
+    user_id, user_token = auth
+
+    try:
+        # Upload to R2 with 7-day expiration
+        public_url = await upload_file_to_r2(
+            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=7
+        )
+        
+        logger.info(f"[MultiAngle] Source image uploaded for user {user_id}: {public_url}")
+        return {"url": public_url}
+    except Exception as e:
+        logger.error(f"[MultiAngle] Failed to upload source image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload source image: {e}")
+
+
+@app.post("/background-image")
+async def upload_background_image(
+    file: UploadFile = File(...),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Upload a background image to R2 (with 7-day expiration) and save it to user's history.
     """
     from services.storage import upload_file_to_r2
     from services.user_images import save_user_image
@@ -1869,11 +2157,11 @@ async def upload_scene_image(
             r2_filename = public_url.split('/')[-1]
 
         # Save to user history with R2 filename for deletion
-        save_user_image(user_id, public_url, "scene", user_token, r2_filename=r2_filename)
+        save_user_image(user_id, public_url, "background", user_token, r2_filename=r2_filename)
 
         return {"url": public_url}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload scene image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload background image: {e}")
 
 
 @app.post("/model-image")
@@ -2688,3 +2976,387 @@ async def get_userinfo(user_id: str = Depends(get_current_user)):
     except httpx.RequestError as e:
         logger.error(f"Error proxying to subscription service: {e}")
         raise HTTPException(status_code=500, detail=f"Subscription service unavailable: {str(e)}")
+
+
+# ==================== SEO & Search Console API ====================
+
+@app.get("/seo/search-console/connect")
+async def connect_search_console(user_id: str = Depends(get_current_user)):
+    """Initiate Google Search Console OAuth connection"""
+    try:
+        from services.search_console import SearchConsoleService
+        
+        service = SearchConsoleService()
+        auth_url = service.get_authorization_url()
+        
+        # Store state in session/database for later verification
+        # For now, return the URL directly
+        return {"authUrl": auth_url}
+    except Exception as e:
+        logger.error(f"Failed to initiate Search Console connection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect: {str(e)}")
+
+
+@app.get("/seo/search-console/callback")
+async def search_console_callback(code: str, state: Optional[str] = None, user_id: str = Depends(get_current_user)):
+    """Handle OAuth callback from Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        service = SearchConsoleService()
+        credentials = service.get_credentials_from_code(code)
+        
+        # Prepare credentials dictionary
+        credentials_dict = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+        
+        # Store credentials in database (encrypted)
+        db = SearchConsoleDB()
+        site_url = 'https://fashion-rec.com'  # Default site URL
+        success = db.save_credentials(user_id, credentials_dict, site_url)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save credentials")
+        
+        return {"success": True, "message": "Successfully connected to Google Search Console"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to handle Search Console callback: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect: {str(e)}")
+
+
+@app.post("/seo/search-console/disconnect")
+async def disconnect_search_console(user_id: str = Depends(get_current_user)):
+    """Disconnect Google Search Console"""
+    try:
+        from services.search_console_db import SearchConsoleDB
+        
+        db = SearchConsoleDB()
+        success = db.delete_credentials(user_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete credentials")
+        
+        return {"success": True, "message": "Disconnected from Google Search Console"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to disconnect Search Console: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disconnect: {str(e)}")
+
+
+@app.get("/seo/search-console/status")
+async def get_search_console_status(user_id: str = Depends(get_current_user)):
+    """Check Search Console connection status"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            return {"connected": False}
+        
+        # Add user_id to credentials_dict for token refresh callback
+        credentials_dict['user_id'] = user_id
+        
+        # Create callback to save refreshed token
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        # Pass callback to automatically save refreshed token
+        is_connected = service.check_connection(credentials_dict, save_refreshed_token)
+        
+        return {"connected": is_connected}
+    except Exception as e:
+        logger.error(f"Failed to check Search Console status: {e}")
+        return {"connected": False}
+
+
+@app.post("/seo/verify-site")
+async def verify_site(request: Dict[str, Any], user_id: str = Depends(get_current_user)):
+    """Verify site ownership"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        site_url = request.get('siteUrl')
+        if not site_url:
+            raise HTTPException(status_code=400, detail="siteUrl is required")
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Add user_id and create callback for token refresh
+        credentials_dict['user_id'] = user_id
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        result = service.verify_site(credentials_dict, site_url, save_refreshed_token)
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to verify site: {e}")
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
+
+@app.post("/seo/submit-sitemap")
+async def submit_sitemap(request: Dict[str, Any], user_id: str = Depends(get_current_user)):
+    """Submit sitemap to Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        sitemap_url = request.get('sitemapUrl')
+        site_url = request.get('siteUrl', 'https://fashion-rec.com')
+        
+        if not sitemap_url:
+            raise HTTPException(status_code=400, detail="sitemapUrl is required")
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Add user_id and create callback for token refresh
+        credentials_dict['user_id'] = user_id
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        result = service.submit_sitemap(credentials_dict, site_url, sitemap_url, save_refreshed_token)
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit sitemap: {e}")
+        raise HTTPException(status_code=500, detail=f"Sitemap submission failed: {str(e)}")
+
+
+@app.post("/seo/inspect-url")
+async def inspect_url(request: Dict[str, Any], user_id: str = Depends(get_current_user)):
+    """Inspect URL using Google Search Console URL Inspection API"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        url = request.get('url')
+        if not url:
+            raise HTTPException(status_code=400, detail="url is required")
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Add user_id and create callback for token refresh
+        credentials_dict['user_id'] = user_id
+        def save_refreshed_token(uid: str, updated_creds: Dict[str, Any]):
+            db.save_credentials(uid, updated_creds)
+        
+        service = SearchConsoleService()
+        result = service.inspect_url(credentials_dict, url, save_refreshed_token)
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to inspect URL: {e}")
+        raise HTTPException(status_code=500, detail=f"URL inspection failed: {str(e)}")
+
+
+@app.get("/seo/video-analytics")
+async def get_video_seo_analytics(
+    startDate: str,
+    endDate: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Get video search analytics from Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+
+        # Get site_url from credentials or use default
+        site_url = credentials_dict.get('site_url', 'https://fashion-rec.com')
+
+        service = SearchConsoleService()
+        result = service.get_video_search_analytics(
+            credentials_dict,
+            site_url,
+            startDate,
+            endDate
+        )
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get video analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get video analytics: {str(e)}")
+
+
+@app.get("/seo/analytics")
+async def get_seo_analytics(
+    startDate: str,
+    endDate: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Get search analytics from Google Search Console"""
+    try:
+        from services.search_console import SearchConsoleService
+        from services.search_console_db import SearchConsoleDB
+        
+        # Retrieve credentials from database
+        db = SearchConsoleDB()
+        credentials_dict = db.get_credentials(user_id)
+        
+        if not credentials_dict:
+            raise HTTPException(status_code=401, detail="Not connected to Google Search Console")
+        
+        # Get site_url from credentials or use default
+        site_url = credentials_dict.get('site_url', 'https://fashion-rec.com')
+        
+        service = SearchConsoleService()
+        result = service.get_search_analytics(
+            credentials_dict,
+            site_url,
+            startDate,
+            endDate
+        )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get analytics: {str(e)}")
+
+
+@app.get("/video-sitemap.xml")
+async def get_video_sitemap():
+    """Generate video sitemap for Google Search Console"""
+    try:
+        import aiohttp
+
+        # Fetch blog posts from Cloudflare Workers API
+        blog_api_url = "https://blog.fashion-rec.workers.dev/posts?status=published&limit=1000"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(blog_api_url) as response:
+                if response.status != 200:
+                    logger.warning(f"Failed to fetch blog posts: {response.status}")
+                    # Return empty sitemap
+                    return Response(
+                        content='''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+</urlset>''',
+                        media_type="application/xml"
+                    )
+
+                data = await response.json()
+                posts = data.get('posts', [])
+
+        # Build video sitemap XML
+        xml_parts = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',
+            '        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">'
+        ]
+
+        base_url = "https://fashion-rec.com"
+        blog_base_url = "https://blog.fashion-rec.com"
+
+        for post in posts:
+            if post.get('media_urls'):
+                # Check if post contains videos
+                has_video = any(media.get('type') == 'video' for media in post['media_urls'])
+
+                if has_video:
+                    xml_parts.append('  <url>')
+                    xml_parts.append(f'    <loc>{blog_base_url}/blog/{post["id"]}</loc>')
+                    xml_parts.append(f'    <lastmod>{post["updated_at"][:10]}</lastmod>')
+
+                    # Add video entries for each video in the post
+                    for media in post['media_urls']:
+                        if media.get('type') == 'video':
+                            xml_parts.append('    <video:video>')
+
+                            # Use thumbnail if available, otherwise use a default or video URL
+                            thumbnail_url = media.get('thumbnail') or media['url'].replace('.mp4', '.jpg').replace('.webm', '.jpg').replace('.mov', '.jpg')
+                            xml_parts.append(f'      <video:thumbnail_loc>{thumbnail_url}</video:thumbnail_loc>')
+
+                            # Title: Post title + Video
+                            xml_parts.append(f'      <video:title>{post["title"]} - Video</video:title>')
+
+                            # Description: First 500 characters of post content
+                            description = post.get("content", "")[:500]
+                            if not description:
+                                description = post["title"]
+                            xml_parts.append(f'      <video:description>{description}</video:description>')
+
+                            # Content location: Direct video file URL
+                            xml_parts.append(f'      <video:content_loc>{media["url"]}</video:content_loc>')
+
+                            # Player location: Blog post URL with video anchor
+                            xml_parts.append(f'      <video:player_loc>{blog_base_url}/blog/{post["id"]}#video</video:player_loc>')
+
+                            # Duration: Default to 300 seconds (5 minutes) - should be calculated from actual video metadata
+                            xml_parts.append('      <video:duration>300</video:duration>')
+
+                            # Publication date
+                            xml_parts.append('      <video:publication_date>')
+                            xml_parts.append(f'        <video:nested>{post["created_at"][:19]}+00:00</video:nested>')
+                            xml_parts.append('      </video:publication_date>')
+
+                            xml_parts.append('    </video:video>')
+
+                    xml_parts.append('  </url>')
+
+        xml_parts.append('</urlset>')
+
+        return Response(
+            content='\n'.join(xml_parts),
+            media_type="application/xml"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate video sitemap: {e}")
+        # Return empty sitemap on error
+        return Response(
+            content='''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+</urlset>''',
+            media_type="application/xml"
+        )

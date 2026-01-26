@@ -1,21 +1,25 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AgentOutfit } from '@/types'
+import type { AgentOutfit, Item } from '@/types'
 
 export const useStudioStore = defineStore('studio', () => {
   // State that should be persisted across page navigation
   const customPrompt = ref('')
-  const sceneImageUrl = ref<string | null>(null)
-  const sceneImagePreviewUrl = ref<string | null>(null)
+  const backgroundImageUrl = ref<string | null>(null)
+  const backgroundImagePreviewUrl = ref<string | null>(null)
+  const backgroundActionPrompt = ref<string>('')
   const modelImagePreviewUrl = ref<string | null>(null)
   const tryOnImageUrl = ref<string | null>(null)
   const agentOutfits = ref<AgentOutfit[]>([])
   const activeWardrobeIds = ref<string[]>([])
+  const selectedItemIds = ref<string[]>([])
+  const uploadedItems = ref<Item[]>([])
   // Store role mapping as array of [id, role] tuples for serialization
   const activeWardrobeRoleMapEntries = ref<[string, string][]>([])
   const originalAppliedOutfit = ref<AgentOutfit | null>(null)
   const favoriteSaved = ref(false)
   const currentFavoriteId = ref<string | null>(null)
+  const backgroundTabValue = ref<string>('no-background')
 
   // Helper to convert role map entries to Map
   const getActiveWardrobeRoleMap = () => {
@@ -32,9 +36,13 @@ export const useStudioStore = defineStore('studio', () => {
     customPrompt.value = prompt
   }
 
-  const setSceneImage = (url: string | null, previewUrl: string | null = null) => {
-    sceneImageUrl.value = url
-    sceneImagePreviewUrl.value = previewUrl || url
+  const setBackgroundImage = (url: string | null, previewUrl: string | null = null) => {
+    backgroundImageUrl.value = url
+    backgroundImagePreviewUrl.value = previewUrl || url
+  }
+
+  const setBackgroundActionPrompt = (prompt: string) => {
+    backgroundActionPrompt.value = prompt
   }
 
   const setModelImage = (url: string | null) => {
@@ -45,12 +53,32 @@ export const useStudioStore = defineStore('studio', () => {
     tryOnImageUrl.value = url
   }
 
+  const setUploadedItems = (items: Item[]) => {
+    uploadedItems.value = items
+  }
+
   const setAgentOutfits = (outfits: AgentOutfit[]) => {
     agentOutfits.value = outfits
   }
 
   const setActiveWardrobeIds = (ids: string[]) => {
     activeWardrobeIds.value = ids
+  }
+
+  const setSelectedItemIds = (ids: string[]) => {
+    selectedItemIds.value = ids
+  }
+
+  const addSelectedItemId = (id: string) => {
+    const strId = String(id)
+    if (!selectedItemIds.value.includes(strId)) {
+      selectedItemIds.value = [...selectedItemIds.value, strId]
+    }
+  }
+
+  const removeSelectedItemId = (id: string) => {
+    const strId = String(id)
+    selectedItemIds.value = selectedItemIds.value.filter((i) => i !== strId)
   }
 
   const addActiveWardrobeId = (id: string) => {
@@ -72,47 +100,65 @@ export const useStudioStore = defineStore('studio', () => {
     currentFavoriteId.value = id
   }
 
+  const setBackgroundTabValue = (value: string) => {
+    backgroundTabValue.value = value
+  }
+
   const clearState = () => {
     customPrompt.value = ''
-    sceneImageUrl.value = null
-    sceneImagePreviewUrl.value = null
+    backgroundImageUrl.value = null
+    backgroundImagePreviewUrl.value = null
+    backgroundActionPrompt.value = ''
     modelImagePreviewUrl.value = null
     tryOnImageUrl.value = null
+    uploadedItems.value = []
     agentOutfits.value = []
     activeWardrobeIds.value = []
+    selectedItemIds.value = []
     activeWardrobeRoleMapEntries.value = []
     originalAppliedOutfit.value = null
     favoriteSaved.value = false
     currentFavoriteId.value = null
+    backgroundTabValue.value = 'no-background'
   }
 
   return {
     // State
     customPrompt,
-    sceneImageUrl,
-    sceneImagePreviewUrl,
+    backgroundImageUrl,
+    backgroundImagePreviewUrl,
+    backgroundActionPrompt,
     modelImagePreviewUrl,
     tryOnImageUrl,
+    selectedItemIds,
+    uploadedItems,
     agentOutfits,
     activeWardrobeIds,
     activeWardrobeRoleMapEntries,
     originalAppliedOutfit,
     favoriteSaved,
     currentFavoriteId,
+    backgroundTabValue,
     // Helpers
     getActiveWardrobeRoleMap,
     setActiveWardrobeRoleMap,
     // Actions
     setCustomPrompt,
-    setSceneImage,
+    setBackgroundImage,
+    setBackgroundActionPrompt,
     setModelImage,
     setTryOnImage,
+    setSelectedItemIds,
+    addSelectedItemId,
+    removeSelectedItemId,
+    setUploadedItems,
     setAgentOutfits,
     setActiveWardrobeIds,
     addActiveWardrobeId,
     removeActiveWardrobeId,
     setOriginalAppliedOutfit,
     setFavoriteStatus,
+    setBackgroundTabValue,
     clearState,
   }
 }, {

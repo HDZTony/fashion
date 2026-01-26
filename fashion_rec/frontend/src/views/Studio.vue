@@ -1,43 +1,54 @@
 <script setup lang="ts">
 defineOptions({ name: 'Studio' })
-import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search, Image, RotateCw } from 'lucide-vue-next'
 import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getThumbnailUrl, getSmallImageUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 // Initialize Pinia store
 const studioStore = useStudioStore()
 
+// Uploaded wardrobe items (persisted via store)
+const uploadedItems = computed({
+  get: () => studioStore.uploadedItems,
+  set: (value) => studioStore.setUploadedItems(value)
+})
 // Local state (not persisted)
-const uploadedItems = ref<Item[]>([])
 const selectedItem = ref<Item | null>(null)
-const selectedItemIds = ref<string[]>([])
+const selectedItemIds = computed({
+  get: () => studioStore.selectedItemIds,
+  set: (value) => studioStore.setSelectedItemIds(value)
+})
 const recommendations = ref<Recommendation[]>([])
 const modelImageFile = ref<File | null>(null)
 const isGenerating = ref(false)
 const isTryingOn = ref(false)
 
-// Scene image file (not persisted, only URL is persisted)
-const sceneImageFile = ref<File | null>(null)
+// Background image file (not persisted, only URL is persisted)
+const backgroundImageFile = ref<File | null>(null)
 
 // Use store state (automatically persisted)
 const customPrompt = computed({
   get: () => studioStore.customPrompt,
   set: (value) => studioStore.setCustomPrompt(value)
 })
-const sceneImageUrl = computed({
-  get: () => studioStore.sceneImageUrl,
-  set: (value) => studioStore.setSceneImage(value, value)
+const backgroundImageUrl = computed({
+  get: () => studioStore.backgroundImageUrl,
+  set: (value) => studioStore.setBackgroundImage(value, value)
 })
-const sceneImagePreviewUrl = computed({
-  get: () => studioStore.sceneImagePreviewUrl,
-  set: (value) => studioStore.setSceneImage(studioStore.sceneImageUrl, value)
+const backgroundImagePreviewUrl = computed({
+  get: () => studioStore.backgroundImagePreviewUrl,
+  set: (value) => studioStore.setBackgroundImage(studioStore.backgroundImageUrl, value)
 })
 const modelImagePreviewUrl = computed({
   get: () => studioStore.modelImagePreviewUrl,
@@ -59,6 +70,12 @@ const activeWardrobeIds = computed({
 const activeWardrobeRoleMap = computed({
   get: () => studioStore.getActiveWardrobeRoleMap(),
   set: (value) => studioStore.setActiveWardrobeRoleMap(value)
+})
+
+// Background action prompt (persisted via store)
+const backgroundActionPrompt = computed({
+  get: () => studioStore.backgroundActionPrompt,
+  set: (value) => studioStore.setBackgroundActionPrompt(value)
 })
 
 // Helper functions to update role map (since computed doesn't support Map methods directly)
@@ -85,17 +102,86 @@ const currentFavoriteId = computed({
 interface HistoricalImage {
   id: string
   image_url: string
-  image_type: 'scene' | 'model'
+  image_type: 'background' | 'model'
   created_at: string
 }
-const historicalSceneImages = ref<HistoricalImage[]>([])
+const historicalBackgroundImages = ref<HistoricalImage[]>([])
 const historicalModelImages = ref<HistoricalImage[]>([])
-const showSceneImageHistory = ref(false)
+const showBackgroundImageHistory = ref(false)
 const showModelImageHistory = ref(false)
+const showExampleModelImages = ref(false)
+const showExampleBackgroundImages = ref(false)
+
+// Example model images (pre-uploaded sample photos)
+const exampleModelImages = ref<string[]>([
+  // These are placeholder URLs - replace with actual pre-uploaded image URLs
+  // You can upload these images to your storage (R2) and use the public URLs here
+  'https://r2.fashion-rec.com/example/IMG_9953.JPG',
+  'https://r2.fashion-rec.com/example/IMG_9954.JPG',
+])
+
+// Example background images with prompts (pre-uploaded sample photos)
+interface ExampleBackgroundImage {
+  url: string
+  prompt: string
+}
+
+const exampleBackgroundImages = ref<ExampleBackgroundImage[]>([
+  { url: 'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg', prompt: 'studio.exampleBackgroundPrompts.001' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg', prompt: 'studio.exampleBackgroundPrompts.002' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg', prompt: 'studio.exampleBackgroundPrompts.003' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg', prompt: 'studio.exampleBackgroundPrompts.004' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg', prompt: 'studio.exampleBackgroundPrompts.005' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg', prompt: 'studio.exampleBackgroundPrompts.006' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg', prompt: 'studio.exampleBackgroundPrompts.007' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg', prompt: 'studio.exampleBackgroundPrompts.008' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg', prompt: 'studio.exampleBackgroundPrompts.009' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg', prompt: 'studio.exampleBackgroundPrompts.010' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg', prompt: 'studio.exampleBackgroundPrompts.011' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg', prompt: 'studio.exampleBackgroundPrompts.012' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg', prompt: 'studio.exampleBackgroundPrompts.013' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg', prompt: 'studio.exampleBackgroundPrompts.014' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg', prompt: 'studio.exampleBackgroundPrompts.015' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg', prompt: 'studio.exampleBackgroundPrompts.016' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg', prompt: 'studio.exampleBackgroundPrompts.017' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg', prompt: 'studio.exampleBackgroundPrompts.018' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg', prompt: 'studio.exampleBackgroundPrompts.019' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg', prompt: 'studio.exampleBackgroundPrompts.020' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg', prompt: 'studio.exampleBackgroundPrompts.021' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg', prompt: 'studio.exampleBackgroundPrompts.022' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg', prompt: 'studio.exampleBackgroundPrompts.023' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg', prompt: 'studio.exampleBackgroundPrompts.024' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg', prompt: 'studio.exampleBackgroundPrompts.025' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg', prompt: 'studio.exampleBackgroundPrompts.026' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg', prompt: 'studio.exampleBackgroundPrompts.027' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg', prompt: 'studio.exampleBackgroundPrompts.028' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg', prompt: 'studio.exampleBackgroundPrompts.029' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg', prompt: 'studio.exampleBackgroundPrompts.030' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg', prompt: 'studio.exampleBackgroundPrompts.031' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg', prompt: 'studio.exampleBackgroundPrompts.032' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg', prompt: 'studio.exampleBackgroundPrompts.033' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg', prompt: 'studio.exampleBackgroundPrompts.034' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg', prompt: 'studio.exampleBackgroundPrompts.035' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg', prompt: 'studio.exampleBackgroundPrompts.036' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg', prompt: 'studio.exampleBackgroundPrompts.037' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg', prompt: 'studio.exampleBackgroundPrompts.038' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg', prompt: 'studio.exampleBackgroundPrompts.039' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg', prompt: 'studio.exampleBackgroundPrompts.040' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg', prompt: 'studio.exampleBackgroundPrompts.041' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg', prompt: 'studio.exampleBackgroundPrompts.042' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg', prompt: 'studio.exampleBackgroundPrompts.043' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg', prompt: 'studio.exampleBackgroundPrompts.044' },
+])
 
 // Upload progress
-const sceneImageUploadProgress = ref(0)
-const isUploadingSceneImage = ref(false)
+const backgroundImageUploadProgress = ref(0)
+const isUploadingBackgroundImage = ref(false)
+
+// Current tab value for background image options (persisted via store)
+const backgroundTabValue = computed({
+  get: () => studioStore.backgroundTabValue,
+  set: (value) => studioStore.setBackgroundTabValue(value)
+})
 
 // Model image upload progress
 const modelImageUploadProgress = ref(0)
@@ -140,31 +226,15 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
-// Save items to sessionStorage
+// Persist items via Pinia (sessionStorage-backed)
 const saveItemsToCache = () => {
-  try {
-    sessionStorage.setItem('wardrobe_items_cache', JSON.stringify(uploadedItems.value))
-  } catch (e) {
-    console.warn('Failed to save items to sessionStorage:', e)
-  }
+  // Pinia persistence handles storage; setter ensures reactivity
+  studioStore.setUploadedItems([...uploadedItems.value])
 }
 
-// Restore items from sessionStorage if available
 const restoreItemsFromCache = () => {
-  try {
-    const cached = sessionStorage.getItem('wardrobe_items_cache')
-    if (cached) {
-      const items = JSON.parse(cached)
-      if (Array.isArray(items) && items.length > 0) {
-        uploadedItems.value = items
-        console.log('[Studio] Restored items from sessionStorage:', items.length)
-        return true
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to restore items from sessionStorage:', e)
-  }
-  return false
+  // If store already has data (from persisted session), treat as restored
+  return Array.isArray(uploadedItems.value) && uploadedItems.value.length > 0
 }
 
 // State is automatically persisted by Pinia store, no need for manual save/restore
@@ -200,21 +270,21 @@ const loadUserItems = async () => {
 const loadHistoricalImages = async () => {
   try {
     console.log('[loadHistoricalImages] Starting to load historical images...')
-    const [sceneResp, modelResp] = await Promise.all([
-      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=scene'),
+    const [backgroundResp, modelResp] = await Promise.all([
+      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=background'),
       apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=model'),
     ])
-    console.log('[loadHistoricalImages] Scene response:', sceneResp.data)
+    console.log('[loadHistoricalImages] Background response:', backgroundResp.data)
     console.log('[loadHistoricalImages] Model response:', modelResp.data)
     
     // Ensure we handle both response formats: { images: [...] } or direct array
-    const sceneImages = sceneResp.data?.images || sceneResp.data || []
+    const backgroundImages = backgroundResp.data?.images || backgroundResp.data || []
     const modelImages = modelResp.data?.images || modelResp.data || []
     
-    historicalSceneImages.value = Array.isArray(sceneImages) ? sceneImages : []
+    historicalBackgroundImages.value = Array.isArray(backgroundImages) ? backgroundImages : []
     historicalModelImages.value = Array.isArray(modelImages) ? modelImages : []
     
-    console.log('[loadHistoricalImages] Loaded scene images:', historicalSceneImages.value.length)
+    console.log('[loadHistoricalImages] Loaded background images:', historicalBackgroundImages.value.length)
     console.log('[loadHistoricalImages] Loaded model images:', historicalModelImages.value.length)
   } catch (error) {
     console.error('[loadHistoricalImages] Failed to load historical images:', error)
@@ -241,20 +311,62 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // Load items when component mounts
 onMounted(async () => {
+  // Check if this is a route navigation (from another page) or a page refresh (F5/Ctrl+R)
+  // Route navigation sets a marker in router guard, page refresh doesn't
+  const isRouteNavigation = sessionStorage.getItem('studio-route-navigation') === 'true'
+  
+  // Detect if this is a true page refresh (F5/Ctrl+R)
+  let isPageRefresh = false
+  if (!isRouteNavigation) {
+    // Only check navigation type if it's not a route navigation
+    try {
+      const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      if (navigationEntry) {
+        // 'reload' means user pressed F5 or Ctrl+R
+        // 'navigate' means normal navigation (including initial load)
+        isPageRefresh = navigationEntry.type === 'reload'
+      } else if (performance.navigation) {
+        // Fallback for older browsers
+        // 1 = TYPE_RELOAD (refresh), 0 = TYPE_NAVIGATE (normal navigation)
+        isPageRefresh = (performance.navigation as any).type === 1
+      }
+    } catch (e) {
+      console.warn('[onMounted] Failed to detect navigation type:', e)
+    }
+  }
+  
+  // Clear route navigation marker after checking
+  if (isRouteNavigation) {
+    sessionStorage.removeItem('studio-route-navigation')
+    console.log('[onMounted] Route navigation detected (from another page), preserving studio state')
+  } else if (isPageRefresh) {
+    console.log('[onMounted] Page refresh detected (F5/Ctrl+R), clearing studio state')
+    studioStore.clearState()
+    // Also clear sessionStorage to ensure clean state
+    sessionStorage.removeItem('studio-store')
+    sessionStorage.removeItem('tryon_history_restore')
+  } else {
+    console.log('[onMounted] Initial page load, preserving studio state')
+  }
+  
   // Load local selection state first and sync to activeWardrobeIds
-  syncSelectedItemsToActiveWardrobe()
+  // Skip if page refresh (user wants clean state)
+  if (!isPageRefresh) {
+    syncSelectedItemsToActiveWardrobe()
 
-  // Try to restore items from cache first for instant display of Applied outfit items
-  // These items are already loaded in Wardrobe page and saved to sessionStorage
-  // Studio page doesn't need to load all items from backend - only items selected in Wardrobe are needed
-  restoreItemsFromCache()
+    // Try to restore items from cache first for instant display of Applied outfit items
+    // These items are already loaded in Wardrobe page and saved to sessionStorage
+    // Studio page doesn't need to load all items from backend - only items selected in Wardrobe are needed
+    restoreItemsFromCache()
+  }
   
   // Studio state is automatically restored by Pinia store (no manual restore needed)
   // But we need to check favorite status if try-on image exists
   const lookId = route.query.lookId as string | undefined
   const tryonHistoryId = route.query.tryonHistoryId as string | undefined
   
-  if (!lookId && !tryonHistoryId && tryOnImageUrl.value) {
+  // Skip favorite status check on page refresh (state is already cleared)
+  if (!isPageRefresh && !lookId && !tryonHistoryId && tryOnImageUrl.value) {
     // If not restoring from history and try-on image exists, check favorite status
     checkFavoriteStatus()
   }
@@ -286,14 +398,16 @@ onMounted(async () => {
   }
   
   // Check if we need to restore a look from history
-  if (lookId) {
+  // Skip restoration if this is a page refresh (user wants clean state on refresh)
+  if (lookId && !isPageRefresh) {
     console.log('[onMounted] Found lookId in query, restoring look:', lookId)
     // Items should be in cache from Wardrobe page, but if not, restoreLookFromHistory will handle it
     await restoreLookFromHistory(lookId)
   }
   
   // Check if we need to restore try-on history
-  if (tryonHistoryId) {
+  // Skip restoration if this is a page refresh (user wants clean state on refresh)
+  if (tryonHistoryId && !isPageRefresh) {
     console.log('[onMounted] Found tryonHistoryId in query, restoring try-on history:', tryonHistoryId)
     await restoreTryOnHistory(tryonHistoryId)
   }
@@ -301,25 +415,16 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeyDown)
 })
 
-// Sync selectedItemIds from localStorage to activeWardrobeIds when component is activated
+// Sync selectedItemIds from store to activeWardrobeIds when component is activated
 // This ensures items selected from Wardrobe page appear in Applied Outfit Items
 const syncSelectedItemsToActiveWardrobe = () => {
-  try {
-    const saved = localStorage.getItem('fashion-rec_selected_items')
-    if (saved) {
-      const ids = JSON.parse(saved)
-      if (Array.isArray(ids)) {
-        selectedItemIds.value = ids
-        // Merge selectedItemIds into activeWardrobeIds (add items that are not already there)
-        const newIds = ids.filter(id => !activeWardrobeIds.value.includes(String(id)))
-        if (newIds.length > 0) {
-          activeWardrobeIds.value.push(...newIds.map(id => String(id)))
-          console.log('[syncSelectedItemsToActiveWardrobe] Added new items to activeWardrobeIds:', newIds)
-        }
-      }
+  const ids = selectedItemIds.value
+  if (Array.isArray(ids) && ids.length > 0) {
+    const newIds = ids.filter(id => !activeWardrobeIds.value.includes(String(id)))
+    if (newIds.length > 0) {
+      activeWardrobeIds.value.push(...newIds.map(id => String(id)))
+      console.log('[syncSelectedItemsToActiveWardrobe] Added new items to activeWardrobeIds:', newIds)
     }
-  } catch (e) {
-    console.error('Failed to sync selected items from localStorage:', e)
   }
 }
 
@@ -376,7 +481,7 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
     await loadHistoricalImages()
     console.log('[restoreTryOnHistory] Historical images loaded:', {
       model: historicalModelImages.value.length,
-      scene: historicalSceneImages.value.length
+      background: historicalBackgroundImages.value.length
     })
     
     // Load user items to match garment URLs with wardrobe items
@@ -394,12 +499,12 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
       console.log('[restoreTryOnHistory] Restored prompt:', restoreData.prompt)
     }
     
-    // Restore scene image
-    if (restoreData.scene_image_url) {
-      sceneImageUrl.value = restoreData.scene_image_url
-      sceneImagePreviewUrl.value = restoreData.scene_image_url
-      sceneImageFile.value = null
-      console.log('[restoreTryOnHistory] Restored scene image:', restoreData.scene_image_url)
+    // Restore background image
+    if (restoreData.background_image_url) {
+      backgroundImageUrl.value = restoreData.background_image_url
+      backgroundImagePreviewUrl.value = restoreData.background_image_url
+      backgroundImageFile.value = null
+      console.log('[restoreTryOnHistory] Restored background image:', restoreData.background_image_url)
     }
     
     // Restore try-on result image
@@ -513,7 +618,7 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
     
     console.log('[restoreTryOnHistory] Successfully restored try-on history:', {
       prompt: customPrompt.value,
-      sceneImageUrl: sceneImageUrl.value,
+      backgroundImageUrl: backgroundImageUrl.value,
       tryOnImageUrl: tryOnImageUrl.value,
       activeWardrobeIds: activeWardrobeIds.value,
     })
@@ -556,11 +661,11 @@ const restoreLookFromHistory = async (lookId: string) => {
       customPrompt.value = look.prompt
     }
     
-    // Restore scene image
-    if (look.scene_image_url) {
-      sceneImageUrl.value = look.scene_image_url
-      sceneImagePreviewUrl.value = look.scene_image_url
-      sceneImageFile.value = null // Clear file since we're using URL
+    // Restore background image
+    if (look.background_image_url) {
+      backgroundImageUrl.value = look.background_image_url
+      backgroundImagePreviewUrl.value = look.background_image_url
+      backgroundImageFile.value = null // Clear file since we're using URL
     }
     
     // Restore active wardrobe items
@@ -602,7 +707,7 @@ const restoreLookFromHistory = async (lookId: string) => {
         wardrobeIds: activeWardrobeIds.value,
         roleMap: Array.from(activeWardrobeRoleMap.value.entries()),
         prompt: customPrompt.value,
-        sceneImageUrl: sceneImageUrl.value,
+        backgroundImageUrl: backgroundImageUrl.value,
       })
     }
     
@@ -634,23 +739,30 @@ const getRecommendations = async () => {
   tryOnImageUrl.value = null
 
   try {
-    // Scene image should already be uploaded in handleSceneImageChange
+    // Ensure uploadedItems is loaded before generating outfits
+    if (uploadedItems.value.length === 0) {
+      const restored = restoreItemsFromCache()
+      if (!restored) {
+        await loadUserItems()
+      }
+    }
+    // Background image should already be uploaded in handleBackgroundImageChange
     // If we have a file but no URL, upload it now (fallback)
-    if (sceneImageFile.value && !sceneImageUrl.value) {
+    if (backgroundImageFile.value && !backgroundImageUrl.value) {
       const formData = new FormData()
-      formData.append('file', sceneImageFile.value)
+      formData.append('file', backgroundImageFile.value)
 
       try {
-        const resp = await uploadApiClient.post<{ url: string }>('/scene-image', formData, {
+        const resp = await uploadApiClient.post<{ url: string }>('/background-image', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         })
-        sceneImageUrl.value = resp.data.url
+        backgroundImageUrl.value = resp.data.url
         await loadHistoricalImages()
       } catch (e: any) {
-        console.error('Scene image upload failed:', e)
-        alert(`Scene image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+        console.error('Background image upload failed:', e)
+        alert(`Background image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
       }
     }
 
@@ -696,7 +808,8 @@ const getRecommendations = async () => {
     const requestPayload = {
       base_item_ids: activeItemIds,
       prompt: enhancedPrompt,
-      scene_image_url: sceneImageUrl.value || undefined,
+      background_image_url: backgroundImageUrl.value || undefined,
+      background_action_prompt: backgroundImageUrl.value && backgroundActionPrompt.value ? backgroundActionPrompt.value : undefined,
       selected_items_roles: selectedItemsRoles,
     }
     
@@ -834,6 +947,92 @@ const selectHistoricalModelImage = (image: HistoricalImage) => {
   showModelImageHistory.value = false
 }
 
+const selectExampleModelImage = async (imageUrl: string) => {
+  modelImageFile.value = null
+  showModelImageError.value = false // Reset error state when user selects example image
+  
+  // Close the dialog immediately when clicking on an image
+  showExampleModelImages.value = false
+  
+  // If the example image is already on our server (R2), use it directly
+  // Otherwise, we need to upload it to save to history
+  if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
+    // Already on our server, use directly (similar to historical images)
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+    }
+    modelImagePreviewUrl.value = imageUrl
+    return
+  }
+  
+  // For external URLs or local files, upload to backend to save to history
+  try {
+    // Fetch the image as a blob
+    const response = await fetch(imageUrl)
+    if (!response.ok) {
+      throw new Error('Failed to fetch example image')
+    }
+    const blob = await response.blob()
+    const file = new File([blob], 'example-model.jpg', { type: blob.type })
+    
+    // Upload to backend to save to history
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    isUploadingModelImage.value = true
+    modelImageUploadProgress.value = 0
+    
+    let hasRealProgress = false
+    const progressInterval = setInterval(() => {
+      if (!hasRealProgress && modelImageUploadProgress.value < 90) {
+        modelImageUploadProgress.value += 10
+      }
+    }, 200)
+    
+    const resp = await uploadApiClient.post<{ url: string }>('/model-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        hasRealProgress = true
+        if (progressEvent.total) {
+          modelImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        } else if (progressEvent.loaded) {
+          modelImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
+        }
+      },
+    })
+    
+    clearInterval(progressInterval)
+    modelImageUploadProgress.value = 100
+    
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+      modelImagePreviewUrl.value = null
+    }
+    modelImagePreviewUrl.value = resp.data.url
+    modelImageFile.value = null
+    
+    // Reload historical images
+    await loadHistoricalImages()
+    
+    // Reset progress
+    setTimeout(() => {
+      isUploadingModelImage.value = false
+      modelImageUploadProgress.value = 0
+    }, 500)
+  } catch (e: any) {
+    console.error('Failed to use example model image:', e)
+    // Fallback: use the URL directly without uploading
+    if (modelImagePreviewUrl.value) {
+      URL.revokeObjectURL(modelImagePreviewUrl.value)
+    }
+    modelImagePreviewUrl.value = imageUrl
+    isUploadingModelImage.value = false
+    modelImageUploadProgress.value = 0
+  }
+}
+
 const deleteHistoricalModelImage = async (image: HistoricalImage, event: Event) => {
   event.stopPropagation() // Prevent selecting the image when clicking delete
   
@@ -867,15 +1066,15 @@ const removeModelImage = () => {
   modelImageFile.value = null
 }
 
-const handleSceneImageChange = async (event: Event) => {
+const handleBackgroundImageChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0] || null
   if (!file) return
 
-  sceneImageFile.value = file
-  sceneImageUrl.value = null
-  isUploadingSceneImage.value = true
-  sceneImageUploadProgress.value = 0
+  backgroundImageFile.value = file
+  backgroundImageUrl.value = null
+  isUploadingBackgroundImage.value = true
+  backgroundImageUploadProgress.value = 0
 
   // Upload to backend and save to history
   try {
@@ -885,123 +1084,227 @@ const handleSceneImageChange = async (event: Event) => {
     // Fallback progress simulation (in case onUploadProgress doesn't fire)
     let hasRealProgress = false
     const progressInterval = setInterval(() => {
-      if (!hasRealProgress && sceneImageUploadProgress.value < 90) {
-        sceneImageUploadProgress.value += 10
+      if (!hasRealProgress && backgroundImageUploadProgress.value < 90) {
+        backgroundImageUploadProgress.value += 10
       }
     }, 200)
     
-    const resp = await apiClient.post<{ url: string }>('/scene-image', formData, {
+    const resp = await uploadApiClient.post<{ url: string }>('/background-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       onUploadProgress: (progressEvent) => {
         hasRealProgress = true
         if (progressEvent.total) {
-          sceneImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          backgroundImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
         } else if (progressEvent.loaded) {
           // Estimate progress if total is unknown
-          sceneImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
+          backgroundImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
         }
       },
     })
     
     clearInterval(progressInterval)
-    sceneImageUploadProgress.value = 100
-    sceneImageUrl.value = resp.data.url
+    backgroundImageUploadProgress.value = 100
+    backgroundImageUrl.value = resp.data.url
     
     // Reload historical images
     await loadHistoricalImages()
     
     // Reset progress after a short delay
     setTimeout(() => {
-      isUploadingSceneImage.value = false
-      sceneImageUploadProgress.value = 0
+      isUploadingBackgroundImage.value = false
+      backgroundImageUploadProgress.value = 0
     }, 500)
   } catch (e: any) {
-    console.error('Scene image upload failed:', e)
-    isUploadingSceneImage.value = false
-    sceneImageUploadProgress.value = 0
-    alert(`Scene image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+    console.error('Background image upload failed:', e)
+    isUploadingBackgroundImage.value = false
+    backgroundImageUploadProgress.value = 0
+    alert(`Background image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
     return
   }
 
-  if (sceneImagePreviewUrl.value) {
-    URL.revokeObjectURL(sceneImagePreviewUrl.value)
-    sceneImagePreviewUrl.value = null
+  if (backgroundImagePreviewUrl.value) {
+    URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+    backgroundImagePreviewUrl.value = null
   }
   if (file) {
-    sceneImagePreviewUrl.value = URL.createObjectURL(file)
+    backgroundImagePreviewUrl.value = URL.createObjectURL(file)
   }
-  showSceneImageHistory.value = false
+  showBackgroundImageHistory.value = false
 }
 
-const selectHistoricalSceneImage = (image: HistoricalImage) => {
-  sceneImageUrl.value = image.image_url
-  sceneImageFile.value = null
-  if (sceneImagePreviewUrl.value) {
-    URL.revokeObjectURL(sceneImagePreviewUrl.value)
+const selectHistoricalBackgroundImage = (image: HistoricalImage) => {
+  backgroundImageUrl.value = image.image_url
+  backgroundImageFile.value = null
+  if (backgroundImagePreviewUrl.value) {
+    URL.revokeObjectURL(backgroundImagePreviewUrl.value)
   }
-  sceneImagePreviewUrl.value = image.image_url
-  showSceneImageHistory.value = false
+  backgroundImagePreviewUrl.value = image.image_url
+  showBackgroundImageHistory.value = false
 }
 
-const deleteHistoricalSceneImage = async (image: HistoricalImage, event: Event) => {
+const selectExampleBackgroundImage = async (image: ExampleBackgroundImage | string) => {
+  backgroundImageFile.value = null
+  
+  // Handle both object format (with prompt) and legacy string format
+  const imageUrl = typeof image === 'string' ? image : image.url
+  const imagePromptKey = typeof image === 'string' ? '' : image.prompt
+  
+  // Fill in the background action prompt if available (translate if it's an i18n key)
+  if (imagePromptKey) {
+    // Check if it's an i18n key (starts with 'studio.')
+    if (imagePromptKey.startsWith('studio.')) {
+      backgroundActionPrompt.value = t(imagePromptKey)
+    } else {
+      // Legacy format: direct text
+      backgroundActionPrompt.value = imagePromptKey
+    }
+  }
+  
+  // Close the dialog immediately when clicking on an image
+  showExampleBackgroundImages.value = false
+  
+  // If the example image is already on our server (R2), use it directly
+  // Otherwise, we need to upload it to save to history
+  if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
+    // Already on our server, use directly (similar to historical images)
+    backgroundImageUrl.value = imageUrl
+    if (backgroundImagePreviewUrl.value) {
+      URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+    }
+    backgroundImagePreviewUrl.value = imageUrl
+    return
+  }
+  
+  // For external URLs or local files, upload to backend to save to history
+  try {
+    // Fetch the image as a blob
+    const response = await fetch(imageUrl)
+    if (!response.ok) {
+      throw new Error('Failed to fetch example image')
+    }
+    const blob = await response.blob()
+    const file = new File([blob], 'example-background.jpg', { type: blob.type })
+    
+    // Upload to backend to save to history
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    backgroundImageUrl.value = null
+    isUploadingBackgroundImage.value = true
+    backgroundImageUploadProgress.value = 0
+    
+    let hasRealProgress = false
+    const progressInterval = setInterval(() => {
+      if (!hasRealProgress && backgroundImageUploadProgress.value < 90) {
+        backgroundImageUploadProgress.value += 10
+      }
+    }, 200)
+    
+    const resp = await uploadApiClient.post<{ url: string }>('/background-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        hasRealProgress = true
+        if (progressEvent.total) {
+          backgroundImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        } else if (progressEvent.loaded) {
+          backgroundImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
+        }
+      },
+    })
+    
+    clearInterval(progressInterval)
+    backgroundImageUploadProgress.value = 100
+    backgroundImageUrl.value = resp.data.url
+    
+    // Reload historical images
+    await loadHistoricalImages()
+    
+    if (backgroundImagePreviewUrl.value) {
+      URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+      backgroundImagePreviewUrl.value = null
+    }
+    backgroundImagePreviewUrl.value = resp.data.url
+    
+    // Reset progress
+    setTimeout(() => {
+      isUploadingBackgroundImage.value = false
+      backgroundImageUploadProgress.value = 0
+    }, 500)
+  } catch (e: any) {
+    console.error('Failed to use example background image:', e)
+    // Fallback: use the URL directly without uploading
+    backgroundImageUrl.value = imageUrl
+    if (backgroundImagePreviewUrl.value) {
+      URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+    }
+    backgroundImagePreviewUrl.value = imageUrl
+    isUploadingBackgroundImage.value = false
+    backgroundImageUploadProgress.value = 0
+    alert(`Failed to upload example image: ${e?.message || 'Unknown error'}. Using image directly.`)
+  }
+}
+
+const deleteHistoricalBackgroundImage = async (image: HistoricalImage, event: Event) => {
   event.stopPropagation() // Prevent selecting the image when clicking delete
   
-  if (!confirm('Delete this scene image? This action cannot be undone.')) {
+  if (!confirm('Delete this background image? This action cannot be undone.')) {
     return
   }
   
   try {
     await apiClient.delete(`/user-images/${image.id}`)
     // Remove from local state
-    historicalSceneImages.value = historicalSceneImages.value.filter(img => img.id !== image.id)
+    historicalBackgroundImages.value = historicalBackgroundImages.value.filter(img => img.id !== image.id)
     
     // If the deleted image was currently selected, clear the selection
-    if (sceneImageUrl.value === image.image_url) {
-      sceneImageUrl.value = null
-      if (sceneImagePreviewUrl.value === image.image_url) {
-        if (sceneImagePreviewUrl.value.startsWith('blob:')) {
-          URL.revokeObjectURL(sceneImagePreviewUrl.value)
+    if (backgroundImageUrl.value === image.image_url) {
+      backgroundImageUrl.value = null
+      if (backgroundImagePreviewUrl.value === image.image_url) {
+        if (backgroundImagePreviewUrl.value.startsWith('blob:')) {
+          URL.revokeObjectURL(backgroundImagePreviewUrl.value)
         }
-        sceneImagePreviewUrl.value = null
+        backgroundImagePreviewUrl.value = null
       }
     }
   } catch (error: any) {
-    console.error('Failed to delete scene image:', error)
+    console.error('Failed to delete background image:', error)
     alert(`Delete failed: ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
   }
 }
 
-const removeSceneImage = () => {
-  if (sceneImagePreviewUrl.value) {
-    URL.revokeObjectURL(sceneImagePreviewUrl.value)
-    sceneImagePreviewUrl.value = null
+const removeBackgroundImage = () => {
+  if (backgroundImagePreviewUrl.value) {
+    URL.revokeObjectURL(backgroundImagePreviewUrl.value)
+    backgroundImagePreviewUrl.value = null
   }
-  sceneImageFile.value = null
-  sceneImageUrl.value = null
+  backgroundImageFile.value = null
+  backgroundImageUrl.value = null
 }
 
 const performTryOn = async () => {
-  // 确保场景图片（如果有）已经上传获得 URL
-  if (sceneImageFile.value && !sceneImageUrl.value) {
+  // 确保背景图片（如果有）已经上传获得 URL
+  if (backgroundImageFile.value && !backgroundImageUrl.value) {
     try {
       const form = new FormData()
-      form.append('file', sceneImageFile.value)
-      const resp = await apiClient.post<{ url: string }>('/scene-image', form, {
+      form.append('file', backgroundImageFile.value)
+      const resp = await uploadApiClient.post<{ url: string }>('/background-image', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      sceneImageUrl.value = resp.data.url
+      backgroundImageUrl.value = resp.data.url
     } catch (e: any) {
-      console.error('Scene image upload failed before try-on:', e)
-      alert(`Scene image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
+      console.error('Background image upload failed before try-on:', e)
+      alert(`Background image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
       return
     }
   }
 
   if (!modelImageFile.value && !modelImagePreviewUrl.value) {
     showModelImageError.value = true
-    alert('Please upload your model photo first.')
+    alert(t('studio.modelPhoto.pleaseUploadFirst'))
     // Scroll to model image uploader
     setTimeout(() => {
       const modelUploader = document.querySelector('[data-model-uploader]')
@@ -1012,7 +1315,7 @@ const performTryOn = async () => {
     return
   }
   if (!activeWardrobeItems.value.length) {
-    alert('Please choose an outfit via Apply outfit before trying on.')
+    alert(t('studio.outfitPlans.pleaseChooseOutfit'))
     return
   }
 
@@ -1021,7 +1324,7 @@ const performTryOn = async () => {
     .filter((u): u is string => !!u)
 
   if (!garmentUrls.length) {
-    alert('Some items in this outfit are missing usable image URLs.')
+    alert(t('studio.outfitPlans.missingImageUrls'))
     return
   }
 
@@ -1033,13 +1336,13 @@ const performTryOn = async () => {
   const tryOnRequestData = {
     person_image: modelImageFile.value?.name || 'file',
     garment_urls: garmentUrls,
-    scene_image_url: sceneImageUrl.value || undefined,
+    background_image_url: backgroundImageUrl.value || undefined,
   }
   
   console.log('=== Try-On Request (to qwen-image-edit) ===')
   console.log('Request data:', JSON.stringify(tryOnRequestData, null, 2))
   console.log('Garment URLs:', garmentUrls)
-  console.log('Scene image URL:', sceneImageUrl.value || 'None')
+  console.log('Background image URL:', backgroundImageUrl.value || 'None')
   console.log('==========================================')
 
   try {
@@ -1052,8 +1355,12 @@ const performTryOn = async () => {
       formData.append('person_image_url', modelImagePreviewUrl.value)
     }
     formData.append('garment_urls', JSON.stringify(garmentUrls))
-    if (sceneImageUrl.value) {
-      formData.append('scene_image_url', sceneImageUrl.value)
+    if (backgroundImageUrl.value) {
+      formData.append('background_image_url', backgroundImageUrl.value)
+    }
+    // Add background action prompt (model action description) if provided
+    if (backgroundActionPrompt.value) {
+      formData.append('background_action_prompt', backgroundActionPrompt.value)
     }
     // Add custom prompt if provided
     if (customPrompt.value) {
@@ -1067,8 +1374,8 @@ const performTryOn = async () => {
     })
 
     tryOnImageUrl.value = response.data.url
-    // Check if this result is already in favorites (in case user regenerates same result)
-    await checkFavoriteStatus()
+    // Reset favorite status when generating new try-on result
+    studioStore.setFavoriteStatus(false, null)
     // State is automatically persisted by Pinia store
   } catch (error: any) {
     console.error('Try-on failed:', error)
@@ -1110,12 +1417,15 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     if (uploadedItems.value.length === 0) {
       const restored = restoreItemsFromCache()
       if (!restored) {
-        // If cache is empty, items haven't been selected in Wardrobe yet
-        // This shouldn't happen if user is applying an outfit, but handle it gracefully
-        console.warn('[Apply Outfit] No cached data - items should be selected from Wardrobe first')
-        // Don't load from backend - user should select items in Wardrobe first
-        alert('Please select items in Wardrobe first before applying an outfit.')
-        return
+        // If cache is empty, try to load all items from backend
+        // This allows users to apply outfits even if they haven't selected items in Wardrobe first
+        console.warn('[Apply Outfit] No cached data - loading items from backend...')
+        await loadUserItems()
+        if (uploadedItems.value.length === 0) {
+          alert('No items found in your wardrobe. Please add items to your wardrobe first.')
+          return
+        }
+        console.log('[Apply Outfit] Loaded items from backend:', uploadedItems.value.length)
       } else {
         console.log('[Apply Outfit] Restored items from cache')
       }
@@ -1257,7 +1567,6 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     
     selectedItem.value = null
     selectedItemIds.value = [] // Clear selected base items after applying
-    localStorage.removeItem('fashion-rec_selected_items')
     
     console.log('=== Apply Outfit (Supplement Mode) ===')
     console.log('Active wardrobe IDs after supplement:', activeWardrobeIds.value)
@@ -1278,7 +1587,6 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     activeWardrobeIds.value = ids
     selectedItem.value = null
     selectedItemIds.value = []
-    localStorage.removeItem('fashion-rec_selected_items')
 
     // Store the original outfit for tracking missing roles
     originalAppliedOutfit.value = outfit
@@ -1316,7 +1624,7 @@ const applyOutfit = async (outfit: AgentOutfit) => {
       })),
       location: null, // Location is optional, can be extracted from prompt if needed
       prompt: outfit.long_text || outfit.reason, // Use long_text if available, otherwise reason
-      scene_image_url: sceneImageUrl.value || null,
+      background_image_url: backgroundImageUrl.value || null,
     }
     await apiClient.post('/looks', saveLookData)
   } catch (error) {
@@ -1327,7 +1635,8 @@ const applyOutfit = async (outfit: AgentOutfit) => {
   // State is automatically persisted by Pinia store
   } catch (error) {
     console.error('[Apply Outfit] Error:', error)
-    alert(`Apply outfit failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const errorMessage = error instanceof Error ? error.message : t('errors.generic')
+    alert(t('studio.outfitPlans.applyFailed', { error: errorMessage }))
   }
 }
 
@@ -1382,17 +1691,8 @@ const removeActiveItem = (itemId: string) => {
     map.delete(itemIdStr)
   })
   
-  // Sync to localStorage so Wardrobe page can reflect the change
+  // Sync to Pinia so Wardrobe page can reflect the change
   selectedItemIds.value = selectedItemIds.value.filter(id => String(id) !== itemIdStr)
-  try {
-    localStorage.setItem(
-      'fashion-rec_selected_items',
-      JSON.stringify(selectedItemIds.value)
-    )
-    console.log('[removeActiveItem] Updated localStorage, removed item:', itemIdStr)
-  } catch (e) {
-    console.error('Failed to update localStorage after removing item:', e)
-  }
   
   // If all items are removed, clear the original outfit
   if (activeWardrobeIds.value.length === 0) {
@@ -1537,7 +1837,7 @@ const saveFavorite = async () => {
       image_url: tryOnImageUrl.value,
       title: originalAppliedOutfit.value?.title || 'Try-on result',
       garment_urls: garmentUrls.length > 0 ? garmentUrls : undefined,
-      scene_image_url: sceneImageUrl.value || undefined,
+      background_image_url: backgroundImageUrl.value || undefined,
       prompt: customPrompt.value || undefined,
       model_image_url: modelImagePreviewUrl.value || undefined,
       model_image_id: modelImageId,
@@ -1562,6 +1862,19 @@ const getMissingItems = (outfit: AgentOutfit): AgentOutfitItem[] => {
   })
 }
 
+// Helper function to translate role names
+const translateRole = (role: string): string => {
+  const roleKey = role.toLowerCase()
+  const roleMap: Record<string, string> = {
+    top: t('studio.outfitPlans.roles.top'),
+    bottom: t('studio.outfitPlans.roles.bottom'),
+    outer: t('studio.outfitPlans.roles.outer'),
+    shoes: t('studio.outfitPlans.roles.shoes'),
+    accessory: t('studio.outfitPlans.roles.accessory'),
+  }
+  return roleMap[roleKey] || role
+}
+
 const hasAnyWardrobeItem = (outfit: AgentOutfit): boolean => {
   // Check if at least one item in the outfit exists in the wardrobe
   return outfit.items.some(item => {
@@ -1570,12 +1883,32 @@ const hasAnyWardrobeItem = (outfit: AgentOutfit): boolean => {
   })
 }
 
-const searchOnGoogle = (description: string) => {
-  const searchQuery = encodeURIComponent(description)
-  const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`
-  window.open(googleSearchUrl, '_blank', 'noopener,noreferrer')
+const searchOnGoogle = (description: string, event?: Event) => {
+  // Prevent any event propagation that might affect the UI
+  if (event) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  
+  try {
+    const searchQuery = encodeURIComponent(description)
+    const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`
+    const newWindow = window.open(googleSearchUrl, '_blank', 'noopener,noreferrer')
+    
+    // If popup was blocked, show a fallback message
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+      // Popup was blocked, provide alternative: copy search query or show message
+      console.warn('Popup blocked, search query:', description)
+      // Optionally: show a toast or copy to clipboard
+      alert(`Search query: ${description}\n\nPlease allow popups or search manually on Google.`)
+    }
+  } catch (error) {
+    console.error('Failed to open search:', error)
+    // Don't let errors affect the UI state
+  }
 }
 
+// Note: Multi-angle generation is now in separate MultiAngle.vue page
 
 </script>
 
@@ -1588,136 +1921,179 @@ const searchOnGoogle = (description: string) => {
           <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.tellAIAboutDay') }}</h2>
         </div>
         <div class="flex flex-col gap-4">
-          <div class="w-full space-y-3">
-            <!-- Rich input wrapper with integrated image upload -->
-            <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
-              <textarea
-                v-model="customPrompt"
-                rows="3"
-                class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
-                :placeholder="$t('studio.promptPlaceholder')"
-              ></textarea>
-              
-              <!-- Scene image preview area -->
-              <div v-if="sceneImagePreviewUrl || isUploadingSceneImage" class="px-4 pb-2">
-                <div class="relative inline-block group">
-                  <div class="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
-                    <img 
-                      v-if="sceneImagePreviewUrl"
-                      :src="sceneImagePreviewUrl" 
-                      alt="Scene preview" 
-                      class="w-full h-full object-cover"
-                    />
-                    <!-- Upload progress overlay -->
-                    <div
-                      v-if="isUploadingSceneImage"
-                      class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
-                    >
-                      <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
-                      <span class="text-white text-xs">{{ sceneImageUploadProgress }}%</span>
-                    </div>
-                    <!-- Progress bar -->
-                    <div
-                      v-if="isUploadingSceneImage"
-                      class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"
-                    >
-                      <div
-                        class="h-full bg-blue-500 transition-all duration-300"
-                        :style="{ width: `${sceneImageUploadProgress}%` }"
-                      ></div>
+          <div class="flex flex-col gap-4">
+            <!-- Tabs for background image options (horizontal, fixed width, left-aligned) -->
+            <Tabs v-model="backgroundTabValue" default-value="no-background" class="w-full">
+              <TabsList class="inline-flex items-center justify-start h-auto w-auto p-1 bg-muted rounded-lg">
+                <TabsTrigger 
+                  value="no-background"
+                  class="min-w-[120px] max-w-[160px] px-4 py-2 text-sm font-medium text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent data-[state=active]:bg-background data-[state=active]:opacity-100 data-[state=inactive]:opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer"
+                >
+                  {{ $t('studio.noBackgroundImage') }}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="with-background"
+                  class="min-w-[120px] max-w-[160px] px-4 py-2 text-sm font-medium text-center bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent data-[state=active]:bg-background data-[state=active]:opacity-100 data-[state=inactive]:opacity-60 hover:opacity-100 transition-all duration-200 cursor-pointer"
+                >
+                  {{ $t('studio.withBackgroundImage') }}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            
+            <!-- Content area -->
+            <div class="w-full space-y-4">
+              <!-- Action prompt input (only shown in "with-background" tab) -->
+              <Transition
+                enter-active-class="transition-all duration-300 ease-out"
+                enter-from-class="opacity-0 -translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition-all duration-200 ease-in"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 -translate-y-2"
+              >
+                <div v-if="backgroundTabValue === 'with-background'" class="space-y-2">
+                  <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
+                    <div class="flex items-center gap-2 px-4 py-3">
+                      <input
+                        v-model="backgroundActionPrompt"
+                        type="text"
+                        class="flex-1 text-sm focus:outline-none border-0 placeholder:text-pink-600 bg-transparent"
+                        :placeholder="$t('studio.backgroundActionPromptPlaceholder')"
+                      />
+                      <div class="flex items-center gap-2 border-l border-pink-100 pl-3">
+                        <!-- Background image preview -->
+                        <div v-if="backgroundImagePreviewUrl || isUploadingBackgroundImage" class="relative">
+                          <div class="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+                            <img 
+                              v-if="backgroundImagePreviewUrl"
+                              :src="getSmallImageUrl(backgroundImagePreviewUrl)" 
+                              loading="lazy"
+                              alt="Background preview" 
+                              class="w-full h-full object-cover"
+                            />
+                            <!-- Upload progress overlay -->
+                            <div
+                              v-if="isUploadingBackgroundImage"
+                              class="absolute inset-0 bg-gray-900/50 flex items-center justify-center"
+                            >
+                              <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                          </div>
+                          <button
+                            v-if="backgroundImagePreviewUrl && !isUploadingBackgroundImage"
+                            @click="removeBackgroundImage"
+                            class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md cursor-pointer"
+                            :title="$t('studio.deleteBackgroundImage')"
+                          >
+                            <X class="w-3 h-3" />
+                          </button>
+                        </div>
+                        <!-- Upload button -->
+                        <label
+                          for="backgroundImageInput"
+                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
+                          :title="$t('studio.uploadBackgroundImage')"
+                        >
+                          <Upload class="w-4 h-4" />
+                          <span class="hidden sm:inline">{{ $t('studio.uploadBackgroundImage') }}</span>
+                        </label>
+                        <input
+                          id="backgroundImageInput"
+                          type="file"
+                          accept="image/*"
+                          @change="handleBackgroundImageChange"
+                          class="hidden"
+                        />
+                        <!-- History button -->
+                        <button
+                          @click="showBackgroundImageHistory = !showBackgroundImageHistory"
+                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
+                          :title="$t('studio.pickFromBackgroundHistory')"
+                        >
+                          <Clock class="w-4 h-4" />
+                          <span class="hidden sm:inline">{{ $t('studio.viewHistory') }}</span>
+                        </button>
+                        <!-- Example button -->
+                        <button
+                          @click="showExampleBackgroundImages = !showExampleBackgroundImages"
+                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
+                          :title="$t('studio.chooseExampleBackground')"
+                        >
+                          <Image class="w-4 h-4" />
+                          <span class="hidden sm:inline">{{ $t('studio.example') }}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    v-if="sceneImagePreviewUrl && !isUploadingSceneImage"
-                    @click="removeSceneImage"
-                    class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md"
-                    :title="$t('studio.deleteSceneImage')"
-                  >
-                    <X class="w-4 h-4" />
-                  </button>
                 </div>
-              </div>
+              </Transition>
               
-              <!-- Toolbar with image upload button -->
-              <div class="flex items-center justify-between px-4 py-2 border-t border-pink-100">
-                <div class="flex items-center gap-2">
-                  <label
-                    for="sceneImageInput"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-                    :title="$t('studio.uploadSceneImage')"
-                  >
-                    <Upload class="w-4 h-4" />
-                    <span class="text-xs">{{ $t('studio.uploadSceneImage') }}</span>
-                  </label>
-                  <input
-                    id="sceneImageInput"
-                    type="file"
-                    accept="image/*"
-                    @change="handleSceneImageChange"
-                    class="hidden"
-                  />
-                  <button
-                    @click="showSceneImageHistory = !showSceneImageHistory"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-                    :title="$t('studio.pickFromSceneHistory')"
-                  >
-                    <Clock class="w-4 h-4" />
-                    <span class="text-xs">{{ $t('studio.viewHistory') }}</span>
-                  </button>
+              <!-- Style prompt textarea (shown in both tabs) -->
+              <Transition
+                enter-active-class="transition-all duration-300 ease-out"
+                enter-from-class="opacity-0 translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition-all duration-200 ease-in"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 translate-y-2"
+              >
+                <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
+                  <textarea
+                    v-model="customPrompt"
+                    rows="3"
+                    class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
+                    :placeholder="$t('studio.promptPlaceholder')"
+                  ></textarea>
                 </div>
-                
-              </div>
+              </Transition>
             </div>
-            
-            <!-- Helper text below input -->
-            <p class="text-xs text-pink-600 px-1">
-              {{ $t('studio.uploadSceneHelper') }}
-            </p>
-            
-            <!-- Historical scene images modal -->
-            <div
-              v-if="showSceneImageHistory"
+          </div>
+        
+        <!-- Historical background images modal -->
+        <div
+              v-if="showBackgroundImageHistory"
               class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-              @click.self="showSceneImageHistory = false"
+              @click.self="showBackgroundImageHistory = false"
             >
-              <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+              <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-6 border-b border-gray-200">
-                  <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseHistoricalScene') }}</h3>
+                  <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseHistoricalBackground') }}</h3>
                   <button
-                    @click="showSceneImageHistory = false"
+                    @click="showBackgroundImageHistory = false"
                     class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                   >
                     <X class="w-5 h-5 text-pink-500" />
                   </button>
                 </div>
                 <div class="flex-1 overflow-y-auto p-6">
-                  <div v-if="historicalSceneImages.length === 0" class="text-center py-12 text-pink-400">
+                  <div v-if="historicalBackgroundImages.length === 0" class="text-center py-12 text-pink-400">
                     <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                    <p>{{ $t('studio.noHistoricalScene') }}</p>
+                    <p>{{ $t('studio.noHistoricalBackground') }}</p>
                   </div>
-                  <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     <div
-                      v-for="image in historicalSceneImages"
+                      v-for="image in historicalBackgroundImages"
                       :key="image.id"
-                      @click="selectHistoricalSceneImage(image)"
-                      class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"
+                      @click="selectHistoricalBackgroundImage(image)"
+                      class="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                     >
                       <img
-                        :src="image.image_url"
-                        :alt="`Scene image ${image.id}`"
+                        :src="getThumbnailUrl(image.image_url)"
+                        loading="lazy"
+                        :alt="`Background image ${image.id}`"
                         class="w-full h-full object-cover"
                       />
                       <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
                       <!-- Delete button -->
                       <button
-                        @click.stop="deleteHistoricalSceneImage(image, $event)"
+                        @click.stop="deleteHistoricalBackgroundImage(image, $event)"
                         class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
                         title="Delete this image"
                       >
                         <Trash2 class="w-4 h-4" />
                       </button>
                       <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                        <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
                           {{ new Date(image.created_at).toLocaleDateString('en-US') }}
                         </div>
                       </div>
@@ -1726,8 +2102,8 @@ const searchOnGoogle = (description: string) => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <button 
               @click="getRecommendations" 
               :disabled="isGenerating"
@@ -1750,7 +2126,7 @@ const searchOnGoogle = (description: string) => {
           <div v-if="agentOutfits.length && !isGenerating" class="mt-6 space-y-6">
             <div>
               <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-semibold">AI Outfit Plans</h3>
+                <h3 class="text-lg font-semibold">{{ $t('studio.outfitPlans.title') }}</h3>
                 <!-- AI branding and transparency note -->
                 
               </div>
@@ -1765,16 +2141,17 @@ const searchOnGoogle = (description: string) => {
                     <ul class="text-xs text-gray-700 space-y-1 mb-2">
                       <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
                         <div class="flex-1">
-                          <span class="font-medium capitalize">{{ it.role }}:</span>
+                          <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
                           <span> {{ it.description }}</span>
-                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">(in wardrobe)</span>
-                          <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">(selected)</span>
+                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
+                          <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
                         </div>
                         <button
                           v-if="!findWardrobeItemById(it.wardrobe_id)"
-                          @click.stop="searchOnGoogle(it.description)"
+                          @click.stop="searchOnGoogle(it.description, $event)"
+                          type="button"
                           class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
-                          :title="`Search for ${it.description} on Google`"
+                          :title="$t('studio.outfitPlans.searchOnGoogle', { description: it.description })"
                         >
                           <Search class="w-3.5 h-3.5 text-pink-600" />
                         </button>
@@ -1795,18 +2172,19 @@ const searchOnGoogle = (description: string) => {
                       @click.prevent="applyOutfit(outfit)"
                       class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
                     >
-                      Apply outfit
+                      {{ $t('studio.outfitPlans.applyOutfit') }}
                     </button>
                     <!-- Google search buttons for missing items -->
                     <div v-if="getMissingItems(outfit).length > 0" class="flex flex-wrap gap-2">
                       <button
                         v-for="(missingItem, idx) in getMissingItems(outfit)"
                         :key="idx"
-                        @click.stop="searchOnGoogle(missingItem.description)"
+                        @click.stop="searchOnGoogle(missingItem.description, $event)"
+                        type="button"
                         class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
                       >
                         <Search class="w-3 h-3" />
-                        <span>Search {{ missingItem.role }}</span>
+                        <span>{{ $t('studio.outfitPlans.searchRole', { role: translateRole(missingItem.role) }) }}</span>
                       </button>
                     </div>
                   </div>
@@ -1818,7 +2196,7 @@ const searchOnGoogle = (description: string) => {
           <!-- Loading State (only show when actively generating) -->
           <div v-else-if="isGenerating" class="mt-6 py-12 flex flex-col items-center justify-center">
              <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p class="text-pink-600 animate-pulse mb-2">Consulting fashion knowledge base...</p>
+             <p class="text-pink-600 animate-pulse mb-2">{{ $t('studio.consultingKnowledgeBase') }}</p>
              
           </div>
         </div>
@@ -1827,33 +2205,33 @@ const searchOnGoogle = (description: string) => {
       <!-- Applied Outfit Items - Independent Section -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Applied Outfit Items</h2>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.appliedOutfitItems.title') }}</h2>
           <p class="text-sm text-gray-700">
-            Items currently in this outfit. Remove items or generate suggestions for missing roles.
+            {{ $t('studio.appliedOutfitItems.description') }}
           </p>
         </div>
         
         <div class="p-4 border border-pink-100 rounded-xl bg-pink-50/50">
           <div class="flex items-center justify-between mb-3">
             <p class="text-sm font-medium text-gray-700">
-              Applied outfit items ({{ activeWardrobeItems.length }})
+              {{ $t('studio.appliedOutfitItems.itemsCount', { count: activeWardrobeItems.length }) }}
             </p>
             <p v-if="getMissingRoles().length > 0" class="text-xs text-pink-600">
-              {{ getMissingRoles().length }} roles removed; re-generate to fill them.
+              {{ $t('studio.appliedOutfitItems.rolesRemoved', { count: getMissingRoles().length }) }}
             </p>
           </div>
           
           <!-- Empty state -->
           <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
             <Shirt class="w-12 h-12 mx-auto mb-3 text-pink-600" />
-            <p class="text-sm text-gray-700 mb-2">No items selected yet</p>
-            <p class="text-xs text-pink-600 mb-4">Go to Wardrobe and add items to the Outfit Generator.</p>
+            <p class="text-sm text-gray-700 mb-2">{{ $t('studio.appliedOutfitItems.noItemsSelected') }}</p>
+            <p class="text-xs text-pink-600 mb-4">{{ $t('studio.appliedOutfitItems.goToWardrobePrompt') }}</p>
             <button
               @click="$router.push('/wardrobe')"
               class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-pink-200 text-gray-700 hover:border-pink-600 hover:text-gray-900 transition-colors"
             >
               <Shirt class="w-4 h-4" />
-              Go to Wardrobe
+              {{ $t('studio.appliedOutfitItems.goToWardrobe') }}
             </button>
           </div>
           
@@ -1872,7 +2250,8 @@ const searchOnGoogle = (description: string) => {
                   <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-pink-200 hover:border-pink-500 transition-all hover:shadow-lg bg-pink-100">
                     <img
                       v-if="item.url || item.features.path"
-                      :src="item.url || item.features.path"
+                      :src="getSmallImageUrl((item.url || item.features.path) || '')"
+                      loading="lazy"
                       class="w-full h-full object-cover"
                       :alt="`${formatFeatureValue(item.features.color)} ${formatFeatureValue(item.features.type)}`"
                     />
@@ -1883,7 +2262,7 @@ const searchOnGoogle = (description: string) => {
                 <button
                   @click.stop="removeActiveItem(String(item.id))"
                   class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md z-10"
-                  title="删除此单品"
+                  :title="$t('studio.appliedOutfitItems.deleteItem')"
                 >
                   <X class="w-4 h-4" />
                 </button>
@@ -1923,16 +2302,16 @@ const searchOnGoogle = (description: string) => {
           <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
             <div class="flex items-center justify-between mb-3">
               <div>
-                <p class="text-sm font-medium text-gray-700 mb-1">Model photo</p>
+                <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.modelPhoto.title') }}</p>
                 <p class="text-xs text-pink-500">
-                  Upload a half-body or full-body photo of you. All try-ons will use this model photo.
+                  {{ $t('studio.modelPhoto.description') }}
                 </p>
               </div>
               <button
                 v-if="modelImagePreviewUrl && !isUploadingModelImage"
                 @click="removeModelImage"
                 class="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md flex-shrink-0"
-                title="Delete model photo"
+                :title="$t('studio.modelPhoto.deleteModelPhoto')"
               >
                 <X class="w-4 h-4" />
               </button>
@@ -1940,8 +2319,9 @@ const searchOnGoogle = (description: string) => {
             <div class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
               <img 
                 v-if="modelImagePreviewUrl"
-                :src="modelImagePreviewUrl" 
-                alt="Model preview" 
+                :src="getMediumImageUrl(modelImagePreviewUrl)" 
+                loading="lazy"
+                :alt="$t('studio.modelPhoto.modelPreview')" 
                 class="w-full h-full object-cover"
               />
               <!-- Upload progress overlay -->
@@ -1979,7 +2359,7 @@ const searchOnGoogle = (description: string) => {
                     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
                   >
                     <Upload class="w-4 h-4" />
-                    <span>Upload new photo</span>
+                    <span>{{ $t('studio.modelPhoto.uploadNewPhoto') }}</span>
                   </label>
                   <input
                     id="modelImageInput"
@@ -1994,11 +2374,18 @@ const searchOnGoogle = (description: string) => {
                     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
                   >
                     <Clock class="w-4 h-4" />
-                    <span>History</span>
+                    <span>{{ $t('studio.modelPhoto.history') }}</span>
+                  </button>
+                  <button
+                    @click="showExampleModelImages = !showExampleModelImages"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                  >
+                    <Image class="w-4 h-4" />
+                    <span>{{ $t('studio.example') }}</span>
                   </button>
                 </div>
                 <p class="text-xs text-pink-600">
-                  Upload a half-body or full-body photo; all try-ons will use this model photo.
+                  {{ $t('studio.modelPhoto.description') }}
                 </p>
               </div>
             </div>
@@ -2012,7 +2399,7 @@ const searchOnGoogle = (description: string) => {
                 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
               >
                 <Upload class="w-4 h-4" />
-                <span>Replace photo</span>
+                <span>{{ t('studio.modelPhoto.replacePhoto') }}</span>
               </label>
               <input
                 id="modelImageInputReplace"
@@ -2027,7 +2414,14 @@ const searchOnGoogle = (description: string) => {
                 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <Clock class="w-4 h-4" />
-                <span>History</span>
+                <span>{{ $t('studio.modelPhoto.history') }}</span>
+              </button>
+              <button
+                @click="showExampleModelImages = !showExampleModelImages"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
+              >
+                <Image class="w-4 h-4" />
+                <span>{{ $t('studio.example') }}</span>
               </button>
             </div>
           </div>
@@ -2039,7 +2433,7 @@ const searchOnGoogle = (description: string) => {
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           @click.self="showModelImageHistory = false"
         >
-          <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
             <div class="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
               <button
@@ -2054,15 +2448,16 @@ const searchOnGoogle = (description: string) => {
                 <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
                 <p>No historical model images</p>
               </div>
-              <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 <div
                   v-for="image in historicalModelImages"
                   :key="image.id"
                   @click="selectHistoricalModelImage(image)"
-                  class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"
+                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
                 >
                   <img
-                    :src="image.image_url"
+                    :src="getThumbnailUrl(image.image_url)"
+                    loading="lazy"
                     :alt="`Model image ${image.id}`"
                     class="w-full h-full object-cover"
                   />
@@ -2076,8 +2471,100 @@ const searchOnGoogle = (description: string) => {
                     <Trash2 class="w-4 h-4" />
                   </button>
                   <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
                       {{ new Date(image.created_at).toLocaleDateString('en-US') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Example model images modal -->
+        <div
+          v-if="showExampleModelImages"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showExampleModelImages = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleModel') }}</h3>
+              <button
+                @click="showExampleModelImages = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-pink-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="exampleModelImages.length === 0" class="text-center py-12 text-pink-400">
+                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
+                <p>{{ $t('studio.noExampleModel') }}</p>
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div
+                  v-for="(imageUrl, index) in exampleModelImages"
+                  :key="index"
+                  @click="selectExampleModelImage(imageUrl)"
+                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
+                >
+                  <img
+                    :src="getMediumImageUrl(imageUrl)"
+                    loading="lazy"
+                    :alt="`Example model ${index + 1}`"
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
+                      {{ $t('studio.clickToUse') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Example background images modal -->
+        <div
+          v-if="showExampleBackgroundImages"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showExampleBackgroundImages = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleBackground') }}</h3>
+              <button
+                @click="showExampleBackgroundImages = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-pink-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="exampleBackgroundImages.length === 0" class="text-center py-12 text-pink-400">
+                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
+                <p>{{ $t('studio.noExampleBackground') }}</p>
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div
+                  v-for="(image, index) in exampleBackgroundImages"
+                  :key="index"
+                  @click="selectExampleBackgroundImage(image)"
+                  class="group relative aspect-[4/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
+                >
+                  <img
+                    :src="getSmallImageUrl(image.url)"
+                    loading="lazy"
+                    :alt="`Example background ${index + 1}`"
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
+                      {{ $t('studio.clickToUse') }}
                     </div>
                   </div>
                 </div>
@@ -2113,19 +2600,20 @@ const searchOnGoogle = (description: string) => {
         <!-- Try-on Loading State -->
         <div v-if="isTryingOn && !tryOnImageUrl" class="py-12 flex flex-col items-center justify-center border border-pink-100 rounded-xl bg-pink-50">
           <div class="w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p class="text-gray-700 animate-pulse mb-2">Generating virtual try-on...</p>
+          <p class="text-gray-700 animate-pulse mb-2">{{ $t('studio.generatingVirtualTryOn') }}</p>
           <!-- AI branding and transparency note (loading) -->
         </div>
 
         <!-- Recommendations -->
         <div v-if="selectedItem && recommendations.length > 0">
-          <h3 class="text-lg font-semibold mb-4">AI Suggestions</h3>
+          <h3 class="text-lg font-semibold mb-4">{{ $t('studio.aiSuggestions') }}</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div v-for="rec in recommendations" :key="rec.id" class="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
               <div class="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center text-pink-400 overflow-hidden">
                 <img 
                   v-if="rec.path && rec.path.startsWith('http')" 
-                  :src="rec.path" 
+                  :src="getThumbnailUrl(rec.path)" 
+                  loading="lazy"
                   class="w-full h-full object-cover"
                 />
                 <span v-else>{{ rec.type }}</span>
@@ -2140,7 +2628,7 @@ const searchOnGoogle = (description: string) => {
         <!-- Try-on Result -->
         <div v-if="tryOnImageUrl" class="border-t border-gray-100 pt-6">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-semibold">Virtual Try-On Result</h3>
+            <h3 class="text-lg font-semibold">{{ $t('studio.virtualTryOn.title') }}</h3>
             <button
               @click="saveFavorite"
               :disabled="isSavingFavorite"
@@ -2158,13 +2646,24 @@ const searchOnGoogle = (description: string) => {
                   favoriteSaved ? 'fill-current text-pink-600' : ''
                 ]"
               />
-              <span v-if="isSavingFavorite">Saving...</span>
-              <span v-else-if="favoriteSaved">Saved</span>
-              <span v-else>Favorite</span>
+              <span v-if="isSavingFavorite">{{ $t('studio.virtualTryOn.saving') }}</span>
+              <span v-else-if="favoriteSaved">{{ $t('studio.virtualTryOn.saved') }}</span>
+              <span v-else>{{ $t('studio.virtualTryOn.favorite') }}</span>
             </button>
           </div>
           <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:border-gray-300 transition-colors" @click="openTryOnImageViewer">
-            <img :src="tryOnImageUrl" alt="Try-on result" class="w-full object-contain" />
+            <img :src="getLargeImageUrl(tryOnImageUrl || '')" loading="lazy" :alt="$t('studio.virtualTryOn.tryOnResult')" class="w-full object-contain" />
+          </div>
+          
+          <!-- Multi-Angle Link -->
+          <div class="mt-4 flex justify-center">
+            <router-link 
+              :to="{ path: '/multi-angle', query: { sourceImage: tryOnImageUrl } }"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm text-pink-600 hover:text-pink-800 hover:bg-pink-50 rounded-lg transition-colors"
+            >
+              <RotateCw class="w-4 h-4" />
+              <span>{{ $t('studio.virtualTryOn.viewMultiAngle') }}</span>
+            </router-link>
           </div>
         </div>
       </section>

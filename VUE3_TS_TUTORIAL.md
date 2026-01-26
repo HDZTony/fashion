@@ -65,7 +65,7 @@ interface TryOnHistoryItem {
   id: string           // 必须有，类型是字符串
   image_url: string    // 必须有，类型是字符串
   garment_urls?: string[]  // ? 表示可选（可有可无），类型是字符串数组
-  scene_image_url?: string // 可选，类型是字符串
+  Background_image_url?: string // 可选，类型是字符串
   prompt?: string      // 可选，类型是字符串
   created_at: string   // 必须有，类型是字符串
   expires_at: string   // 必须有，类型是字符串
@@ -585,9 +585,9 @@ const formatDate = (dateString: string) => {
         {{ item.garment_urls.length }} item(s)
       </p>
       
-      <!-- 如果有场景图片，显示提示（条件渲染）-->
-      <p v-if="item.scene_image_url" class="text-xs text-blue-500 mt-1">
-        Includes scene
+      <!-- 如果有背景图片，显示提示（条件渲染）-->
+      <p v-if="item.Background_image_url" class="text-xs text-blue-500 mt-1">
+        Includes Background
       </p>
       
       <!-- 按钮组 -->

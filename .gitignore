@@ -31,3 +31,5 @@ Thumbs.db
 
 # Wrangler temporary files
 **/.wrangler/tmp/
+cloudflare-blog/.wrangler/
+fashion_rec/backend/subscription-service/.wrangler/

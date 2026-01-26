@@ -2,15 +2,15 @@ export const siteBaseUrl =
   import.meta.env.VITE_SITE_URL?.replace(/\/$/, '') || 'https://fashion-rec.com'
 
 export const defaultSEO = {
-  title: 'Fashion Rec',
-  description: 'AI-powered virtual try-on, smart outfit recommendations, and personalized wardrobe management.',
+  title: 'Fashion Rec - AI Virtual Try-On & Smart Wardrobe',
+  description: 'Try on clothes virtually with AI. Get personalized outfit recommendations and manage your wardrobe intelligently. Discover your perfect style today.',
   keywords: [
+    'virtual try on',
     'AI fashion',
-    'virtual try-on',
-    'wardrobe management',
     'outfit recommendations',
-    'fashion ai',
-    'try on clothes online',
+    'wardrobe management',
+    'online clothing try on',
+    'personal stylist AI',
   ].join(', '),
   author: 'Fashion Rec',
   siteName: 'Fashion Rec',

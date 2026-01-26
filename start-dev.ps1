@@ -23,6 +23,12 @@ $services = @(
         Color = "Yellow"
     },
     @{
+        Name = "Blog Service"
+        Path = "cloudflare-blog"
+        Command = "pnpm dev"
+        Color = "Blue"
+    },
+    @{
         Name = "Cloudflare Router"
         Path = "cloudflare-router"
         Command = "pnpm dev"

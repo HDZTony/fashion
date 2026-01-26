@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { Heart, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 import { apiClient } from '../lib/api-client'
+import { getThumbnailUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
 const { t } = useI18n()
 
@@ -29,7 +30,7 @@ interface Favorite {
   image_url: string
   title?: string
   garment_urls?: string[]
-  scene_image_url?: string
+  background_image_url?: string
   prompt?: string
   model_image_url?: string
   model_image_id?: string
@@ -220,7 +221,7 @@ const restoreFavorite = async (favorite: Favorite) => {
       tryonHistoryId: favorite.id,
       image_url: favorite.image_url,
       garment_urls: favorite.garment_urls || [],
-      scene_image_url: favorite.scene_image_url,
+      background_image_url: favorite.background_image_url,
       prompt: favorite.prompt,
       model_image_url: favorite.model_image_url,
       model_image_id: favorite.model_image_id,
@@ -285,7 +286,8 @@ onUnmounted(() => {
             class="aspect-square bg-gray-100 cursor-pointer overflow-hidden relative"
           >
             <img
-              :src="favorite.image_url"
+              :src="getThumbnailUrl(favorite.image_url)"
+              loading="lazy"
               :alt="favorite.title || 'Favorite'"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -302,8 +304,8 @@ onUnmounted(() => {
                 <p v-if="favorite.garment_urls && favorite.garment_urls.length > 0" class="text-xs text-pink-500">
                   {{ favorite.garment_urls.length }} {{ $t('favorites.items') }}
                 </p>
-                <p v-if="favorite.scene_image_url" class="text-xs text-pink-600 mt-1">
-                  {{ $t('favorites.includesScene') }}
+                <p v-if="favorite.background_image_url" class="text-xs text-pink-600 mt-1">
+                  {{ $t('favorites.includesBackground') }}
                 </p>
               </div>
               <div class="flex items-center gap-1">
@@ -355,7 +357,8 @@ onUnmounted(() => {
         <!-- Image -->
         <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
           <img
-            :src="imageViewerImages[currentImageIndex]"
+            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
+            loading="lazy"
             alt="Favorite"
             class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
           />

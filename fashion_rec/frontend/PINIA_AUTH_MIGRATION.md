@@ -245,8 +245,8 @@ const token = authStore.accessToken || localStorage.getItem('auth_token')
 - [ ] 更新所有使用 useAuthState 的组件
 - [ ] 更新 api-client.ts
 - [ ] 测试登录/登出流程
-- [ ] 测试页面刷新场景
-- [ ] 测试 keep-alive 场景
+- [ ] 测试页面刷新背景
+- [ ] 测试 keep-alive 背景
 - [ ] 移除旧的 useAuthState.ts（可选）
 
 ## 注意事项

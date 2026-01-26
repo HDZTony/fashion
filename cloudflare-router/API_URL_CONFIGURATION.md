@@ -58,7 +58,7 @@ Worker 会自动识别以下路径为 API 请求：
 - `/favorites` - 收藏
 - `/model-image` - 模特图片
 - `/user-images` - 用户图片
-- `/scene-image` - 场景图片
+- `/Background-image` - 背景图片
 - `/tryon-history` - 试穿历史
 - `/lv-products` - LV 商品
 - `/subscription` - 订阅

@@ -19,11 +19,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.89.0"
+    "@supabase/supabase-js": "^2.90.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20251220.0",
+    "@cloudflare/workers-types": "^4.20260111.0",
     "typescript": "^5.9.3",
-    "wrangler": "^4.56.0"
+    "wrangler": "^4.58.0"
   }
 }

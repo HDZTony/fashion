@@ -30,6 +30,28 @@ export const routes: RouteRecordRaw[] = [
         path: 'pricing',
         name: 'pricing',
         component: Pricing
+      },
+      {
+        path: 'blog',
+        name: 'blog',
+        component: () => import('../views/BlogList.vue')
+      },
+      {
+        path: 'blog/:id',
+        name: 'blog-detail',
+        component: () => import('../views/BlogDetail.vue')
+      },
+      {
+        path: 'blog/create',
+        name: 'blog-create',
+        component: () => import('../views/BlogCreate.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'blog/:id/edit',
+        name: 'blog-edit',
+        component: () => import('../views/BlogCreate.vue'),
+        meta: { requiresAuth: true }
       }
     ]
   },
@@ -68,6 +90,18 @@ export const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true }
       },
       {
+        path: 'multi-angle',
+        name: 'multi-angle',
+        component: () => import('../views/MultiAngle.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'multiangle-history',
+        name: 'multiangle-history',
+        component: () => import('../views/MultiAngleHistory.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'privacy-policy',
         name: 'privacy-policy',
         component: PrivacyPolicy
@@ -81,6 +115,16 @@ export const routes: RouteRecordRaw[] = [
         path: 'profile',
         name: 'profile',
         component: Profile,
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'seo',
+        redirect: () => ({ path: '/profile', query: { tab: 'seo' } })
+      },
+      {
+        path: 'my-blog',
+        name: 'my-blog',
+        component: () => import('../views/MyBlog.vue'),
         meta: { requiresAuth: true }
       }
     ]
@@ -103,7 +147,7 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 export const setupRouterGuards = (router: Router) => {
-  router.beforeEach(async (to, _from, next) => {
+  router.beforeEach(async (to, from, next) => {
     // Skip auth check in SSR (server-side rendering)
     // SSR should only render public pages, authenticated pages are rendered on client
     if (typeof window === 'undefined') {
@@ -111,6 +155,13 @@ export const setupRouterGuards = (router: Router) => {
       // This ensures SSR only renders public pages (which don't require auth)
       next()
       return
+    }
+
+    // Mark route navigation (not page refresh) for Studio page
+    // This helps Studio.vue distinguish between route navigation and page refresh
+    if (to.name === 'studio' && from.name) {
+      // Only set marker if navigating from another route (not initial load)
+      sessionStorage.setItem('studio-route-navigation', 'true')
     }
 
     const authStore = useAuthStore()

@@ -110,7 +110,8 @@ async def generate_outfit_suggestions(
   location: Optional[str],
   user_prompt: str,
   base_item_ids: Optional[List[str]] = None,
-  scene_image_url: Optional[str] = None,
+  background_image_url: Optional[str] = None,
+  background_action_prompt: Optional[str] = None,
   client_ip: Optional[str] = None,
   selected_items_roles: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
@@ -166,6 +167,16 @@ async def generate_outfit_suggestions(
       "- Example: if the user chose top and bottom, only propose shoes/outer/accessory, etc."
     )
 
+  # Build background image instruction if provided
+  background_instruction = ""
+  if background_image_url:
+    background_instruction = (
+      "\n- IMPORTANT: A background image is provided with this request. "
+      "Carefully analyze the environment/scene in the image (e.g., office, cafe, outdoor park, formal event, casual setting). "
+      "Tailor the outfit suggestions to match the occasion and style appropriate for that background. "
+      "The background image should strongly influence your outfit recommendations."
+    )
+
   system_prompt = f"""
 You are a professional outfit stylist. Combine today's real weather with the user's wardrobe to generate outfit suggestions.
 
@@ -174,7 +185,7 @@ CRITICAL LANGUAGE REQUIREMENT: ALL OUTPUTS MUST BE IN ENGLISH ONLY. Do not use C
 Requirements:
 - Prioritize using items from the user's wardrobe (match by color, type, and style).
 - If the user pre-selected items (listed in "User pre-selected items"), treat them as fixed bases and fill the remaining roles.
-- Factor weather (sun/rain/snow/wind), temperature, humidity to decide layers, shoes, and outerwear.
+- Factor weather (sun/rain/snow/wind), temperature, humidity to decide layers, shoes, and outerwear.{background_instruction}
 - Return:
   1) Structured JSON for frontend cards.
   2) A long-form natural language description for readability and manual tweaks.
@@ -203,6 +214,10 @@ IMPORTANT:
 - Only output the JSON array above. Do not add ```json fences or any text outside the JSON.
 """
 
+  # Build background image hint text
+  background_hint = " and the background image (if provided below)" if background_image_url else ""
+  background_scene_hint = " and background scene" if background_image_url else ""
+
   user_prompt_text = f"""
 Today's weather:
 {weather_summary}
@@ -217,24 +232,37 @@ User extra preferences / rules (can be empty):
 {user_prompt or "(User did not provide extra preferences)"}
 
 Task:
-- Infer the occasion from user hints and scene image (if any), design 1-3 complete outfits.
+- Infer the occasion from user hints{background_hint}, design 3 complete outfits.
 - Reuse "User pre-selected items" when present, and complete remaining roles (pants, outerwear, shoes, accessories, etc.).
-- For each outfit, explain which wardrobe items you used and why they fit the weather/scene.
+- For each outfit, explain which wardrobe items you used and why they fit the weather{background_scene_hint}.
 - Strictly follow the JSON structure above.
 - REMEMBER: All text in your response must be in English only. Do not use Chinese or any other language in title, description, reason, or long_text fields.
 """
 
-  # Build message content: if scene_image_url exists, include it as image input
-  if scene_image_url:
-    user_prompt_text_with_scene = f"""{user_prompt_text}
+  # Build message content: if background_image_url exists, include it as image input
+  if background_image_url:
+    # Build action description section if provided
+    action_description_section = ""
+    if background_action_prompt:
+      action_description_section = f"\n\nUser's Activity Description:\nThe user described the activity/action in the background: \"{background_action_prompt}\". Consider this activity when suggesting outfits - the outfit should be suitable for this specific activity."
+    
+    user_prompt_text_with_background = f"""{user_prompt_text}
 
-The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe the environment and tailor outfits to that scene. Remember: all output text must be in English only.
+Background Image Context:
+The user uploaded a background image showing the environment/scene where they plan to wear the outfit. 
+Please carefully observe and analyze:
+- The type of location (office, cafe, outdoor park, formal venue, casual setting, etc.)
+- The overall atmosphere and style of the scene
+- The formality level implied by the environment
+- Any visual cues about the occasion{action_description_section}
+
+Based on your analysis, tailor the outfit suggestions to match the background. The outfits should be appropriate and harmonious with the environment shown in the image. Remember: all output text must be in English only.
 """
     # For qwen-vl, content can be a list with text and image URL
     # Format: [{"type": "text", "text": "..."}, {"type": "image_url", "image_url": {"url": "..."}}]
     user_message_content = [
-      {"type": "text", "text": user_prompt_text_with_scene},
-      {"type": "image_url", "image_url": {"url": scene_image_url}},
+      {"type": "text", "text": user_prompt_text_with_background},
+      {"type": "image_url", "image_url": {"url": background_image_url}},
     ]
   else:
     user_message_content = user_prompt_text
@@ -245,9 +273,9 @@ The user uploaded a scene image (e.g., office, cafe, outdoor). Carefully observe
   print("\n[System Prompt]:")
   print(system_prompt)
   print("\n[User Prompt]:")
-  if scene_image_url:
-    print(f"[Text]: {user_prompt_text_with_scene}")
-    print(f"[Image URL]: {scene_image_url}")
+  if background_image_url:
+    print(f"[Text]: {user_prompt_text_with_background}")
+    print(f"[Image URL]: {background_image_url}")
   else:
     print(user_prompt_text)
   print("\n" + "="*80 + "\n")

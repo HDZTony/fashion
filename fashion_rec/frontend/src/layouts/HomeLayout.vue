@@ -38,6 +38,12 @@ const buttonText = computed(() => {
         <!-- Right side - Get Started Button -->
         <div class="flex items-center">
           <router-link
+            to="/blog"
+            class="text-sm text-pink-600 hover:text-pink-700 font-semibold mr-4 transition-colors"
+          >
+            {{ $t('nav.blog') }}
+          </router-link>
+          <router-link
             to="/pricing"
             class="text-sm text-pink-600 hover:text-pink-700 font-semibold flex items-center gap-1 mr-4 transition-colors"
           >

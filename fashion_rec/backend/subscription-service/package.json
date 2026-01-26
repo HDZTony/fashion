@@ -14,15 +14,15 @@
     "test:customers": "tsx test-customers.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.90.1",
     "creem_io": "^0.4.0",
-    "hono": "^4.0.0",
-    "@supabase/supabase-js": "^2.39.0"
+    "hono": "^4.11.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241106.0",
-    "@types/node": "^20.10.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3",
-    "wrangler": "^4.53.0"
+    "@cloudflare/workers-types": "^4.20260111.0",
+    "@types/node": "^25.0.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.58.0"
   }
 }

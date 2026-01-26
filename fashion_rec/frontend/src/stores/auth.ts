@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 import { setTokenInCookie, removeTokenFromCookie, getTokenFromCookie } from '@/lib/cookie-storage'
+import { useStudioStore } from '@/stores/studio'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -99,6 +100,18 @@ export const useAuthStore = defineStore('auth', () => {
         } else {
           localStorage.removeItem('auth_token')
           removeTokenFromCookie()
+          
+          // Clear Studio cache when session is cleared (logout)
+          // This ensures cache is cleared even if user logs out from other tabs or via API
+          try {
+            const studioStore = useStudioStore()
+            studioStore.clearState()
+            sessionStorage.removeItem('studio-store')
+          } catch (e) {
+            // If studio store is not available (e.g., during SSR), just clear storage directly
+            console.warn('[Auth Store] Failed to clear studio store, clearing storage directly:', e)
+            sessionStorage.removeItem('studio-store')
+          }
         }
       }
     })

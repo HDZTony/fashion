@@ -1661,15 +1661,15 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
     const isGenerating = ref(false);
     const isTryingOn = ref(false);
     const customPrompt = ref("");
-    const sceneImageFile = ref(null);
-    const sceneImagePreviewUrl = ref(null);
-    const sceneImageUrl = ref(null);
-    const historicalSceneImages = ref([]);
+    const backgroundImageFile = ref(null);
+    const backgroundImagePreviewUrl = ref(null);
+    const backgroundImageUrl = ref(null);
+    const historicalBackgroundImages = ref([]);
     const historicalModelImages = ref([]);
-    const showSceneImageHistory = ref(false);
+    const showBackgroundImageHistory = ref(false);
     const showModelImageHistory = ref(false);
-    const sceneImageUploadProgress = ref(0);
-    const isUploadingSceneImage = ref(false);
+    const backgroundImageUploadProgress = ref(0);
+    const isUploadingBackgroundImage = ref(false);
     const modelImageUploadProgress = ref(0);
     const isUploadingModelImage = ref(false);
     const showModelImageError = ref(false);
@@ -1755,17 +1755,17 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
       var _a, _b;
       try {
         console.log("[loadHistoricalImages] Starting to load historical images...");
-        const [sceneResp, modelResp] = await Promise.all([
-          apiClient.get("/user-images?image_type=scene"),
+        const [backgroundResp, modelResp] = await Promise.all([
+          apiClient.get("/user-images?image_type=background"),
           apiClient.get("/user-images?image_type=model")
         ]);
-        console.log("[loadHistoricalImages] Scene response:", sceneResp.data);
+        console.log("[loadHistoricalImages] Background response:", backgroundResp.data);
         console.log("[loadHistoricalImages] Model response:", modelResp.data);
-        const sceneImages = ((_a = sceneResp.data) == null ? void 0 : _a.images) || sceneResp.data || [];
+        const backgroundImages = ((_a = backgroundResp.data) == null ? void 0 : _a.images) || backgroundResp.data || [];
         const modelImages = ((_b = modelResp.data) == null ? void 0 : _b.images) || modelResp.data || [];
-        historicalSceneImages.value = Array.isArray(sceneImages) ? sceneImages : [];
+        historicalBackgroundImages.value = Array.isArray(backgroundImages) ? backgroundImages : [];
         historicalModelImages.value = Array.isArray(modelImages) ? modelImages : [];
-        console.log("[loadHistoricalImages] Loaded scene images:", historicalSceneImages.value.length);
+        console.log("[loadHistoricalImages] Loaded background images:", historicalBackgroundImages.value.length);
         console.log("[loadHistoricalImages] Loaded model images:", historicalModelImages.value.length);
       } catch (error) {
         console.error("[loadHistoricalImages] Failed to load historical images:", error);
@@ -1868,7 +1868,7 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
         await loadHistoricalImages();
         console.log("[restoreTryOnHistory] Historical images loaded:", {
           model: historicalModelImages.value.length,
-          scene: historicalSceneImages.value.length
+          background: historicalBackgroundImages.value.length
         });
         if (uploadedItems.value.length === 0) {
           const restored = restoreItemsFromCache();
@@ -1881,11 +1881,11 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
           customPrompt.value = restoreData.prompt;
           console.log("[restoreTryOnHistory] Restored prompt:", restoreData.prompt);
         }
-        if (restoreData.scene_image_url) {
-          sceneImageUrl.value = restoreData.scene_image_url;
-          sceneImagePreviewUrl.value = restoreData.scene_image_url;
-          sceneImageFile.value = null;
-          console.log("[restoreTryOnHistory] Restored scene image:", restoreData.scene_image_url);
+        if (restoreData.background_image_url) {
+          backgroundImageUrl.value = restoreData.background_image_url;
+          backgroundImagePreviewUrl.value = restoreData.background_image_url;
+          backgroundImageFile.value = null;
+          console.log("[restoreTryOnHistory] Restored background image:", restoreData.background_image_url);
         }
         if (restoreData.image_url) {
           tryOnImageUrl.value = restoreData.image_url;
@@ -1973,7 +1973,7 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
         router.replace({ query });
         console.log("[restoreTryOnHistory] Successfully restored try-on history:", {
           prompt: customPrompt.value,
-          sceneImageUrl: sceneImageUrl.value,
+          backgroundImageUrl: backgroundImageUrl.value,
           tryOnImageUrl: tryOnImageUrl.value,
           activeWardrobeIds: activeWardrobeIds.value
         });
@@ -2004,10 +2004,10 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
         if (look.prompt) {
           customPrompt.value = look.prompt;
         }
-        if (look.scene_image_url) {
-          sceneImageUrl.value = look.scene_image_url;
-          sceneImagePreviewUrl.value = look.scene_image_url;
-          sceneImageFile.value = null;
+        if (look.background_image_url) {
+          backgroundImageUrl.value = look.background_image_url;
+          backgroundImagePreviewUrl.value = look.background_image_url;
+          backgroundImageFile.value = null;
         }
         if (look.items && Array.isArray(look.items)) {
           const validWardrobeIds = look.items.map((item) => item.wardrobe_id).filter((id) => !!id && typeof id === "string");
@@ -2035,7 +2035,7 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
             wardrobeIds: activeWardrobeIds.value,
             roleMap: Array.from(activeWardrobeRoleMap.value.entries()),
             prompt: customPrompt.value,
-            sceneImageUrl: sceneImageUrl.value
+            backgroundImageUrl: backgroundImageUrl.value
           });
         }
         const query = { ...route.query };
@@ -2159,27 +2159,27 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
     };
     return (_ctx, _push, _parent, _attrs) => {
       const _component_router_link = resolveComponent("router-link");
-      _push(`<div${ssrRenderAttrs(mergeProps({ class: "min-h-screen bg-gray-50 font-sans text-gray-900" }, _attrs))}><main class="space-y-8"><section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4"><div><h2 class="text-2xl font-bold mb-2">Tell AI about your day</h2><p class="text-sm text-gray-500"> Describe today’s weather, city, scene, and style preferences; AI will use your wardrobe to create outfits. </p></div><div class="flex flex-col gap-4"><div class="w-full space-y-3"><label class="block text-sm font-medium text-gray-700 mb-1"> Describe today and your style </label><div class="relative border border-gray-200 rounded-xl bg-white transition-all focus-within:border-gray-400 focus-within:shadow-md"><textarea rows="3" class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0" placeholder="e.g., Minimalist commute vibe, avoid white shoes; or describe your scene and preferences.">${ssrInterpolate(customPrompt.value)}</textarea>`);
-      if (sceneImagePreviewUrl.value || isUploadingSceneImage.value) {
+      _push(`<div${ssrRenderAttrs(mergeProps({ class: "min-h-screen bg-gray-50 font-sans text-gray-900" }, _attrs))}><main class="space-y-8"><section class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4"><div><h2 class="text-2xl font-bold mb-2">Tell AI about your day</h2><p class="text-sm text-gray-500"> Describe today’s weather, city, background, and style preferences; AI will use your wardrobe to create outfits. </p></div><div class="flex flex-col gap-4"><div class="w-full space-y-3"><label class="block text-sm font-medium text-gray-700 mb-1"> Describe today and your style </label><div class="relative border border-gray-200 rounded-xl bg-white transition-all focus-within:border-gray-400 focus-within:shadow-md"><textarea rows="3" class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0" placeholder="e.g., Minimalist commute vibe, avoid white shoes; or describe your background and preferences.">${ssrInterpolate(customPrompt.value)}</textarea>`);
+      if (backgroundImagePreviewUrl.value || isUploadingBackgroundImage.value) {
         _push(`<div class="px-4 pb-2"><div class="relative inline-block group"><div class="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">`);
-        if (sceneImagePreviewUrl.value) {
-          _push(`<img${ssrRenderAttr("src", sceneImagePreviewUrl.value)} alt="Scene preview" class="w-full h-full object-cover">`);
+        if (backgroundImagePreviewUrl.value) {
+          _push(`<img${ssrRenderAttr("src", backgroundImagePreviewUrl.value)} alt="Background preview" class="w-full h-full object-cover">`);
         } else {
           _push(`<!---->`);
         }
-        if (isUploadingSceneImage.value) {
-          _push(`<div class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"><div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div><span class="text-white text-xs">${ssrInterpolate(sceneImageUploadProgress.value)}%</span></div>`);
+        if (isUploadingBackgroundImage.value) {
+          _push(`<div class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"><div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div><span class="text-white text-xs">${ssrInterpolate(backgroundImageUploadProgress.value)}%</span></div>`);
         } else {
           _push(`<!---->`);
         }
-        if (isUploadingSceneImage.value) {
-          _push(`<div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"><div class="h-full bg-blue-500 transition-all duration-300" style="${ssrRenderStyle({ width: `${sceneImageUploadProgress.value}%` })}"></div></div>`);
+        if (isUploadingBackgroundImage.value) {
+          _push(`<div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"><div class="h-full bg-blue-500 transition-all duration-300" style="${ssrRenderStyle({ width: `${backgroundImageUploadProgress.value}%` })}"></div></div>`);
         } else {
           _push(`<!---->`);
         }
         _push(`</div>`);
-        if (sceneImagePreviewUrl.value && !isUploadingSceneImage.value) {
-          _push(`<button class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md" title="Delete scene image">`);
+        if (backgroundImagePreviewUrl.value && !isUploadingBackgroundImage.value) {
+          _push(`<button class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md" title="Delete background image">`);
           _push(ssrRenderComponent(unref(X), { class: "w-4 h-4" }, null, _parent));
           _push(`</button>`);
         } else {
@@ -2189,23 +2189,23 @@ const _sfc_main$d = /* @__PURE__ */ defineComponent({
       } else {
         _push(`<!---->`);
       }
-      _push(`<div class="flex items-center justify-between px-4 py-2 border-t border-gray-100"><div class="flex items-center gap-2"><label for="sceneImageInput" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors" title="Upload a reference scene image">`);
+      _push(`<div class="flex items-center justify-between px-4 py-2 border-t border-gray-100"><div class="flex items-center gap-2"><label for="backgroundImageInput" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors" title="Upload a reference background image">`);
       _push(ssrRenderComponent(unref(Upload), { class: "w-4 h-4" }, null, _parent));
-      _push(`<span class="text-xs">Upload scene image (optional)</span></label><input id="sceneImageInput" type="file" accept="image/*" class="hidden"><button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors" title="Pick from scene history">`);
+      _push(`<span class="text-xs">Upload background image (optional)</span></label><input id="backgroundImageInput" type="file" accept="image/*" class="hidden"><button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors" title="Pick from background history">`);
       _push(ssrRenderComponent(unref(Clock), { class: "w-4 h-4" }, null, _parent));
-      _push(`<span class="text-xs">History</span></button></div></div></div><p class="text-xs text-gray-500 px-1"> Upload a photo of your environment (office, cafe, outdoors, etc.). AI will use it as the scene reference. </p>`);
-      if (showSceneImageHistory.value) {
-        _push(`<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"><div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"><div class="flex items-center justify-between p-6 border-b border-gray-200"><h3 class="text-lg font-semibold text-gray-900">Choose a historical scene image</h3><button class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">`);
+      _push(`<span class="text-xs">History</span></button></div></div></div><p class="text-xs text-gray-500 px-1"> Upload a photo of your environment (office, cafe, outdoors, etc.). AI will use it as the background reference. </p>`);
+      if (showBackgroundImageHistory.value) {
+        _push(`<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"><div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"><div class="flex items-center justify-between p-6 border-b border-gray-200"><h3 class="text-lg font-semibold text-gray-900">Choose a historical background image</h3><button class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">`);
         _push(ssrRenderComponent(unref(X), { class: "w-5 h-5 text-gray-500" }, null, _parent));
         _push(`</button></div><div class="flex-1 overflow-y-auto p-6">`);
-        if (historicalSceneImages.value.length === 0) {
+        if (historicalBackgroundImages.value.length === 0) {
           _push(`<div class="text-center py-12 text-gray-400">`);
           _push(ssrRenderComponent(unref(Clock), { class: "w-12 h-12 mx-auto mb-3 text-gray-300" }, null, _parent));
-          _push(`<p>No historical scene images</p></div>`);
+          _push(`<p>No historical background images</p></div>`);
         } else {
           _push(`<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"><!--[-->`);
-          ssrRenderList(historicalSceneImages.value, (image) => {
-            _push(`<div class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"><img${ssrRenderAttr("src", image.image_url)}${ssrRenderAttr("alt", `Scene image ${image.id}`)} class="w-full h-full object-cover"><div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div><button class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10" title="Delete this image">`);
+          ssrRenderList(historicalBackgroundImages.value, (image) => {
+            _push(`<div class="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-lg"><img${ssrRenderAttr("src", image.image_url)}${ssrRenderAttr("alt", `Background image ${image.id}`)} class="w-full h-full object-cover"><div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div><button class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10" title="Delete this image">`);
             _push(ssrRenderComponent(unref(Trash2), { class: "w-4 h-4" }, null, _parent));
             _push(`</button><div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"><div class="bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-700">${ssrInterpolate(new Date(image.created_at).toLocaleDateString("en-US"))}</div></div></div>`);
           });
@@ -3473,8 +3473,8 @@ const _sfc_main$7 = /* @__PURE__ */ defineComponent({
           } else {
             _push(`<!---->`);
           }
-          if (favorite.scene_image_url) {
-            _push(`<p class="text-xs text-blue-500 mt-1"> 包含场景 </p>`);
+          if (favorite.background_image_url) {
+            _push(`<p class="text-xs text-blue-500 mt-1"> 包含背景 </p>`);
           } else {
             _push(`<!---->`);
           }
@@ -3730,8 +3730,8 @@ const _sfc_main$6 = /* @__PURE__ */ defineComponent({
           } else {
             _push(`<!---->`);
           }
-          if (item.scene_image_url) {
-            _push(`<p class="text-xs text-blue-500 mt-1"> Includes scene </p>`);
+          if (item.background_image_url) {
+            _push(`<p class="text-xs text-blue-500 mt-1"> Includes background </p>`);
           } else {
             _push(`<!---->`);
           }

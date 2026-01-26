@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
+import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { History, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -30,7 +31,7 @@ interface TryOnHistoryItem {
   id: string
   image_url: string
   garment_urls?: string[]
-  scene_image_url?: string
+  background_image_url?: string
   prompt?: string
   model_image_url?: string
   created_at: string
@@ -217,7 +218,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
       tryonHistoryId: item.id,
       image_url: item.image_url,
       garment_urls: item.garment_urls || [],
-      scene_image_url: item.scene_image_url,
+      background_image_url: item.background_image_url,
       prompt: item.prompt,
       model_image_url: item.model_image_url,
       created_at: item.created_at,
@@ -286,7 +287,8 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
             class="aspect-square bg-gray-100 cursor-pointer overflow-hidden relative"
           >
             <img
-              :src="item.image_url"
+              :src="getMediumImageUrl(item.image_url)"
+              loading="lazy"
               alt="Try-on result"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -307,8 +309,8 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
                 <p v-if="item.garment_urls && item.garment_urls.length > 0" class="text-xs text-pink-500">
                   {{ item.garment_urls.length }} {{ $t('history.items') }}
                 </p>
-                <p v-if="item.scene_image_url" class="text-xs text-pink-600 mt-1">
-                  {{ $t('history.includesScene') }}
+                <p v-if="item.background_image_url" class="text-xs text-pink-600 mt-1">
+                  {{ $t('history.includesBackground') }}
                 </p>
               </div>
               <div class="flex items-center gap-1">
@@ -382,7 +384,8 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
         <!-- Image -->
         <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
           <img
-            :src="imageViewerImages[currentImageIndex]"
+            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
+            loading="lazy"
             alt="Try-on result"
             class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
           />
