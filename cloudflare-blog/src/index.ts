@@ -164,6 +164,7 @@ export default {
         const limit = parseInt(url.searchParams.get('limit') || '20')
         const offset = parseInt(url.searchParams.get('offset') || '0')
         const status = url.searchParams.get('status') || 'published'
+        const filterUserId = url.searchParams.get('user_id') // Filter by specific user_id
         const userId = extractUserIdFromRequest(request)
 
         let query = supabase
@@ -172,12 +173,24 @@ export default {
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1)
 
-        // If not authenticated or requesting published posts, only show published
-        if (!userId || status === 'published') {
-          query = query.eq('status', 'published')
+        // If filtering by specific user_id
+        if (filterUserId) {
+          // Only allow users to filter their own posts
+          if (userId && filterUserId === userId) {
+            // User can see all their own posts (published + drafts)
+            query = query.eq('user_id', filterUserId)
+          } else {
+            // If not authenticated or filtering someone else's posts, only show published
+            query = query.eq('user_id', filterUserId).eq('status', 'published')
+          }
         } else {
-          // Authenticated users can see their own drafts
-          query = query.or(`status.eq.published,user_id.eq.${userId}`)
+          // If not authenticated or requesting published posts, only show published
+          if (!userId || status === 'published') {
+            query = query.eq('status', 'published')
+          } else {
+            // Authenticated users can see their own drafts
+            query = query.or(`status.eq.published,user_id.eq.${userId}`)
+          }
         }
 
         const { data, error } = await query
@@ -256,16 +269,16 @@ export default {
 
         const body = await request.json() as {
           title: string
-          content: string
+          content?: string
           tags?: string[]
           status?: string
           media_urls?: Array<{ url: string; type: 'image' | 'video'; thumbnail?: string }>
         }
 
-        const { title, content, tags = [], status = 'draft', media_urls = [] } = body
+        const { title, content = '', tags = [], status = 'draft', media_urls = [] } = body
 
-        if (!title || !content) {
-          return new Response(JSON.stringify({ error: 'Title and content are required' }), {
+        if (!title) {
+          return new Response(JSON.stringify({ error: 'Title is required' }), {
             status: 400,
             headers: {
               'Content-Type': 'application/json',

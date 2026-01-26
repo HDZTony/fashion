@@ -719,11 +719,31 @@ export default {
             const origin = request.headers.get('Origin')
             const corsHeaders = getCorsHeaders(origin)
             
+            // Determine error type
+            let errorDetail = fetchError.message || 'Request timeout or connection error'
+            let troubleshooting = ''
+            
+            if (fetchError.name === 'AbortError' || fetchError.message?.includes('aborted')) {
+              if (errorDuration < 1000) {
+                errorDetail = 'Connection refused - Blog service may not be running'
+                troubleshooting = 'Please ensure the blog service is running on port 8788. Run: cd cloudflare-blog && pnpm dev'
+              } else {
+                errorDetail = `Request timeout after ${errorDuration}ms`
+                troubleshooting = 'The blog service took too long to respond. Check if the service is running and responding correctly.'
+              }
+            } else if (fetchError.message?.includes('ECONNREFUSED') || fetchError.message?.includes('Failed to fetch')) {
+              errorDetail = 'Connection refused - Blog service may not be running'
+              troubleshooting = 'Please ensure the blog service is running on port 8788. Run: cd cloudflare-blog && pnpm dev'
+            }
+            
             return new Response(JSON.stringify({
               error: 'Blog service request failed',
-              detail: fetchError.message || 'Request timeout or connection error',
+              detail: errorDetail,
               path: path,
-              backend_host: new URL(blogRequest.url).hostname
+              backend_host: new URL(blogRequest.url).hostname,
+              backend_url: blogRequest.url,
+              duration_ms: errorDuration,
+              troubleshooting: troubleshooting || undefined
             }), {
               status: 502,
               statusText: 'Bad Gateway',

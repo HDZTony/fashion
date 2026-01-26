@@ -2,10 +2,9 @@
   <div class="container mx-auto px-4 py-8 max-w-6xl">
     <div class="flex justify-between items-center mb-8">
       <h1 class="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-        {{ $t('blog.title') }}
+        {{ $t('blog.myBlog') }}
       </h1>
       <router-link
-        v-if="authStore.isAuthenticated"
         to="/blog/create"
         class="px-6 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors"
       >
@@ -23,17 +22,25 @@
 
     <div v-else-if="posts.length === 0" class="text-center py-12">
       <div class="text-gray-500">{{ $t('blog.noPosts') }}</div>
+      <router-link
+        to="/blog/create"
+        class="mt-4 inline-block px-6 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors"
+      >
+        {{ $t('blog.create') }}
+      </router-link>
     </div>
 
     <div v-else class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       <article
         v-for="post in posts"
         :key="post.id"
-        class="bg-white border border-pink-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col"
-        @click="goToPost(post.id)"
+        class="bg-white border border-pink-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
       >
         <!-- Media Section (Top) -->
-        <div class="w-full h-48 bg-gray-100 overflow-hidden relative">
+        <div 
+          class="w-full h-48 bg-gray-100 overflow-hidden relative cursor-pointer"
+          @click="goToPost(post.id)"
+        >
           <template v-if="post.media_urls && post.media_urls.length > 0">
             <img
               v-if="post.media_urls[0].type === 'image'"
@@ -62,14 +69,30 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
+          <!-- Status Badge -->
+          <div class="absolute top-2 right-2">
+            <span
+              :class="[
+                'px-2 py-1 rounded-full text-xs font-semibold',
+                post.status === 'published' 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-yellow-100 text-yellow-700'
+              ]"
+            >
+              {{ post.status === 'published' ? $t('blog.published') : $t('blog.draft') }}
+            </span>
+          </div>
         </div>
         
         <!-- Title Section (Bottom) -->
         <div class="p-4 flex-1 flex flex-col">
-          <h2 class="text-lg font-semibold text-gray-900 line-clamp-2 mb-2">
+          <h2 
+            class="text-lg font-semibold text-gray-900 line-clamp-2 mb-2 cursor-pointer hover:text-pink-600 transition-colors"
+            @click="goToPost(post.id)"
+          >
             {{ post.title }}
           </h2>
-          <div v-if="post.tags && post.tags.length > 0" class="mt-auto flex gap-1 flex-wrap">
+          <div v-if="post.tags && post.tags.length > 0" class="mb-3 flex gap-1 flex-wrap">
             <span
               v-for="(tag, index) in post.tags.slice(0, 2)"
               :key="tag"
@@ -77,6 +100,21 @@
             >
               {{ tag }}
             </span>
+          </div>
+          <!-- Action Buttons -->
+          <div class="mt-auto flex gap-2">
+            <button
+              @click.stop="editPost(post.id)"
+              class="flex-1 px-3 py-1.5 text-sm border border-pink-200 rounded-lg hover:bg-pink-50 transition-colors"
+            >
+              {{ $t('blog.edit') }}
+            </button>
+            <button
+              @click.stop="deletePost(post.id)"
+              class="flex-1 px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 text-red-600 transition-colors"
+            >
+              {{ $t('blog.delete') }}
+            </button>
           </div>
         </div>
       </article>
@@ -101,8 +139,9 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
+import { supabase } from '../lib/supabase'
 
-defineOptions({ name: 'BlogList' })
+defineOptions({ name: 'MyBlog' })
 
 const { t } = useI18n()
 const router = useRouter()
@@ -134,8 +173,14 @@ const hasMore = ref(true)
 const offset = ref(0)
 const limit = 20
 const videoRefs = ref<Record<string, HTMLVideoElement>>({})
+const currentUserId = ref<string | null>(null)
 
 const loadPosts = async (reset = false) => {
+  if (!currentUserId.value) {
+    error.value = 'Please sign in to view your blog posts'
+    return
+  }
+
   if (reset) {
     offset.value = 0
     posts.value = []
@@ -159,7 +204,7 @@ const loadPosts = async (reset = false) => {
       params: {
         limit,
         offset: offset.value,
-        status: 'published'
+        user_id: currentUserId.value
       }
     })
 
@@ -191,6 +236,26 @@ const goToPost = (id: string) => {
   router.push(`/blog/${id}`)
 }
 
+const editPost = (id: string) => {
+  router.push(`/blog/${id}/edit`)
+}
+
+const deletePost = async (id: string) => {
+  if (!confirm(t('blog.deleteConfirm'))) {
+    return
+  }
+
+  try {
+    await apiClient.delete(`/blog/posts/${id}`)
+    // Remove post from list
+    posts.value = posts.value.filter(p => p.id !== id)
+    alert(t('blog.deleteSuccess') || 'Post deleted successfully')
+  } catch (e: any) {
+    console.error('Failed to delete post:', e)
+    alert(e?.response?.data?.error || e?.message || t('blog.deleteError'))
+  }
+}
+
 const setVideoRef = (el: any, postId: string) => {
   if (el) {
     videoRefs.value[postId] = el as HTMLVideoElement
@@ -218,26 +283,15 @@ const handleVideoError = (postId: string) => {
   console.error(`Failed to load video for post ${postId}`)
 }
 
-const getExcerpt = (content: string, maxLength = 150): string => {
-  // Remove markdown syntax for excerpt
-  const plainText = content.replace(/[#*`\[\]()]/g, '').trim()
-  if (plainText.length <= maxLength) {
-    return plainText
+onMounted(async () => {
+  // Get current user ID
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    currentUserId.value = user.id
+    loadPosts(true)
+  } else {
+    error.value = 'Please sign in to view your blog posts'
   }
-  return plainText.substring(0, maxLength) + '...'
-}
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
-
-onMounted(() => {
-  loadPosts(true)
 })
 </script>
 
@@ -245,13 +299,6 @@ onMounted(() => {
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.line-clamp-3 {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

@@ -31,6 +31,7 @@
     "profile": "个人资料",
     "contact": "联系我们",
     "blog": "博客",
+    "myBlog": "我的博客",
     "login": "登录",
     "logout": "退出",
     "language": "语言"
@@ -514,6 +515,7 @@
     "backToList": "返回列表",
     "deleteConfirm": "确定要删除这篇文章吗？",
     "deleteError": "删除文章失败",
+    "deleteSuccess": "文章删除成功",
     "createSuccess": "文章创建成功",
     "updateSuccess": "文章更新成功",
     "saveError": "保存文章失败",
@@ -532,6 +534,7 @@
     "uploading": "上传中...",
     "mediaHint": "上传图片或视频。可以上传多个文件。",
     "uploadError": "上传媒体文件失败",
-    "mediaGallery": "媒体库"
+    "mediaGallery": "媒体库",
+    "myBlog": "我的博客"
   }
 }

@@ -101,7 +101,6 @@
         <label class="block text-sm font-medium mb-2">{{ $t('blog.contentLabel') }}</label>
         <textarea
           v-model="form.content"
-          required
           rows="20"
           class="w-full px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent font-mono text-sm"
           :placeholder="$t('blog.contentPlaceholder')"

@@ -98,6 +98,16 @@
                 </SidebarMenuButton>
               </SidebarMenuItem>
               
+              <!-- My Blog -->
+              <SidebarMenuItem>
+                <SidebarMenuButton as-child :is-active="isActiveRoute('/my-blog')">
+                  <router-link to="/my-blog">
+                    <FileText class="size-4 shrink-0" />
+                    <span class="group-data-[state=collapsed]/sidebar-wrapper:hidden">{{ $t('nav.myBlog') }}</span>
+                  </router-link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              
               <!-- Contact Us -->
               <SidebarMenuItem>
                 <SidebarMenuButton as-child>
@@ -152,7 +162,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Heart, User, Mail, Palette, Shirt, History, ChevronRight } from 'lucide-vue-next'
+import { Heart, User, Mail, Palette, Shirt, History, ChevronRight, FileText } from 'lucide-vue-next'
 import { useVersion } from '@/composables/useVersion'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import {

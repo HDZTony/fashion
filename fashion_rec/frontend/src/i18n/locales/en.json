@@ -31,6 +31,7 @@
     "profile": "Profile",
     "contact": "Contact Us",
     "blog": "Blog",
+    "myBlog": "My Blog",
     "login": "Login",
     "logout": "Logout",
     "language": "Language"
@@ -514,6 +515,7 @@
     "backToList": "Back to List",
     "deleteConfirm": "Are you sure you want to delete this post?",
     "deleteError": "Failed to delete post",
+    "deleteSuccess": "Post deleted successfully",
     "createSuccess": "Post created successfully",
     "updateSuccess": "Post updated successfully",
     "saveError": "Failed to save post",
@@ -532,6 +534,7 @@
     "uploading": "Uploading...",
     "mediaHint": "Upload images or videos. You can upload multiple files.",
     "uploadError": "Failed to upload media file",
-    "mediaGallery": "Media Gallery"
+    "mediaGallery": "Media Gallery",
+    "myBlog": "My Blog"
   }
 }
