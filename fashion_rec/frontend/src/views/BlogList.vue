@@ -41,6 +41,21 @@
               :alt="post.title"
               class="w-full h-full object-cover"
             />
+            <div
+              v-else-if="post.media_urls[0].type === 'youtube'"
+              class="relative w-full h-full bg-gray-900"
+            >
+              <img
+                :src="post.media_urls[0].thumbnail"
+                :alt="post.title"
+                class="w-full h-full object-cover opacity-75"
+              />
+              <div class="absolute inset-0 flex items-center justify-center">
+                <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+              </div>
+            </div>
             <template v-else>
               <!-- Video: Use poster attribute for thumbnail, video will show first frame -->
               <video
@@ -110,7 +125,7 @@ const authStore = useAuthStore()
 
 interface MediaItem {
   url: string
-  type: 'image' | 'video'
+  type: 'image' | 'video' | 'youtube'
   thumbnail?: string
 }
 

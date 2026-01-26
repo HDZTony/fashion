@@ -535,6 +535,9 @@
     "mediaHint": "Upload images or videos. You can upload multiple files.",
     "uploadError": "Failed to upload media file",
     "mediaGallery": "Media Gallery",
-    "myBlog": "My Blog"
+    "myBlog": "My Blog",
+    "addYouTube": "Add YouTube Link",
+    "youtubeUrlPlaceholder": "Paste YouTube video link...",
+    "invalidYouTubeUrl": "Invalid YouTube URL"
   }
 }

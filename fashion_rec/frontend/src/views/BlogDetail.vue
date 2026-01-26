@@ -61,6 +61,18 @@
               class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity"
               @click="openMediaViewer(media.url, index)"
             />
+            <div
+              v-else-if="media.type === 'youtube'"
+              class="w-full aspect-video bg-gray-900 rounded-lg overflow-hidden"
+            >
+              <iframe
+                :src="getYouTubeEmbedUrl(media.url)"
+                class="w-full h-full"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+              />
+            </div>
             <video
               v-else
               :src="media.url"
@@ -106,6 +118,7 @@ import { marked } from 'marked'
 import { ChevronLeft } from 'lucide-vue-next'
 import { siteBaseUrl } from '../config/seo'
 import { useSEO } from '../composables/useSEO'
+import { extractYouTubeVideoId, getYouTubeEmbedUrl as getYouTubeEmbedUrlUtil } from '../utils/youtube'
 
 defineOptions({ name: 'BlogDetail' })
 
@@ -116,7 +129,7 @@ const authStore = useAuthStore()
 
 interface MediaItem {
   url: string
-  type: 'image' | 'video'
+  type: 'image' | 'video' | 'youtube'
   thumbnail?: string
 }
 
@@ -417,6 +430,14 @@ const formatDate = (dateString: string): string => {
     month: 'long',
     day: 'numeric'
   })
+}
+
+const getYouTubeEmbedUrl = (url: string): string => {
+  const videoId = extractYouTubeVideoId(url)
+  if (!videoId) {
+    return ''
+  }
+  return getYouTubeEmbedUrlUtil(videoId, { rel: false, modestbranding: true })
 }
 
 const openMediaViewer = (url: string, index: number) => {

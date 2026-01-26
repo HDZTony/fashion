@@ -535,6 +535,9 @@
     "mediaHint": "上传图片或视频。可以上传多个文件。",
     "uploadError": "上传媒体文件失败",
     "mediaGallery": "媒体库",
-    "myBlog": "我的博客"
+    "myBlog": "我的博客",
+    "addYouTube": "添加 YouTube 链接",
+    "youtubeUrlPlaceholder": "粘贴 YouTube 视频链接...",
+    "invalidYouTubeUrl": "无效的 YouTube 链接"
   }
 }

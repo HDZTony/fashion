@@ -43,7 +43,7 @@
         <label class="block text-sm font-medium mb-2">{{ $t('blog.mediaLabel') }}</label>
         <div class="space-y-4">
           <!-- Upload Button -->
-          <div class="flex gap-2">
+          <div class="flex gap-2 flex-wrap items-center">
             <input
               ref="mediaInputRef"
               type="file"
@@ -60,9 +60,28 @@
             >
               {{ isUploading ? $t('blog.uploading') : $t('blog.uploadMedia') }}
             </button>
-            <span class="text-sm text-gray-500 self-center">
+            <span class="text-sm text-gray-500">
               {{ $t('blog.mediaHint') }}
             </span>
+          </div>
+          
+          <!-- YouTube URL Input -->
+          <div class="flex gap-2 flex-wrap items-center">
+            <input
+              v-model="youtubeUrlInput"
+              type="text"
+              :placeholder="$t('blog.youtubeUrlPlaceholder')"
+              class="flex-1 min-w-[200px] px-4 py-2 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm"
+              @keyup.enter="handleYouTubeUrl"
+            />
+            <button
+              type="button"
+              @click="handleYouTubeUrl"
+              :disabled="!youtubeUrlInput.trim()"
+              class="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-700 hover:to-red-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {{ $t('blog.addYouTube') }}
+            </button>
           </div>
           
           <!-- Uploaded Media Preview -->
@@ -78,6 +97,18 @@
                 :alt="`Image ${index + 1}`"
                 class="w-full h-32 object-cover"
               />
+              <div v-else-if="media.type === 'youtube'" class="relative w-full h-32 bg-gray-900">
+                <img
+                  :src="media.thumbnail"
+                  :alt="`YouTube video ${index + 1}`"
+                  class="w-full h-full object-cover opacity-75"
+                />
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                  </svg>
+                </div>
+              </div>
               <video
                 v-else
                 :src="media.url"
@@ -143,7 +174,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '../lib/api-client'
 import { marked } from 'marked'
-import { Upload, X, ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft } from 'lucide-vue-next'
+import { extractYouTubeVideoId, isYouTubeUrl, getYouTubeThumbnail } from '../utils/youtube'
 
 defineOptions({ name: 'BlogCreate' })
 
@@ -155,7 +187,7 @@ const isEdit = computed(() => !!route.params.id)
 
 interface MediaItem {
   url: string
-  type: 'image' | 'video'
+  type: 'image' | 'video' | 'youtube'
   thumbnail?: string
 }
 
@@ -171,6 +203,7 @@ const tagsInput = ref('')
 const isSubmitting = ref(false)
 const isUploading = ref(false)
 const mediaInputRef = ref<HTMLInputElement | null>(null)
+const youtubeUrlInput = ref('')
 
 const previewContent = computed(() => {
   if (!form.value.content) return ''
@@ -244,6 +277,39 @@ const handleMediaSelect = async (event: Event) => {
 
 const removeMedia = (index: number) => {
   form.value.media_urls.splice(index, 1)
+}
+
+const handleYouTubeUrl = () => {
+  const url = youtubeUrlInput.value.trim()
+  if (!url) {
+    return
+  }
+
+  // Check if it's a valid YouTube URL
+  if (!isYouTubeUrl(url)) {
+    alert(t('blog.invalidYouTubeUrl'))
+    return
+  }
+
+  // Extract video ID
+  const videoId = extractYouTubeVideoId(url)
+  if (!videoId) {
+    alert(t('blog.invalidYouTubeUrl'))
+    return
+  }
+
+  // Generate thumbnail URL
+  const thumbnail = getYouTubeThumbnail(videoId)
+
+  // Add to media_urls
+  form.value.media_urls.push({
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    type: 'youtube',
+    thumbnail
+  })
+
+  // Clear input
+  youtubeUrlInput.value = ''
 }
 
 const handleSubmit = async () => {
