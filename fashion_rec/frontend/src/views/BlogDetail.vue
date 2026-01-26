@@ -59,7 +59,7 @@
               :src="media.url"
               :alt="`Image ${index + 1}`"
               class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity"
-              @click="openMediaViewer(media.url, index)"
+              @click="openMediaViewer(media.url)"
             />
             <div
               v-else-if="media.type === 'youtube'"
@@ -94,8 +94,95 @@
       </div>
     </article>
 
+    <!-- Comments Section -->
+    <div class="max-w-[680px] mx-auto mt-16">
+      <div class="border-t border-gray-200 pt-12">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">
+          {{ $t('blog.comments') }}
+          <span v-if="comments.length > 0" class="text-lg font-normal text-gray-500 ml-2">
+            ({{ comments.length }})
+          </span>
+        </h2>
+
+        <!-- Comment Form (only for authenticated users) -->
+        <div v-if="authStore.isAuthenticated" class="mb-8">
+          <div class="bg-gray-50 rounded-lg p-4 border border-pink-200">
+            <textarea
+              v-model="newComment"
+              :placeholder="$t('blog.commentPlaceholder')"
+              rows="4"
+              class="w-full px-4 py-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent resize-none"
+              :disabled="isSubmittingComment"
+            />
+            <div class="flex justify-end mt-3">
+              <button
+                @click="submitComment"
+                :disabled="!newComment.trim() || isSubmittingComment"
+                class="px-6 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {{ isSubmittingComment ? $t('common.loading') : $t('blog.submitComment') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Login prompt for unauthenticated users -->
+        <div v-else class="mb-8 bg-pink-50 border border-pink-200 rounded-lg p-4 text-center">
+          <p class="text-gray-700">{{ $t('blog.loginToComment') }}</p>
+          <router-link
+            to="/login"
+            class="mt-2 inline-block text-pink-600 hover:text-pink-700 font-medium"
+          >
+            {{ $t('nav.login') }}
+          </router-link>
+        </div>
+
+        <!-- Comments List -->
+        <div v-if="isLoadingComments" class="text-center py-8">
+          <div class="text-pink-600">{{ $t('common.loading') }}</div>
+        </div>
+
+        <div v-else-if="comments.length === 0" class="text-center py-12 text-gray-500">
+          {{ $t('blog.noComments') }}
+        </div>
+
+        <div v-else class="space-y-6">
+          <div
+            v-for="comment in comments"
+            :key="comment.id"
+            class="bg-white border border-pink-200 rounded-lg p-4"
+          >
+            <div class="flex items-start justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
+                  {{ getUserInitial(comment.user_id) }}
+                </div>
+                <div>
+                  <div class="text-sm font-medium text-gray-900">
+                    {{ getUserDisplayName(comment.user_id) }}
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    {{ formatDate(comment.created_at) }}
+                  </div>
+                </div>
+              </div>
+              <button
+                v-if="canDeleteComment(comment)"
+                @click="deleteComment(comment.id)"
+                :disabled="isDeletingComment === comment.id"
+                class="text-red-600 hover:text-red-700 text-sm disabled:opacity-50"
+              >
+                {{ isDeletingComment === comment.id ? $t('common.loading') : $t('blog.deleteComment') }}
+              </button>
+            </div>
+            <div class="text-gray-700 whitespace-pre-wrap">{{ comment.content }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Back button -->
-    <div class="mt-8">
+    <div class="mt-8 max-w-[680px] mx-auto">
       <router-link
         to="/blog"
         class="inline-flex items-center gap-2 text-pink-600 hover:text-pink-700"
@@ -145,10 +232,24 @@ interface BlogPost {
   user_id: string
 }
 
+interface Comment {
+  id: string
+  post_id: string
+  user_id: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
 const post = ref<BlogPost | null>(null)
 const isLoading = ref(false)
 const isDeleting = ref(false)
 const error = ref('')
+const comments = ref<Comment[]>([])
+const isLoadingComments = ref(false)
+const newComment = ref('')
+const isSubmittingComment = ref(false)
+const isDeletingComment = ref<string | null>(null)
 
 const isAuthor = computed(() => {
   return authStore.isAuthenticated && post.value && authStore.user && post.value.user_id === authStore.user.id
@@ -173,7 +274,9 @@ const extractPlainText = (html: string): string => {
 
 const postDescription = computed(() => {
   if (!post.value) return ''
-  const plainText = extractPlainText(renderedContent.value)
+  const content = renderedContent.value
+  if (typeof content !== 'string') return ''
+  const plainText = extractPlainText(content)
   // Get first 200 characters for description
   return plainText.substring(0, 200).trim()
 })
@@ -397,6 +500,10 @@ const loadPost = async () => {
     const postId = route.params.id as string
     const response = await apiClient.get<BlogPost>(`/blog/posts/${postId}`)
     post.value = response.data
+    // Load comments after post is loaded
+    if (post.value && post.value.status === 'published') {
+      loadComments()
+    }
   } catch (e: any) {
     console.error('Failed to load post:', e)
     error.value = e?.response?.data?.error || e?.message || t('blog.loadError')
@@ -440,7 +547,79 @@ const getYouTubeEmbedUrl = (url: string): string => {
   return getYouTubeEmbedUrlUtil(videoId, { rel: false, modestbranding: true })
 }
 
-const openMediaViewer = (url: string, index: number) => {
+const loadComments = async () => {
+  if (!post.value) return
+
+  isLoadingComments.value = true
+  try {
+    const response = await apiClient.get<{ comments: Comment[] }>(`/blog/posts/${post.value.id}/comments`)
+    comments.value = response.data.comments || []
+  } catch (e: any) {
+    console.error('Failed to load comments:', e)
+  } finally {
+    isLoadingComments.value = false
+  }
+}
+
+const submitComment = async () => {
+  if (!post.value || !newComment.value.trim()) return
+
+  isSubmittingComment.value = true
+  try {
+    const response = await apiClient.post<Comment>(`/blog/posts/${post.value.id}/comments`, {
+      content: newComment.value.trim()
+    })
+    // Add new comment to the beginning of the list
+    comments.value.unshift(response.data)
+    newComment.value = ''
+  } catch (e: any) {
+    console.error('Failed to submit comment:', e)
+    alert(e?.response?.data?.error || e?.message || t('blog.commentError'))
+  } finally {
+    isSubmittingComment.value = false
+  }
+}
+
+const deleteComment = async (commentId: string) => {
+  if (!confirm(t('blog.deleteCommentConfirm'))) return
+
+  isDeletingComment.value = commentId
+  try {
+    await apiClient.delete(`/blog/comments/${commentId}`)
+    comments.value = comments.value.filter(c => c.id !== commentId)
+    alert(t('blog.commentDeleted'))
+  } catch (e: any) {
+    console.error('Failed to delete comment:', e)
+    alert(e?.response?.data?.error || e?.message || t('blog.deleteError'))
+  } finally {
+    isDeletingComment.value = null
+  }
+}
+
+const canDeleteComment = (comment: Comment): boolean => {
+  if (!authStore.isAuthenticated || !authStore.user) return false
+  // Comment author can delete
+  if (comment.user_id === authStore.user.id) return true
+  // Post author can delete any comment
+  if (post.value && post.value.user_id === authStore.user.id) return true
+  return false
+}
+
+const getUserDisplayName = (userId: string): string => {
+  // If it's the current user, show "You"
+  if (authStore.isAuthenticated && authStore.user && userId === authStore.user.id) {
+    return t('blog.you')
+  }
+  // Otherwise show a generic name or user ID
+  return `User ${userId.substring(0, 8)}`
+}
+
+const getUserInitial = (userId: string): string => {
+  // Use first character of user ID as initial
+  return userId.substring(0, 1).toUpperCase()
+}
+
+const openMediaViewer = (url: string) => {
   // Simple image viewer - could be enhanced with a modal
   window.open(url, '_blank')
 }

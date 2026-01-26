@@ -538,6 +538,18 @@
     "myBlog": "My Blog",
     "addYouTube": "Add YouTube Link",
     "youtubeUrlPlaceholder": "Paste YouTube video link...",
-    "invalidYouTubeUrl": "Invalid YouTube URL"
+    "invalidYouTubeUrl": "Invalid YouTube URL",
+    "comments": "Comments",
+    "commentCount": "{{count}} comments",
+    "noComments": "No comments yet. Be the first to comment!",
+    "writeComment": "Write a comment",
+    "commentPlaceholder": "Share your thoughts...",
+    "submitComment": "Submit Comment",
+    "deleteComment": "Delete",
+    "deleteCommentConfirm": "Are you sure you want to delete this comment?",
+    "commentDeleted": "Comment deleted successfully",
+    "commentError": "Failed to submit comment",
+    "loginToComment": "Please log in to comment",
+    "you": "You"
   }
 }

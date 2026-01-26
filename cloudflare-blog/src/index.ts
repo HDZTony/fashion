@@ -208,8 +208,193 @@ export default {
         })
       }
 
-      // GET /posts/:id - Get single post
+      // Match patterns for posts and comments (define early for reuse)
       const postIdMatch = path.match(/^\/posts\/([^\/]+)$/)
+      const commentsMatch = path.match(/^\/posts\/([^\/]+)\/comments$/)
+      const commentIdMatch = path.match(/^\/comments\/([^\/]+)$/)
+
+      // GET /posts/:id/comments - Get comments for a post (check before single post)
+      if (commentsMatch && method === 'GET') {
+        const postId = commentsMatch[1]
+
+        // Verify post exists and is published
+        const { data: post, error: postError } = await supabase
+          .from('blog_posts')
+          .select('id, status')
+          .eq('id', postId)
+          .maybeSingle()
+
+        if (postError) {
+          throw postError
+        }
+
+        if (!post) {
+          return new Response(JSON.stringify({ error: 'Post not found' }), {
+            status: 404,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Only show comments for published posts
+        if (post.status !== 'published') {
+          return new Response(JSON.stringify({ comments: [] }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Get comments
+        const { data: comments, error: commentsError } = await supabase
+          .from('blog_comments')
+          .select('id, post_id, user_id, content, created_at, updated_at')
+          .eq('post_id', postId)
+          .order('created_at', { ascending: false })
+
+        if (commentsError) {
+          console.error('[Blog API] Comments fetch error:', commentsError)
+          // Provide more specific error message
+          if (commentsError.code === '42P01') {
+            // Table does not exist
+            return new Response(JSON.stringify({
+              error: 'Database table not found',
+              detail: 'The blog_comments table does not exist. Please run the migration script to create it.',
+              hint: 'See cloudflare-blog/migrations/create_blog_comments_table.sql'
+            }), {
+              status: 500,
+              headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
+            })
+          }
+          throw commentsError
+        }
+
+        return new Response(JSON.stringify({ comments: comments || [] }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        })
+      }
+
+      // POST /posts/:id/comments - Create comment (check before single post)
+      if (commentsMatch && method === 'POST') {
+        const postId = commentsMatch[1]
+        const userId = extractUserIdFromRequest(request)
+
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Verify post exists and is published
+        const { data: post, error: postError } = await supabase
+          .from('blog_posts')
+          .select('id, status')
+          .eq('id', postId)
+          .maybeSingle()
+
+        if (postError) {
+          throw postError
+        }
+
+        if (!post) {
+          return new Response(JSON.stringify({ error: 'Post not found' }), {
+            status: 404,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        if (post.status !== 'published') {
+          return new Response(JSON.stringify({ error: 'Cannot comment on unpublished post' }), {
+            status: 403,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        const body = await request.json() as { content: string }
+
+        if (!body.content || !body.content.trim()) {
+          return new Response(JSON.stringify({ error: 'Comment content is required' }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Limit comment length
+        if (body.content.length > 5000) {
+          return new Response(JSON.stringify({ error: 'Comment is too long (max 5000 characters)' }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Create comment
+        const { data: comment, error: commentError } = await supabase
+          .from('blog_comments')
+          .insert({
+            post_id: postId,
+            user_id: userId,
+            content: body.content.trim()
+          })
+          .select()
+          .single()
+
+        if (commentError) {
+          console.error('[Blog API] Comment creation error:', commentError)
+          // Provide more specific error message
+          if (commentError.code === '42P01') {
+            // Table does not exist
+            return new Response(JSON.stringify({
+              error: 'Database table not found',
+              detail: 'The blog_comments table does not exist. Please run the migration script to create it.',
+              hint: 'See cloudflare-blog/migrations/create_blog_comments_table.sql'
+            }), {
+              status: 500,
+              headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders
+              }
+            })
+          }
+          throw commentError
+        }
+
+        return new Response(JSON.stringify(comment), {
+          status: 201,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        })
+      }
+
+      // GET /posts/:id - Get single post
       if (postIdMatch && method === 'GET') {
         const postId = postIdMatch[1]
         const userId = extractUserIdFromRequest(request)
@@ -801,6 +986,103 @@ export default {
         })
       }
 
+      // DELETE /comments/:id - Delete comment
+      if (commentIdMatch && method === 'DELETE') {
+        const commentId = commentIdMatch[1]
+        const userId = extractUserIdFromRequest(request)
+
+        if (!userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Get comment info
+        const { data: comment, error: commentError } = await supabase
+          .from('blog_comments')
+          .select('id, user_id, post_id')
+          .eq('id', commentId)
+          .maybeSingle()
+
+        if (commentError) {
+          throw commentError
+        }
+
+        if (!comment) {
+          return new Response(JSON.stringify({ error: 'Comment not found' }), {
+            status: 404,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Check if user is comment author
+        if (comment.user_id === userId) {
+          // Comment author can delete
+          const { error: deleteError } = await supabase
+            .from('blog_comments')
+            .delete()
+            .eq('id', commentId)
+
+          if (deleteError) {
+            throw deleteError
+          }
+
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Check if user is post author
+        const { data: post, error: postError } = await supabase
+          .from('blog_posts')
+          .select('user_id')
+          .eq('id', comment.post_id)
+          .maybeSingle()
+
+        if (postError) {
+          throw postError
+        }
+
+        if (!post || post.user_id !== userId) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 403,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          })
+        }
+
+        // Post author can delete any comment on their post
+        const { error: deleteError } = await supabase
+          .from('blog_comments')
+          .delete()
+          .eq('id', commentId)
+
+        if (deleteError) {
+          throw deleteError
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        })
+      }
+
       // 404 for unknown paths
       return new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
@@ -812,9 +1094,31 @@ export default {
 
     } catch (error: any) {
       console.error('[Blog API] Error:', error)
+      console.error('[Blog API] Error stack:', error.stack)
+      console.error('[Blog API] Error details:', JSON.stringify(error, null, 2))
+      
+      // Provide more detailed error information
+      let errorDetail = error.message || 'Unknown error'
+      let errorCode = error.code || null
+      
+      // Check for common Supabase errors
+      if (error.code === '42P01') {
+        errorDetail = 'Database table does not exist. Please run the migration script.'
+        errorCode = 'TABLE_NOT_FOUND'
+      } else if (error.code === '23505') {
+        errorDetail = 'Duplicate entry. This record already exists.'
+        errorCode = 'DUPLICATE_ENTRY'
+      } else if (error.code === '23503') {
+        errorDetail = 'Foreign key constraint violation. Referenced record does not exist.'
+        errorCode = 'FOREIGN_KEY_VIOLATION'
+      }
+      
       return new Response(JSON.stringify({
         error: 'Internal server error',
-        detail: error.message
+        detail: errorDetail,
+        code: errorCode,
+        path: path,
+        method: method
       }), {
         status: 500,
         headers: {

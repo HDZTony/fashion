@@ -538,6 +538,18 @@
     "myBlog": "我的博客",
     "addYouTube": "添加 YouTube 链接",
     "youtubeUrlPlaceholder": "粘贴 YouTube 视频链接...",
-    "invalidYouTubeUrl": "无效的 YouTube 链接"
+    "invalidYouTubeUrl": "无效的 YouTube 链接",
+    "comments": "评论",
+    "commentCount": "{{count}} 条评论",
+    "noComments": "还没有评论，快来发表第一条吧！",
+    "writeComment": "写评论",
+    "commentPlaceholder": "写下你的想法...",
+    "submitComment": "发表评论",
+    "deleteComment": "删除",
+    "deleteCommentConfirm": "确定要删除这条评论吗？",
+    "commentDeleted": "评论已删除",
+    "commentError": "发表评论失败",
+    "loginToComment": "请先登录后再发表评论",
+    "you": "你"
   }
 }
