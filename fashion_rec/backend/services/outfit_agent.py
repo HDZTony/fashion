@@ -130,8 +130,8 @@ async def generate_outfit_suggestions(
 
   weather_summary = summarize_weather(weather_raw)
 
+  # Get wardrobe items for validation (not for prompt)
   wardrobe_items = get_user_items(user_id)
-  wardrobe_summary = summarize_wardrobe(wardrobe_items)
 
   base_item_ids = base_item_ids or []
   base_items = [item for item in wardrobe_items if str(item.get("id")) in {str(b) for b in base_item_ids}]
@@ -178,14 +178,14 @@ async def generate_outfit_suggestions(
     )
 
   system_prompt = f"""
-You are a professional outfit stylist. Combine today's real weather with the user's wardrobe to generate outfit suggestions.
+You are a professional outfit stylist. Combine today's real weather with the user's pre-selected items to generate outfit suggestions.
 
 CRITICAL LANGUAGE REQUIREMENT: ALL OUTPUTS MUST BE IN ENGLISH ONLY. Do not use Chinese, Japanese, or any other language. Every field in the JSON response must contain English text only.
 
 Requirements:
-- Prioritize using items from the user's wardrobe (match by color, type, and style).
 - If the user pre-selected items (listed in "User pre-selected items"), treat them as fixed bases and fill the remaining roles.
 - Factor weather (sun/rain/snow/wind), temperature, humidity to decide layers, shoes, and outerwear.{background_instruction}
+- Generate detailed descriptions for each item in the outfit. The descriptions will be used to match items from the user's wardrobe using vector search.
 - Return:
   1) Structured JSON for frontend cards.
   2) A long-form natural language description for readability and manual tweaks.
@@ -197,9 +197,9 @@ JSON output format (output JSON only, no extra text or Markdown fences):
     "title": "Outfit title in English only (e.g., 'Warm Street Style' or 'Casual Office Look')",
     "items": [
       {{
-        "wardrobe_id": "id from wardrobe list; null if not sure",
+        "wardrobe_id": null,
         "role": "one of top/bottom/shoes/outer/accessory",
-        "description": "Short English description only, e.g., 'Navy blue Teal Hoodie' or 'White Brown Sneakers'. Do NOT include Chinese translations or parentheses with Chinese text."
+        "description": "Short English description only, e.g., 'Navy blue Teal Hoodie' or 'White Brown Sneakers'. Do NOT include Chinese translations or parentheses with Chinese text. Be specific about color, type, style, and material to help match items from the user's wardrobe."
       }}
     ],
     "reason": "Brief English rationale only (e.g., 'Cold temperatures require layered warmth; pre-selected hoodie and jacket combo balances street style with wind protection')",
@@ -211,6 +211,7 @@ IMPORTANT:
 - Every string value in the JSON must be in English.
 - Do not include Chinese text in parentheses or anywhere else.
 - The title, description, reason, and long_text fields must all be 100% English.
+- Set wardrobe_id to null for all items - it will be filled automatically by vector search based on the description.
 - Only output the JSON array above. Do not add ```json fences or any text outside the JSON.
 """
 
@@ -222,9 +223,6 @@ IMPORTANT:
 Today's weather:
 {weather_summary}
 
-User wardrobe list (each line is an item; use id for wardrobe_id):
-{wardrobe_summary}
-
 User pre-selected items (treated as fixed bases):
 {base_items_summary}
 
@@ -234,8 +232,9 @@ User extra preferences / rules (can be empty):
 Task:
 - Infer the occasion from user hints{background_hint}, design 3 complete outfits.
 - Reuse "User pre-selected items" when present, and complete remaining roles (pants, outerwear, shoes, accessories, etc.).
-- For each outfit, explain which wardrobe items you used and why they fit the weather{background_scene_hint}.
-- Strictly follow the JSON structure above.
+- For each item in the outfit, provide a detailed description (color, type, style, material) that will be used to match items from the user's wardrobe.
+- For each outfit, explain the style choices and why they fit the weather{background_scene_hint}.
+- Strictly follow the JSON structure above. Set wardrobe_id to null for all items.
 - REMEMBER: All text in your response must be in English only. Do not use Chinese or any other language in title, description, reason, or long_text fields.
 """
 
@@ -302,34 +301,49 @@ Based on your analysis, tailor the outfit suggestions to match the background. T
   except Exception as e:
     raise RuntimeError(f"解析 Qwen 穿搭 JSON 失败: {e}\n原始内容: {content[:500]}") from e
 
-  # 向量检索增强 / fallback：
-  # 1）如果 wardrobe_id 为空但有描述，用描述做 query，通过向量检索在用户衣橱中找最近的单品并填入 wardrobe_id。
-  # 2）如果 wardrobe_id 不在当前用户衣橱中，也尝试用描述重新匹配。
+  # 向量检索匹配：对每个 item 取分数最高且未使用的候选，不重复即可
   wardrobe_id_set = {str(item.get("id")) for item in wardrobe_items}
+  matched_count = 0
+  failed_count = 0
+  used_wardrobe_ids: set[str] = set()
 
   for outfit in outfits:
     items_list = outfit.get("items") or []
     for item in items_list:
       desc = item.get("description") or ""
+      if not desc:
+        print("[Vector Search] Skipping item with empty description")
+        continue
       wid = item.get("wardrobe_id")
-
-      needs_mapping = False
-      if not wid:
-        needs_mapping = True
-      elif str(wid) not in wardrobe_id_set:
-        needs_mapping = True
-
-      if not needs_mapping or not desc:
+      if wid and str(wid) in wardrobe_id_set:
+        used_wardrobe_ids.add(str(wid))
+        print(f"[Vector Search] Item already has valid wardrobe_id: {wid}, skipping")
         continue
-
       try:
-        results = search_by_text(desc, k=1, user_id=user_id)
+        results = search_by_text(desc, k=3, user_id=user_id)
         if results:
-          best = results[0]
-          item["wardrobe_id"] = best["id"]
+          unused = [c for c in results if str(c.get("id")) not in used_wardrobe_ids]
+          best = max(unused, key=lambda c: c.get("score", 0)) if unused else None
+          if best:
+            best_id = str(best["id"])
+            item["wardrobe_id"] = best_id
+            used_wardrobe_ids.add(best_id)
+            matched_count += 1
+            print(f"[Vector Search] Matched '{desc[:50]}...' -> wardrobe_id: {best_id} (score: {best.get('score', 0):.3f})")
+          else:
+            item["wardrobe_id"] = None
+            failed_count += 1
+            print(f"[Vector Search] No unused candidate for '{desc[:50]}...'")
+        else:
+          item["wardrobe_id"] = None
+          failed_count += 1
+          print(f"[Vector Search] No match for '{desc[:50]}...'")
       except Exception as e:
-        print(f"Vector fallback failed for '{desc}': {e}")
-        continue
+        print(f"[Vector Search] Error for '{desc[:50]}...': {e}")
+        item["wardrobe_id"] = None
+        failed_count += 1
+  
+  print(f"[Vector Search] Summary: {matched_count} matched, {failed_count} failed, {len(used_wardrobe_ids)} unique wardrobe_ids used")
 
   return {
     "weather_summary": weather_summary,

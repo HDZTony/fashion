@@ -2122,71 +2122,61 @@ const searchOnGoogle = (description: string, event?: Event) => {
             </div>
           </div>
           
-          <!-- AI Outfit Plans (moved here from Step 3) -->
-          <div v-if="agentOutfits.length && !isGenerating" class="mt-6 space-y-6">
-            <div>
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-semibold">{{ $t('studio.outfitPlans.title') }}</h3>
-                <!-- AI branding and transparency note -->
-                
-              </div>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div
-                  v-for="(outfit, idx) in agentOutfits"
-                  :key="idx"
-                  class="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col justify-between"
-                >
-                  <div>
-                    <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
-                    <ul class="text-xs text-gray-700 space-y-1 mb-2">
-                      <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
-                        <div class="flex-1">
-                          <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
-                          <span> {{ it.description }}</span>
-                          <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
-                          <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
-                        </div>
-                        <button
-                          v-if="!findWardrobeItemById(it.wardrobe_id)"
-                          @click.stop="searchOnGoogle(it.description, $event)"
-                          type="button"
-                          class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
-                          :title="$t('studio.outfitPlans.searchOnGoogle', { description: it.description })"
-                        >
-                          <Search class="w-3.5 h-3.5 text-pink-600" />
-                        </button>
-                      </li>
-                    </ul>
-                    <p class="text-xs text-pink-500 mb-2">
-                      {{ outfit.reason }}
-                    </p>
-                    <p class="text-xs text-pink-500 whitespace-pre-line">
-                      {{ outfit.long_text }}
-                    </p>
-                  </div>
-                  <div class="mt-3 flex flex-col gap-2">
-                    <!-- Apply outfit button - only show if at least one item is in wardrobe -->
-                    <button
-                      v-if="hasAnyWardrobeItem(outfit)"
-                      type="button"
-                      @click.prevent="applyOutfit(outfit)"
-                      class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
-                    >
-                      {{ $t('studio.outfitPlans.applyOutfit') }}
-                    </button>
-                    <!-- Google search buttons for missing items -->
-                    <div v-if="getMissingItems(outfit).length > 0" class="flex flex-wrap gap-2">
+          <!-- AI Outfit Plans：三行布局，卡片内介绍在前、各部位选择在后 -->
+          <div v-if="agentOutfits.length && !isGenerating" class="mt-6">
+            <h3 class="text-lg font-semibold mb-3">{{ $t('studio.outfitPlans.title') }}</h3>
+            <div class="grid grid-cols-1 gap-6">
+              <div
+                v-for="(outfit, idx) in agentOutfits"
+                :key="idx"
+                class="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col justify-between"
+              >
+                <div>
+                  <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
+                  <!-- 介绍放前面 -->
+                  <p class="text-xs text-pink-500 mb-2">{{ outfit.reason }}</p>
+                  <p class="text-xs text-pink-500 whitespace-pre-line mb-3">{{ outfit.long_text }}</p>
+                  <!-- 各部位选择放后面 -->
+                  <ul class="text-xs text-gray-700 space-y-1">
+                    <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
+                      <div class="flex-1">
+                        <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
+                        <span> {{ it.description }}</span>
+                        <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
+                        <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
+                      </div>
                       <button
-                        v-for="(missingItem, idx) in getMissingItems(outfit)"
-                        :key="idx"
-                        @click.stop="searchOnGoogle(missingItem.description, $event)"
+                        v-if="!findWardrobeItemById(it.wardrobe_id)"
+                        @click.stop="searchOnGoogle(it.description, $event)"
                         type="button"
-                        class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                        class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
+                        :title="$t('studio.outfitPlans.searchOnGoogle', { description: it.description })"
                       >
-                        <Search class="w-3 h-3" />
-                        <span>{{ $t('studio.outfitPlans.searchRole', { role: translateRole(missingItem.role) }) }}</span>
+                        <Search class="w-3.5 h-3.5 text-pink-600" />
                       </button>
-                    </div>
+                    </li>
+                  </ul>
+                </div>
+                <div class="mt-3 flex flex-col gap-2">
+                  <button
+                    v-if="hasAnyWardrobeItem(outfit)"
+                    type="button"
+                    @click.prevent="applyOutfit(outfit)"
+                    class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
+                  >
+                    {{ $t('studio.outfitPlans.applyOutfit') }}
+                  </button>
+                  <div v-if="getMissingItems(outfit).length > 0" class="flex flex-wrap gap-2">
+                    <button
+                      v-for="(missingItem, idx) in getMissingItems(outfit)"
+                      :key="idx"
+                      @click.stop="searchOnGoogle(missingItem.description, $event)"
+                      type="button"
+                      class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
+                    >
+                      <Search class="w-3 h-3" />
+                      <span>{{ $t('studio.outfitPlans.searchRole', { role: translateRole(missingItem.role) }) }}</span>
+                    </button>
                   </div>
                 </div>
               </div>
