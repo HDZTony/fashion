@@ -163,7 +163,7 @@
                   :completed="item.completed"
                   class="relative flex flex-1 flex-col items-center justify-center min-w-0"
                 >
-                  <StepperTrigger class="cursor-pointer flex flex-col items-center gap-1 px-2 py-1 rounded-lg hover:bg-pink-50 transition-colors">
+                  <StepperTrigger class="relative z-10 cursor-pointer flex flex-col items-center gap-1 px-2 py-1 rounded-lg hover:bg-pink-50 transition-colors">
                     <StepperIndicator class="bg-muted">
                       {{ item.step }}
                     </StepperIndicator>
@@ -171,7 +171,7 @@
                   <!-- 左右不额外留间距；右端不超出 3：仅略伸入下一列以连接圆 -->
                   <StepperSeparator
                     v-if="item.step !== studioStepperSteps[studioStepperSteps.length - 1]?.step"
-                    class="absolute left-[calc(50%)] right-[calc(-50%)] top-[10px] -translate-y-1/2 block h-0.5 shrink-0 rounded-full bg-pink-200 my-0 w-auto"
+                    class="absolute left-[calc(50%)] right-[calc(-50%)] top-[10px] -translate-y-1/2 z-0 block h-0.5 shrink-0 rounded-full bg-pink-200 my-0 w-auto"
                   />
                   <StepperTitle class="text-xs text-center">
                     {{ $t(item.titleKey) }}

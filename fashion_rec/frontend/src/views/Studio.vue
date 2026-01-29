@@ -1588,9 +1588,8 @@ const applyOutfit = async (outfit: AgentOutfit, cardIndex?: number) => {
 
     console.log('=== Apply Outfit (First Time) ===')
     console.log('Outfit items:', outfit.items)
-    console.log('Extracted wardrobe IDs:', ids)
-    console.log('Current uploadedItems count:', uploadedItems.value.length)
-    console.log('Uploaded items IDs:', uploadedItems.value.map(it => String(it.id)))
+    console.log('Extracted wardrobe IDs (from outfit):', ids)
+    console.log('Wardrobe size (all items):', uploadedItems.value.length)
 
     activeWardrobeIds.value = ids
     selectedItem.value = null
