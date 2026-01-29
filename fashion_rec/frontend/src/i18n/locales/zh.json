@@ -188,6 +188,15 @@
     "chooseExampleBackground": "选择示例背景图片",
     "noExampleBackground": "没有可用的示例背景图片",
     "clickToUse": "点击使用",
+    "stepper": {
+      "title": "试穿方案",
+      "step1Title": "模特照",
+      "step1Desc": "上传或选择",
+      "step2Title": "穿搭",
+      "step2Desc": "告诉 AI & 选单品",
+      "step3Title": "试穿",
+      "step3Desc": "生成并查看结果"
+    },
     "exampleBackgroundPrompts": {
       "001": "模特背靠在树上，手中拿着一片枫叶，做出模特的姿势",
       "002": "模特坐在船上",

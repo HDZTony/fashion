@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "embla-carousel-vue": "^8.6.0",
     "@supabase/supabase-js": "^2.90.1",
     "@vueuse/core": "^14.1.0",
     "axios": "^1.13.2",

@@ -36,29 +36,25 @@ const sidebarClass = computed(() => {
     props.side === 'right' && 'right-0',
   ]
   
-  // Width and visibility based on state
+  // Width and visibility based on state (expanded: 208px; collapsed: icon only)
   if (isMobile.value) {
-    // Mobile: show/hide with translate
     baseClasses.push(
-      'w-64',
+      'w-[208px] max-w-[208px] min-w-[5rem]',
       !isOpen.value && '-translate-x-full'
     )
   } else if (props.collapsible === 'icon') {
-    // Desktop icon mode: width changes
     if (isOpen.value) {
-      baseClasses.push('w-64')
+      baseClasses.push('w-[208px] max-w-[208px] min-w-[5rem]')
     } else {
       baseClasses.push('w-16')
     }
   } else if (props.collapsible === 'offcanvas') {
-    // Desktop offcanvas mode: show/hide with translate
     baseClasses.push(
-      'w-64',
+      'w-[208px] max-w-[208px] min-w-[5rem]',
       !isOpen.value && '-translate-x-full'
     )
   } else {
-    // No collapsible: always full width
-    baseClasses.push('w-64')
+    baseClasses.push('w-[208px] max-w-[208px] min-w-[5rem]')
   }
   
   return cn(...baseClasses, props.class)

@@ -188,6 +188,15 @@
     "chooseExampleBackground": "Choose an example background image",
     "noExampleBackground": "No example background images available",
     "clickToUse": "Click to use",
+    "stepper": {
+      "title": "Try-on flow",
+      "step1Title": "Model photo",
+      "step1Desc": "Upload or choose",
+      "step2Title": "Outfit",
+      "step2Desc": "Tell AI & select items",
+      "step3Title": "Try on",
+      "step3Desc": "Generate & view result"
+    },
     "exampleBackgroundPrompts": {
       "001": "Model leaning back against a tree, holding a maple leaf, posing like a model",
       "002": "Model sitting on a boat",

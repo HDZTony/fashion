@@ -1,8 +1,9 @@
 <template>
   <SidebarProvider :default-open="true">
     <Sidebar collapsible="icon" class="border-r border-pink-200">
-      <SidebarHeader class="p-4 border-b border-pink-100">
-        <router-link to="/" class="flex items-center gap-2">
+      <div class="flex h-full flex-col px-[10px]">
+        <SidebarHeader class="p-4 border-b border-pink-100 justify-center text-center !px-0">
+          <router-link to="/" class="flex items-center justify-center gap-2">
           <span class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent group-data-[state=collapsed]/sidebar-wrapper:hidden">
             Fashion Rec
           </span>
@@ -19,8 +20,8 @@
             {{ isV2 ? 'V2' : 'Stable' }}
           </span>
         </router-link>
-      </SidebarHeader>
-      <SidebarContent>
+        </SidebarHeader>
+        <SidebarContent class="!px-0">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -130,7 +131,8 @@
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-      </SidebarContent>
+        </SidebarContent>
+      </div>
       <SidebarRail />
     </Sidebar>
     

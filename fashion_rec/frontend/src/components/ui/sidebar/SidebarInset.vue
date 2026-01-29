@@ -13,7 +13,7 @@ const isMobile = computed(() => sidebar.isMobile.value)
 </script>
 
 <template>
-  <main :class="cn('relative flex flex-1 flex-col transition-all duration-300', !isMobile && open ? 'md:ml-64' : 'md:ml-16', $props.class)">
+  <main :class="cn('relative flex flex-1 flex-col transition-all duration-300', !isMobile && open ? 'md:ml-[208px]' : 'md:ml-16', $props.class)">
     <slot />
   </main>
 </template>

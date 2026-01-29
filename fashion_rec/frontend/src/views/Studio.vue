@@ -9,6 +9,20 @@ import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Stepper,
+  StepperDescription,
+  StepperIndicator,
+  StepperItem,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from '@/components/ui/stepper'
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+} from '@/components/ui/carousel'
 import { getThumbnailUrl, getSmallImageUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
 const route = useRoute()
@@ -1893,13 +1907,24 @@ const hasTryOnInput = computed(
   () => activeWardrobeItems.value.length > 0 || unmatchedOutfitDescriptions.value.length > 0,
 )
 
+// Stepper: try-on flow progress (fixed right)
+const stepperStep = computed(() => {
+  if (!modelImagePreviewUrl.value) return 1
+  if (!hasTryOnInput.value) return 2
+  return 3
+})
+const step1Completed = computed(() => !!modelImagePreviewUrl.value)
+const step2Completed = computed(() => hasTryOnInput.value)
+const step3Completed = computed(() => !!tryOnImageUrl.value)
+
 // Note: Multi-angle generation is now in separate MultiAngle.vue page
 
 </script>
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
-    <main class="space-y-8">
+    <div class="pl-[20px] pr-[200px]">
+      <main class="space-y-[20px] max-w-4xl mx-auto px-4 sm:px-6">
       <!-- Model photo uploader (moved to top) -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
         <div>
@@ -2347,44 +2372,45 @@ const hasTryOnInput = computed(
             </div>
           </div>
           
-          <!-- AI Outfit Plans：三行布局，卡片内介绍在前、各部位选择在后 -->
-          <div v-if="agentOutfits.length && !isGenerating" class="mt-6">
+          <!-- AI Outfit Plans：轮播布局，卡片内介绍在前、各部位选择在后 -->
+          <div v-if="agentOutfits.length && !isGenerating" class="mt-6 px-14">
             <h3 class="text-lg font-semibold mb-3">{{ $t('studio.outfitPlans.title') }}</h3>
-            <div class="grid grid-cols-1 gap-6">
-              <div
-                v-for="(outfit, idx) in agentOutfits"
-                :key="idx"
-                class="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col justify-between"
-              >
-                <div>
-                  <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
-                  <!-- 介绍放前面 -->
-                  <p class="text-xs text-pink-500 mb-2">{{ outfit.reason }}</p>
-                  <p class="text-xs text-pink-500 whitespace-pre-line mb-3">{{ outfit.long_text }}</p>
-                  <!-- 各部位选择放后面 -->
-                  <ul class="text-xs text-gray-700 space-y-1">
-                    <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
-                      <div class="flex-1">
-                        <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
-                        <span> {{ it.description }}</span>
-                        <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
-                        <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
-                      </div>
-                    </li>
-                  </ul>
-                </div>
-                <div class="mt-3 flex flex-col gap-2">
-                  <button
-                    v-if="outfit.items && outfit.items.length > 0"
-                    type="button"
-                    @click.prevent="applyOutfit(outfit)"
-                    class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
-                  >
-                    {{ $t('studio.outfitPlans.applyOutfit') }}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <Carousel class="w-full">
+              <CarouselContent>
+                <CarouselItem
+                  v-for="(outfit, idx) in agentOutfits"
+                  :key="idx"
+                >
+                  <div class="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col justify-between">
+                    <div>
+                      <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
+                      <p class="text-xs text-pink-500 mb-2">{{ outfit.reason }}</p>
+                      <p class="text-xs text-pink-500 whitespace-pre-line mb-3">{{ outfit.long_text }}</p>
+                      <ul class="text-xs text-gray-700 space-y-1">
+                        <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
+                          <div class="flex-1">
+                            <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
+                            <span> {{ it.description }}</span>
+                            <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
+                            <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
+                          </div>
+                        </li>
+                      </ul>
+                    </div>
+                    <div class="mt-3 flex flex-col gap-2">
+                      <button
+                        v-if="outfit.items && outfit.items.length > 0"
+                        type="button"
+                        @click.prevent="applyOutfit(outfit)"
+                        class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
+                      >
+                        {{ $t('studio.outfitPlans.applyOutfit') }}
+                      </button>
+                    </div>
+                  </div>
+                </CarouselItem>
+              </CarouselContent>
+            </Carousel>
           </div>
           
           <!-- Loading State (only show when actively generating) -->
@@ -2622,10 +2648,10 @@ const hasTryOnInput = computed(
           </div>
         </div>
       </section>
-    </main>
-    
-    <!-- Footer -->
-    <footer class="mt-12 pt-8 border-t border-pink-200 pb-8">
+      </main>
+
+      <!-- Footer -->
+      <footer class="mt-12 pt-8 border-t border-pink-200 pb-8 max-w-4xl mx-auto px-4 sm:px-6">
       <div class="flex justify-center gap-6 text-sm text-pink-600">
         <router-link to="/privacy-policy" class="hover:text-gray-900 transition-colors">
           Privacy Policy
@@ -2638,8 +2664,51 @@ const hasTryOnInput = computed(
       <p class="text-center text-xs text-pink-600 mt-4">
         © 2025 Fashion Rec. All rights reserved.
       </p>
-    </footer>
-    
+      </footer>
+    </div>
+
+    <!-- Try-on flow stepper: fixed 180px width, content area pr = 180 + 20 = 200px for 20px gap -->
+    <aside
+      class="fixed top-0 right-0 w-[180px] h-screen border-l border-pink-100 bg-white/95 backdrop-blur-sm shadow-[ -4px_0_12px_rgba(236,72,153,0.06)] py-6 overflow-y-auto z-40 rounded-l-2xl"
+      aria-label="Try-on flow progress"
+    >
+      <div class="px-[10px] flex flex-col items-center text-center">
+        <h3 class="text-xs font-semibold text-gray-900 mb-3 w-full bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+          {{ $t('studio.stepper.title') }}
+        </h3>
+        <Stepper
+          :model-value="stepperStep"
+          orientation="vertical"
+          :linear="true"
+          class="flex flex-col gap-0 w-full items-center"
+        >
+          <StepperItem :step="1" :completed="step1Completed" class="w-full flex flex-col items-center">
+            <StepperTrigger class="w-full cursor-pointer flex flex-col items-center text-center">
+              <StepperIndicator>1</StepperIndicator>
+              <StepperTitle>{{ $t('studio.stepper.step1Title') }}</StepperTitle>
+              <StepperDescription>{{ $t('studio.stepper.step1Desc') }}</StepperDescription>
+            </StepperTrigger>
+            <StepperSeparator class="self-center" />
+          </StepperItem>
+          <StepperItem :step="2" :completed="step2Completed" class="w-full flex flex-col items-center">
+            <StepperTrigger class="w-full cursor-pointer flex flex-col items-center text-center">
+              <StepperIndicator>2</StepperIndicator>
+              <StepperTitle>{{ $t('studio.stepper.step2Title') }}</StepperTitle>
+              <StepperDescription>{{ $t('studio.stepper.step2Desc') }}</StepperDescription>
+            </StepperTrigger>
+            <StepperSeparator class="self-center" />
+          </StepperItem>
+          <StepperItem :step="3" :completed="step3Completed" class="w-full flex flex-col items-center">
+            <StepperTrigger class="w-full cursor-pointer flex flex-col items-center text-center">
+              <StepperIndicator>3</StepperIndicator>
+              <StepperTitle>{{ $t('studio.stepper.step3Title') }}</StepperTitle>
+              <StepperDescription>{{ $t('studio.stepper.step3Desc') }}</StepperDescription>
+            </StepperTrigger>
+          </StepperItem>
+        </Stepper>
+      </div>
+    </aside>
+
     <!-- Image Viewer Modal -->
     <div
       v-if="showImageViewer && imageViewerImages.length > 0"
