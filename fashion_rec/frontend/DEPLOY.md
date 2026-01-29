@@ -2,7 +2,7 @@
 
 ## 部署目标
 
-前端部署到 **Cloudflare Pages**，项目名：`fashion-rec-frontend`。
+前端部署到 **Cloudflare Pages**，项目名：`fashion-rec-frontend`。默认使用 **SSG（静态站点生成）** 构建，预渲染首页、定价、隐私政策、服务条款等页面。
 
 ## 方式一：本地通过 Wrangler 部署
 
@@ -11,10 +11,10 @@
 ```powershell
 cd fashion_rec/frontend
 pnpm install
-pnpm run build:spa
+pnpm run build
 ```
 
-> 若 `pnpm build`（SSG）报错 `Invalid script option`，请使用 `pnpm run build:spa` 进行 SPA 构建，产物同样输出到 `dist/`。
+> 默认 `pnpm build` 为 **SSG 构建**，产物输出到 `dist/`。若需 SPA 构建，可使用 `pnpm run build:spa`，再执行部署命令。
 
 ### 2. 配置 Cloudflare 认证
 
@@ -33,11 +33,13 @@ pnpm run build:spa
 pnpm exec wrangler pages deploy dist --project-name fashion-rec-frontend
 ```
 
-或一键构建并部署：
+或一键 **SSG 构建并部署**：
 
 ```powershell
 pnpm run deploy
 ```
+
+（`deploy` 内部执行 `pnpm run build` + `wrangler pages deploy dist`。）
 
 ---
 

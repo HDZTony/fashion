@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite-ssg build --script src/ssg-routes.ts",
+    "build": "vue-tsc --noEmit && vite-ssg build",
     "build:spa": "vue-tsc --noEmit && vite build",
     "build:force": "vite build",
-    "build:ssg-force": "vite-ssg build --script src/ssg-routes.ts",
+    "build:ssg-force": "vite-ssg build",
     "preview": "vite preview",
-    "deploy": "pnpm run build:spa && pnpm exec wrangler pages deploy dist --project-name fashion-rec-frontend"
+    "deploy": "pnpm run build && pnpm exec wrangler pages deploy dist --project-name fashion-rec-frontend"
   },
   "dependencies": {
     "embla-carousel-vue": "^8.6.0",
