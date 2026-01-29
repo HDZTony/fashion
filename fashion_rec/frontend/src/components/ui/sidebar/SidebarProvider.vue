@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { provide, ref, watch, computed, toRefs } from 'vue'
+import { provide, ref, watch, computed } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 
 export interface SidebarContext {

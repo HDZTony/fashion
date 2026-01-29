@@ -9,6 +9,10 @@
     "delete": "删除",
     "edit": "编辑",
     "close": "关闭",
+    "imageViewer": {
+      "zoomIn": "放大",
+      "zoomOut": "缩小"
+    },
     "upload": "上传",
     "search": "搜索",
     "filter": "筛选",
@@ -137,6 +141,10 @@
       "womens": "女装",
       "mens": "男装",
       "unisex": "中性"
+    },
+    "imageViewer": {
+      "zoomIn": "放大",
+      "zoomOut": "缩小"
     },
     "selectForOutfit": "选择用于穿搭",
     "selectedForOutfit": "已选择用于穿搭"
@@ -294,6 +302,10 @@
       "favorite": "收藏",
       "tryOnResult": "试穿结果",
       "viewMultiAngle": "多角度切换"
+    },
+    "imageViewer": {
+      "zoomIn": "放大",
+      "zoomOut": "缩小"
     }
   },
   "multiAngle": {

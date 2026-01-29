@@ -152,6 +152,11 @@ jobs:
         run: |
           # Clear any proxy settings that might interfere
           unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
+          # Remove proxy/registry overrides from .npmrc so CI uses default registry (no local proxy)
+          if [ -f .npmrc ]; then
+            sed -i.bak '/^proxy=/d; /^http-proxy=/d; /^https-proxy=/d' .npmrc || true
+            sed -i.bak 's|^registry=.*|registry=https://registry.npmjs.org/|' .npmrc || true
+          fi
           pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/backend/subscription-service
       - name: Deploy to Cloudflare Workers (Stable)
@@ -183,6 +188,11 @@ jobs:
         run: |
           # Clear any proxy settings that might interfere
           unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
+          # Remove proxy/registry overrides from .npmrc so CI uses default registry (no local proxy)
+          if [ -f .npmrc ]; then
+            sed -i.bak '/^proxy=/d; /^http-proxy=/d; /^https-proxy=/d' .npmrc || true
+            sed -i.bak 's|^registry=.*|registry=https://registry.npmjs.org/|' .npmrc || true
+          fi
           pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/backend/subscription-service
       - name: Deploy to Cloudflare Workers (V2)

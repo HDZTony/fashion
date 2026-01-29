@@ -1,5 +1,4 @@
 import { inject, computed } from 'vue'
-import type { SidebarContext } from './SidebarProvider.vue'
 
 export function useSidebar() {
   const context = inject<{

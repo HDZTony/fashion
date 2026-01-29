@@ -484,13 +484,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { apiClient } from '../lib/api-client'
-import { useAuthStore } from '../stores/auth'
 
 defineOptions({ name: 'SEODashboard' })
-
-const authStore = useAuthStore()
 
 const isConnected = ref(false)
 const isVerifying = ref(false)

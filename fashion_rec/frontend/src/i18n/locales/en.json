@@ -9,6 +9,10 @@
     "delete": "Delete",
     "edit": "Edit",
     "close": "Close",
+    "imageViewer": {
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out"
+    },
     "upload": "Upload",
     "search": "Search",
     "filter": "Filter",
@@ -137,6 +141,10 @@
       "womens": "Women's",
       "mens": "Men's",
       "unisex": "Unisex"
+    },
+    "imageViewer": {
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out"
     },
     "selectForOutfit": "Select for Outfit",
     "selectedForOutfit": "Selected for Outfit"
@@ -294,6 +302,10 @@
       "favorite": "Favorite",
       "tryOnResult": "Try-on result",
       "viewMultiAngle": "Switch angles"
+    },
+    "imageViewer": {
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out"
     }
   },
   "multiAngle": {

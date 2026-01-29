@@ -1,7 +1,8 @@
 <script setup lang="ts">
 defineOptions({ name: 'Wardrobe' })
 import { ref, onMounted, onUnmounted, onActivated, watch, computed } from 'vue'
-import { Upload, Shirt, X, ChevronLeft, ChevronRight, Trash2, RefreshCw, CheckCircle, Info, Edit2, Save } from 'lucide-vue-next'
+import { Upload, Shirt, Trash2, RefreshCw, CheckCircle, Info, Edit2, Save } from 'lucide-vue-next'
+import ImageViewer from '@/components/ImageViewer.vue'
 import { getThumbnailUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -794,29 +795,15 @@ const openImageViewer = (index: number, event?: Event) => {
   showImageViewer.value = true
 }
 
-const closeImageViewer = () => {
-  showImageViewer.value = false
-  imageViewerImages.value = []
-  currentImageIndex.value = 0
-  // Also close the item details sheet when closing image viewer
-  showItemDetailsSheet.value = false
-}
-
-const nextImage = () => {
-  if (currentImageIndex.value < imageViewerImages.value.length - 1) {
-    currentImageIndex.value++
-  } else {
+function onImageViewerClose(open: boolean) {
+  showImageViewer.value = open
+  if (!open) {
+    imageViewerImages.value = []
     currentImageIndex.value = 0
+    showItemDetailsSheet.value = false
   }
 }
 
-const prevImage = () => {
-  if (currentImageIndex.value > 0) {
-    currentImageIndex.value--
-  } else {
-    currentImageIndex.value = imageViewerImages.value.length - 1
-  }
-}
 
 // Get current item based on current image index
 const currentItem = computed(() => {
@@ -930,22 +917,6 @@ const saveItemUpdates = async () => {
 }
 
 
-// Keyboard navigation for image viewer
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (!showImageViewer.value) return
-  
-  if (event.key === 'ArrowLeft') {
-    event.preventDefault()
-    prevImage()
-  } else if (event.key === 'ArrowRight') {
-    event.preventDefault()
-    nextImage()
-  } else if (event.key === 'Escape') {
-    event.preventDefault()
-    closeImageViewer()
-  }
-}
-
 onMounted(() => {
   // Detect if this is a page refresh (manual reload)
   const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
@@ -967,7 +938,6 @@ onMounted(() => {
     }
   }
   loadOutfitSelection()
-  window.addEventListener('keydown', handleKeyDown)
 })
 
 // Save items to Pinia (Pinia persistence handles storage)
@@ -1018,7 +988,6 @@ watch(() => route.name, (newName) => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
 })
 
 </script>
@@ -1329,68 +1298,28 @@ onUnmounted(() => {
       </div>
     </main>
     
-    <!-- Image Viewer Modal -->
-    <div
-      v-if="showImageViewer && imageViewerImages.length > 0"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-      @click.self="closeImageViewer"
+    <!-- Image Viewer (shared component) -->
+    <ImageViewer
+      :open="showImageViewer"
+      :images="imageViewerImages"
+      :initial-index="currentImageIndex"
+      :resolve-url="getLargeImageUrl"
+      alt="Wardrobe item"
+      @update:open="onImageViewerClose"
+      @update:current-index="(i) => (currentImageIndex = i)"
     >
-      <div class="relative w-full h-full flex items-center justify-center p-4">
-        <!-- Close button -->
-        <button
-          @click="closeImageViewer"
-          class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <X class="w-6 h-6" />
-        </button>
-        
-        <!-- Previous button -->
-        <button
-          v-if="imageViewerImages.length > 1"
-          @click="prevImage"
-          class="absolute left-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <ChevronLeft class="w-6 h-6" />
-        </button>
-        
-        <!-- Image -->
-        <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
-          <img
-            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
-            loading="lazy"
-            alt="Wardrobe item"
-            class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-          />
-        </div>
-        
-        <!-- Info button to show item details -->
+      <template #left-actions>
         <button
           v-if="currentItem"
+          type="button"
           @click="openItemDetailsSheet"
-          class="absolute top-4 left-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
+          class="w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors"
           title="View item details"
         >
           <Info class="w-6 h-6" />
         </button>
-        
-        <!-- Next button -->
-        <button
-          v-if="imageViewerImages.length > 1"
-          @click="nextImage"
-          class="absolute right-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <ChevronRight class="w-6 h-6" />
-        </button>
-        
-        <!-- Image counter -->
-        <div
-          v-if="imageViewerImages.length > 1"
-          class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm"
-        >
-          {{ currentImageIndex + 1 }} / {{ imageViewerImages.length }}
-        </div>
-      </div>
-    </div>
+      </template>
+    </ImageViewer>
     
     <!-- Item Details Sheet -->
     <Sheet v-model:open="showItemDetailsSheet">

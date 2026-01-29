@@ -23,8 +23,6 @@ const forwardedProps = useForwardProps(delegatedProps)
 
 <template>
   <Primitive
-    :as="as"
-    :as-child="asChild"
     v-bind="forwardedProps"
     :class="cn(buttonVariants({ variant, size }), props.class)"
   >

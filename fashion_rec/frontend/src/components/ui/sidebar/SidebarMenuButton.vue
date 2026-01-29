@@ -36,7 +36,7 @@ const buttonClass = computed(() =>
 </script>
 
 <template>
-  <Primitive :as="as" :as-child="asChild" v-bind="forwardedProps" :class="buttonClass">
+  <Primitive v-bind="forwardedProps" :class="buttonClass">
     <slot />
   </Primitive>
 </template>

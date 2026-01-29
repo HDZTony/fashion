@@ -24,7 +24,7 @@ const emblaOpts = computed(() => ({
   axis: props.orientation === 'horizontal' ? 'x' as const : 'y' as const,
 }))
 
-const [emblaRef, emblaApi] = useEmblaCarousel(emblaOpts, props.plugins)
+const [emblaRef, emblaApi] = useEmblaCarousel(emblaOpts, props.plugins as Parameters<typeof useEmblaCarousel>[1])
 
 const canScrollPrev = ref(false)
 const canScrollNext = ref(false)

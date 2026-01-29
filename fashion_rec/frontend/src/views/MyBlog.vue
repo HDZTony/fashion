@@ -109,7 +109,7 @@
           </h2>
           <div v-if="post.tags && post.tags.length > 0" class="mb-3 flex gap-1 flex-wrap">
             <span
-              v-for="(tag, index) in post.tags.slice(0, 2)"
+              v-for="tag in post.tags.slice(0, 2)"
               :key="tag"
               class="px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 text-xs"
             >
@@ -152,7 +152,6 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAuthStore } from '../stores/auth'
 import { apiClient } from '../lib/api-client'
 import { supabase } from '../lib/supabase'
 
@@ -160,7 +159,6 @@ defineOptions({ name: 'MyBlog' })
 
 const { t } = useI18n()
 const router = useRouter()
-const authStore = useAuthStore()
 
 interface MediaItem {
   url: string

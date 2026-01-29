@@ -86,7 +86,7 @@
           </h2>
           <div v-if="post.tags && post.tags.length > 0" class="mt-auto flex gap-1 flex-wrap">
             <span
-              v-for="(tag, index) in post.tags.slice(0, 2)"
+              v-for="tag in post.tags.slice(0, 2)"
               :key="tag"
               class="px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 text-xs"
             >
@@ -231,24 +231,6 @@ const handleVideoSeeked = (postId: string) => {
 
 const handleVideoError = (postId: string) => {
   console.error(`Failed to load video for post ${postId}`)
-}
-
-const getExcerpt = (content: string, maxLength = 150): string => {
-  // Remove markdown syntax for excerpt
-  const plainText = content.replace(/[#*`\[\]()]/g, '').trim()
-  if (plainText.length <= maxLength) {
-    return plainText
-  }
-  return plainText.substring(0, maxLength) + '...'
-}
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
 }
 
 onMounted(() => {

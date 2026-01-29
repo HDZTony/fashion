@@ -7,6 +7,7 @@ import {
   RotateCw, X, ChevronLeft, ChevronRight, Trash2, 
   Image as ImageIcon, Calendar
 } from 'lucide-vue-next'
+import ImageViewer from '@/components/ImageViewer.vue'
 import { apiClient } from '../lib/api-client'
 import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
@@ -87,21 +88,13 @@ const openImageViewer = (resultUrl: string) => {
   imageViewerImages.value = [resultUrl]
   currentImageIndex.value = 0
   showImageViewer.value = true
-  window.addEventListener('keydown', handleKeyDown)
 }
 
-const closeImageViewer = () => {
-  showImageViewer.value = false
-  imageViewerImages.value = []
-  currentImageIndex.value = 0
-  window.removeEventListener('keydown', handleKeyDown)
-}
-
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (!showImageViewer.value) return
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closeImageViewer()
+function onImageViewerClose(open: boolean) {
+  showImageViewer.value = open
+  if (!open) {
+    imageViewerImages.value = []
+    currentImageIndex.value = 0
   }
 }
 
@@ -271,31 +264,15 @@ onMounted(() => {
       </section>
     </main>
 
-    <!-- Image Viewer Modal -->
-    <div
-      v-if="showImageViewer && imageViewerImages.length > 0"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-      @click.self="closeImageViewer"
-    >
-      <div class="relative w-full h-full flex items-center justify-center p-4">
-        <!-- Close button -->
-        <button
-          @click="closeImageViewer"
-          class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <X class="w-6 h-6" />
-        </button>
-        
-        <!-- Image -->
-        <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
-          <img
-            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
-            loading="lazy"
-            alt="Multi-angle result"
-            class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-          />
-        </div>
-      </div>
-    </div>
+    <!-- Image Viewer (shared component) -->
+    <ImageViewer
+      :open="showImageViewer"
+      :images="imageViewerImages"
+      :initial-index="currentImageIndex"
+      :resolve-url="getLargeImageUrl"
+      alt="Multi-angle result"
+      @update:open="onImageViewerClose"
+      @update:current-index="(i) => (currentImageIndex = i)"
+    />
   </div>
 </template>

@@ -7,6 +7,7 @@ import {
   Wand2, X, ChevronRight, ChevronLeft, RotateCw, 
   Trash2, History, Upload 
 } from 'lucide-vue-next'
+import ImageViewer from '@/components/ImageViewer.vue'
 import { apiClient, uploadApiClient } from '../lib/api-client'
 import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 
@@ -67,7 +68,6 @@ onMounted(async () => {
     await loadHistory()
   }
   
-  window.addEventListener('keydown', handleKeyDown)
 })
 
 // Watch for source image changes
@@ -198,40 +198,11 @@ const openImageViewer = (index: number) => {
   showImageViewer.value = true
 }
 
-const closeImageViewer = () => {
-  showImageViewer.value = false
-  imageViewerImages.value = []
-  currentImageIndex.value = 0
-}
-
-const nextImage = () => {
-  if (currentImageIndex.value < imageViewerImages.value.length - 1) {
-    currentImageIndex.value++
-  } else {
+function onImageViewerClose(open: boolean) {
+  showImageViewer.value = open
+  if (!open) {
+    imageViewerImages.value = []
     currentImageIndex.value = 0
-  }
-}
-
-const prevImage = () => {
-  if (currentImageIndex.value > 0) {
-    currentImageIndex.value--
-  } else {
-    currentImageIndex.value = imageViewerImages.value.length - 1
-  }
-}
-
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (!showImageViewer.value) return
-  
-  if (event.key === 'ArrowLeft') {
-    event.preventDefault()
-    prevImage()
-  } else if (event.key === 'ArrowRight') {
-    event.preventDefault()
-    nextImage()
-  } else if (event.key === 'Escape') {
-    event.preventDefault()
-    closeImageViewer()
   }
 }
 
@@ -536,57 +507,15 @@ const uploadImage = async (file: File) => {
       </section>
     </main>
 
-    <!-- Image Viewer Modal -->
-    <div
-      v-if="showImageViewer && imageViewerImages.length > 0"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-      @click.self="closeImageViewer"
-    >
-      <div class="relative w-full h-full flex items-center justify-center p-4">
-        <!-- Close button -->
-        <button
-          @click="closeImageViewer"
-          class="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <X class="w-6 h-6" />
-        </button>
-        
-        <!-- Previous button -->
-        <button
-          v-if="imageViewerImages.length > 1"
-          @click="prevImage"
-          class="absolute left-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <ChevronLeft class="w-6 h-6" />
-        </button>
-        
-        <!-- Image -->
-        <div class="max-w-4xl max-h-[90vh] flex items-center justify-center">
-          <img
-            :src="getLargeImageUrl(imageViewerImages[currentImageIndex])"
-            loading="lazy"
-            alt="Multi-angle view"
-            class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-          />
-        </div>
-        
-        <!-- Next button -->
-        <button
-          v-if="imageViewerImages.length > 1"
-          @click="nextImage"
-          class="absolute right-4 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors z-10"
-        >
-          <ChevronRight class="w-6 h-6" />
-        </button>
-        
-        <!-- Image counter -->
-        <div
-          v-if="imageViewerImages.length > 1"
-          class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm"
-        >
-          {{ currentImageIndex + 1 }} / {{ imageViewerImages.length }}
-        </div>
-      </div>
-    </div>
+    <!-- Image Viewer (shared component) -->
+    <ImageViewer
+      :open="showImageViewer"
+      :images="imageViewerImages"
+      :initial-index="currentImageIndex"
+      :resolve-url="getLargeImageUrl"
+      alt="Multi-angle view"
+      @update:open="onImageViewerClose"
+      @update:current-index="(i) => (currentImageIndex = i)"
+    />
   </div>
 </template>
