@@ -240,7 +240,7 @@
       "032": "Model sitting on a black chair, hands on the table, back to the camera",
       "033": "Model standing in a corridor",
       "034": "Model sitting on a chair",
-      "035": "Model standing on stairs looking at the camera",
+      "035": "Model walking on stairs holding the railing",
       "036": "Model standing on snow",
       "037": "Model walking on the road",
       "038": "Model facing the camera",
@@ -260,6 +260,8 @@
     "outfitPlans": {
       "title": "AI Outfit Plans",
       "applyOutfit": "Apply outfit",
+      "applying": "Applying…",
+      "applied": "Applied",
       "searchRole": "Search {role}",
       "inWardrobe": "(in wardrobe)",
       "selected": "(selected)",

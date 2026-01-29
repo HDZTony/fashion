@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { AgentOutfit, Item } from '@/types'
 
 export const useStudioStore = defineStore('studio', () => {
@@ -104,6 +104,34 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundTabValue.value = value
   }
 
+  // Stepper getters (for layout nav: try-on flow progress)
+  const activeWardrobeItems = computed(() =>
+    activeWardrobeIds.value
+      .map((id) => uploadedItems.value.find((it) => String(it.id) === id) ?? null)
+      .filter((it): it is Item => it !== null),
+  )
+  const unmatchedOutfitDescriptions = computed(() => {
+    const items = originalAppliedOutfit.value?.items ?? []
+    return items
+      .filter((it) => {
+        if (!it.wardrobe_id) return !!(it.description ?? '').trim()
+        return !uploadedItems.value.some((u) => String(u.id) === String(it.wardrobe_id)) && !!(it.description ?? '').trim()
+      })
+      .map((it) => ({ role: it.role ?? '', description: (it.description ?? '').trim() }))
+      .filter((it) => it.description.length > 0)
+  })
+  const hasTryOnInput = computed(
+    () => activeWardrobeItems.value.length > 0 || unmatchedOutfitDescriptions.value.length > 0,
+  )
+  const stepperStep = computed(() => {
+    if (!modelImagePreviewUrl.value) return 1
+    if (!hasTryOnInput.value) return 2
+    return 3
+  })
+  const step1Completed = computed(() => !!modelImagePreviewUrl.value)
+  const step2Completed = computed(() => hasTryOnInput.value)
+  const step3Completed = computed(() => !!tryOnImageUrl.value)
+
   const clearState = () => {
     customPrompt.value = ''
     backgroundImageUrl.value = null
@@ -139,6 +167,11 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved,
     currentFavoriteId,
     backgroundTabValue,
+    // Stepper (for layout)
+    stepperStep,
+    step1Completed,
+    step2Completed,
+    step3Completed,
     // Helpers
     getActiveWardrobeRoleMap,
     setActiveWardrobeRoleMap,

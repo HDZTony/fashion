@@ -140,15 +140,46 @@
       <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
         <!-- Top Navigation Bar -->
         <nav class="sticky top-0 z-40 w-full border-b border-pink-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-          <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center gap-2">
+          <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8 gap-4">
+            <div class="flex items-center gap-2 shrink-0">
               <SidebarTrigger class="-ml-1" />
               <!-- Mobile Logo -->
               <router-link to="/" class="flex items-center space-x-2 md:hidden">
                 <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Fashion Rec</span>
               </router-link>
             </div>
-            <div class="flex items-center gap-4">
+            <!-- 推荐穿搭步骤条：shadcn Stepper，Separator 放在 Item 内 + v-if，单向 model-value 防递归 -->
+            <div v-if="isStudioRoute" class="flex-1 flex items-center justify-center min-w-0 max-w-2xl mx-auto" aria-label="Try-on flow progress">
+              <Stepper
+                :model-value="stepperStepNumber"
+                orientation="horizontal"
+                :linear="true"
+                class="flex w-full flex-row items-center gap-0"
+              >
+                <StepperItem
+                  v-for="item in studioStepperSteps"
+                  :key="item.step"
+                  :step="item.step"
+                  :completed="item.completed"
+                  class="relative flex flex-1 flex-col items-center justify-center min-w-0"
+                >
+                  <StepperTrigger class="cursor-pointer flex flex-col items-center gap-1 px-2 py-1 rounded-lg hover:bg-pink-50 transition-colors">
+                    <StepperIndicator class="bg-muted">
+                      {{ item.step }}
+                    </StepperIndicator>
+                  </StepperTrigger>
+                  <!-- 左右不额外留间距；右端不超出 3：仅略伸入下一列以连接圆 -->
+                  <StepperSeparator
+                    v-if="item.step !== studioStepperSteps[studioStepperSteps.length - 1]?.step"
+                    class="absolute left-[calc(50%)] right-[calc(-50%)] top-[10px] -translate-y-1/2 block h-0.5 shrink-0 rounded-full bg-pink-200 my-0 w-auto"
+                  />
+                  <StepperTitle class="text-xs text-center">
+                    {{ $t(item.titleKey) }}
+                  </StepperTitle>
+                </StepperItem>
+              </Stepper>
+            </div>
+            <div class="flex items-center gap-4 shrink-0">
               <LanguageSwitcher />
             </div>
           </div>
@@ -166,7 +197,16 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Heart, User, Mail, Palette, Shirt, History, ChevronRight, FileText } from 'lucide-vue-next'
 import { useVersion } from '@/composables/useVersion'
+import { useStudioStore } from '@/stores/studio'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import {
+  Stepper,
+  StepperIndicator,
+  StepperItem,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from '@/components/ui/stepper'
 import {
   Collapsible,
   CollapsibleContent,
@@ -191,7 +231,18 @@ import {
 } from '@/components/ui/sidebar'
 
 const route = useRoute()
+const studioStore = useStudioStore()
 const { currentVersion, getVersion, isV2, isLoading: isLoadingVersion } = useVersion()
+
+const isStudioRoute = computed(() => route.name === 'studio')
+
+// 单向 model-value 用数字，避免 store 水合时 Stepper 内部 watch 触发递归
+const stepperStepNumber = computed(() => Number(studioStore.stepperStep))
+const studioStepperSteps = computed(() => [
+  { step: 1, completed: studioStore.step1Completed, titleKey: 'studio.stepper.step1Title' },
+  { step: 2, completed: studioStore.step2Completed, titleKey: 'studio.stepper.step2Title' },
+  { step: 3, completed: studioStore.step3Completed, titleKey: 'studio.stepper.step3Title' },
+])
 
 // Submenu states
 const studioMenuOpen = ref(true)

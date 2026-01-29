@@ -3,22 +3,13 @@ defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Wand2, X, Clock, Upload, Heart, Trash2, Shirt, Image, RotateCw } from 'lucide-vue-next'
+import { Wand2, X, Clock, Upload, Heart, Trash2, Shirt, Image, RotateCw, Check } from 'lucide-vue-next'
 import ImageViewer from '@/components/ImageViewer.vue'
 import type { Item, Recommendation, AgentOutfit } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Stepper,
-  StepperDescription,
-  StepperIndicator,
-  StepperItem,
-  StepperSeparator,
-  StepperTitle,
-  StepperTrigger,
-} from '@/components/ui/stepper'
 import {
   Carousel,
   CarouselContent,
@@ -48,6 +39,9 @@ const recommendations = ref<Recommendation[]>([])
 const modelImageFile = ref<File | null>(null)
 const isGenerating = ref(false)
 const isTryingOn = ref(false)
+// 应用穿搭：当前正在应用的卡片索引；应用成功后短暂展示“已应用”的卡片索引
+const applyingOutfitIndex = ref<number | null>(null)
+const appliedOutfitIndex = ref<number | null>(null)
 
 // Background image file (not persisted, only URL is persisted)
 const backgroundImageFile = ref<File | null>(null)
@@ -1420,7 +1414,11 @@ const performTryOn = async () => {
 }
 
 
-const applyOutfit = async (outfit: AgentOutfit) => {
+const applyOutfit = async (outfit: AgentOutfit, cardIndex?: number) => {
+  if (cardIndex !== undefined) {
+    applyingOutfitIndex.value = cardIndex
+    appliedOutfitIndex.value = null
+  }
   try {
     // Ensure uploadedItems is loaded before applying outfit
     // Try to restore from cache first (items are already loaded in Wardrobe page)
@@ -1643,10 +1641,20 @@ const applyOutfit = async (outfit: AgentOutfit) => {
     }
   
   // State is automatically persisted by Pinia store
+    if (cardIndex !== undefined) {
+      appliedOutfitIndex.value = cardIndex
+      setTimeout(() => {
+        appliedOutfitIndex.value = null
+      }, 1500)
+    }
   } catch (error) {
     console.error('[Apply Outfit] Error:', error)
     const errorMessage = error instanceof Error ? error.message : t('errors.generic')
     alert(t('studio.outfitPlans.applyFailed', { error: errorMessage }))
+  } finally {
+    if (cardIndex !== undefined) {
+      applyingOutfitIndex.value = null
+    }
   }
 }
 
@@ -1878,23 +1886,14 @@ const hasTryOnInput = computed(
   () => activeWardrobeItems.value.length > 0 || unmatchedOutfitDescriptions.value.length > 0,
 )
 
-// Stepper: try-on flow progress (fixed right)
-const stepperStep = computed(() => {
-  if (!modelImagePreviewUrl.value) return 1
-  if (!hasTryOnInput.value) return 2
-  return 3
-})
-const step1Completed = computed(() => !!modelImagePreviewUrl.value)
-const step2Completed = computed(() => hasTryOnInput.value)
-const step3Completed = computed(() => !!tryOnImageUrl.value)
-
+// Note: Stepper is rendered in AppLayout top bar when route is studio. State from useStudioStore().
 // Note: Multi-angle generation is now in separate MultiAngle.vue page
 
 </script>
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
-    <div class="pl-[20px] pr-[200px]">
+    <div class="px-4 sm:px-6">
       <main class="space-y-[20px] max-w-4xl mx-auto px-4 sm:px-6">
       <!-- Model photo uploader (moved to top) -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
@@ -2372,10 +2371,21 @@ const step3Completed = computed(() => !!tryOnImageUrl.value)
                       <button
                         v-if="outfit.items && outfit.items.length > 0"
                         type="button"
-                        @click.prevent="applyOutfit(outfit)"
-                        class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
+                        :disabled="applyingOutfitIndex !== null"
+                        @click.prevent="applyOutfit(outfit, idx)"
+                        class="inline-flex items-center justify-center gap-1.5 min-w-[5rem] text-xs px-3 py-1.5 rounded-full border transition-all duration-200 self-end select-none"
+                        :class="applyingOutfitIndex === idx
+                          ? 'border-blue-300 text-blue-500 cursor-wait'
+                          : appliedOutfitIndex === idx
+                            ? 'border-green-400 text-green-600 bg-green-50'
+                            : 'border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 hover:scale-[1.02] active:scale-[0.98]'"
                       >
-                        {{ $t('studio.outfitPlans.applyOutfit') }}
+                        <span
+                          v-if="applyingOutfitIndex === idx"
+                          class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
+                        />
+                        <Check v-else-if="appliedOutfitIndex === idx" class="w-3.5 h-3.5 shrink-0" />
+                        <span>{{ applyingOutfitIndex === idx ? $t('studio.outfitPlans.applying') : appliedOutfitIndex === idx ? $t('studio.outfitPlans.applied') : $t('studio.outfitPlans.applyOutfit') }}</span>
                       </button>
                     </div>
                   </div>
@@ -2637,48 +2647,6 @@ const step3Completed = computed(() => !!tryOnImageUrl.value)
       </p>
       </footer>
     </div>
-
-    <!-- Try-on flow stepper: fixed 180px width, content area pr = 180 + 20 = 200px for 20px gap -->
-    <aside
-      class="fixed top-0 right-0 w-[180px] h-screen border-l border-pink-100 bg-white/95 backdrop-blur-sm shadow-[ -4px_0_12px_rgba(236,72,153,0.06)] py-6 overflow-y-auto z-40 rounded-l-2xl"
-      aria-label="Try-on flow progress"
-    >
-      <div class="px-[10px] flex flex-col items-center text-center">
-        <h3 class="text-xs font-semibold text-gray-900 mb-3 w-full bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-          {{ $t('studio.stepper.title') }}
-        </h3>
-        <Stepper
-          :model-value="stepperStep"
-          orientation="vertical"
-          :linear="true"
-          class="flex flex-col gap-0 w-full items-center"
-        >
-          <StepperItem :step="1" :completed="step1Completed" class="w-full flex flex-col items-center">
-            <StepperTrigger class="w-full cursor-pointer flex flex-col items-center text-center">
-              <StepperIndicator>1</StepperIndicator>
-              <StepperTitle>{{ $t('studio.stepper.step1Title') }}</StepperTitle>
-              <StepperDescription>{{ $t('studio.stepper.step1Desc') }}</StepperDescription>
-            </StepperTrigger>
-            <StepperSeparator class="self-center" />
-          </StepperItem>
-          <StepperItem :step="2" :completed="step2Completed" class="w-full flex flex-col items-center">
-            <StepperTrigger class="w-full cursor-pointer flex flex-col items-center text-center">
-              <StepperIndicator>2</StepperIndicator>
-              <StepperTitle>{{ $t('studio.stepper.step2Title') }}</StepperTitle>
-              <StepperDescription>{{ $t('studio.stepper.step2Desc') }}</StepperDescription>
-            </StepperTrigger>
-            <StepperSeparator class="self-center" />
-          </StepperItem>
-          <StepperItem :step="3" :completed="step3Completed" class="w-full flex flex-col items-center">
-            <StepperTrigger class="w-full cursor-pointer flex flex-col items-center text-center">
-              <StepperIndicator>3</StepperIndicator>
-              <StepperTitle>{{ $t('studio.stepper.step3Title') }}</StepperTitle>
-              <StepperDescription>{{ $t('studio.stepper.step3Desc') }}</StepperDescription>
-            </StepperTrigger>
-          </StepperItem>
-        </Stepper>
-      </div>
-    </aside>
 
     <!-- Image Viewer (shared component) -->
     <ImageViewer
