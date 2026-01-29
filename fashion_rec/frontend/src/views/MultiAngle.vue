@@ -4,7 +4,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { 
-  Wand2, X, ChevronRight, ChevronLeft, RotateCw, 
+  Wand2, ChevronRight, RotateCw, 
   Trash2, History, Upload 
 } from 'lucide-vue-next'
 import ImageViewer from '@/components/ImageViewer.vue'
