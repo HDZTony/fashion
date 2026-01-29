@@ -78,6 +78,7 @@ class OutfitAgentRequest(BaseModel):
     base_item_ids: Optional[List[str]] = None
     background_image_url: Optional[str] = None
     background_action_prompt: Optional[str] = None  # User's description of actions/activities in the background image
+    model_image_url: Optional[str] = None  # Model image URL (person) for personalized suggestions
     # Map of wardrobe_id to role for already selected items (to avoid regenerating them)
     selected_items_roles: Optional[Dict[str, str]] = None
 
@@ -398,6 +399,56 @@ def _convert_unsupported_format(image_path: Path) -> Path:
         # Return original path - if conversion fails, try with original
         # The API error handling will provide a user-friendly message
         return image_path
+
+
+def _optimize_image_url_for_model(image_url: Optional[str], width: int = 800, quality: int = 85) -> Optional[str]:
+    """
+    Convert R2 image URL to Cloudflare Image Resize URL for model inference.
+    R2 still stores original images, but we resize to specified resolution when passing to models.
+    
+    Args:
+        image_url: Original R2 URL (e.g., https://r2.fashion-rec.com/example/image.jpg)
+        width: Target width in pixels (default: 800)
+        quality: JPEG quality 1-100 (default: 85)
+    
+    Returns:
+        Optimized URL with Cloudflare Image Resize (e.g., https://r2.fashion-rec.com/cdn-cgi/image/width=800,quality=85/example/image.jpg)
+        Returns None if input is None or empty
+    """
+    if not image_url:
+        return None
+    
+    # Already optimized URL (contains /cdn-cgi/image/)
+    if '/cdn-cgi/image/' in image_url:
+        return image_url
+    
+    # Only optimize R2 domain URLs
+    if 'r2.fashion-rec.com' not in image_url:
+        return image_url
+    
+    try:
+        from urllib.parse import urlparse, urlunparse
+        
+        parsed = urlparse(image_url)
+        path = parsed.path
+        
+        # Build Cloudflare Image Resize URL
+        # Format: https://domain/cdn-cgi/image/width=800,quality=85/path/to/image.jpg
+        optimized_path = f'/cdn-cgi/image/width={width},quality={quality}{path}'
+        
+        optimized_url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            optimized_path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment
+        ))
+        
+        return optimized_url
+    except Exception as e:
+        logger.warning(f"Failed to optimize image URL {image_url}: {e}, using original URL")
+        return image_url
 
 
 async def _download_and_upload_image(image_url: str) -> str:
@@ -1359,20 +1410,35 @@ async def generate_outfit(
 ):
     """
     Generate outfit recommendations using the outfit agent.
+    Images are optimized to 800px resolution using Cloudflare Image Resize before being passed to the model.
+    R2 still stores original images.
     """
     from services.outfit_agent import generate_outfit_suggestions
 
     try:
+        # Optimize image URLs to 800px resolution using Cloudflare Image Resize
+        # R2 stores original images, but we resize when passing to models
+        optimized_background_url = _optimize_image_url_for_model(request.background_image_url, width=800, quality=85)
+        optimized_model_url = _optimize_image_url_for_model(request.model_image_url, width=800, quality=85)
+        
         result = await generate_outfit_suggestions(
             user_id=user_id,
             location=request.location,
             user_prompt=request.prompt,
             base_item_ids=request.base_item_ids,
-            background_image_url=request.background_image_url,
+            background_image_url=optimized_background_url,
             background_action_prompt=request.background_action_prompt,
+            model_image_url=optimized_model_url,
             client_ip=http_request.client.host if http_request.client else None,
             selected_items_roles=request.selected_items_roles,
         )
+        
+        # #region agent log
+        try:
+            with open('d:\\source_code\\fashion\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"main.py:generate_outfit:after_call","message":"After generate_outfit_suggestions call","data":{"optimized_bg_passed":optimized_background_url,"optimized_model_passed":optimized_model_url},"timestamp":int(__import__('time').time()*1000)})+'\n')
+        except: pass
+        # #endregion
 
         # Return in agent mode format
         return {
@@ -1404,6 +1470,7 @@ async def try_on(
     person_image: Optional[UploadFile] = File(None),
     person_image_url: Optional[str] = Form(None),
     garment_urls: str = Form(...),
+    unmatched_descriptions: Optional[str] = Form(None),
     background_image_url: Optional[str] = Form(None),
     background_action_prompt: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
@@ -1472,8 +1539,24 @@ async def try_on(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid garment_urls: {e}")
 
-    if not garment_list:
-        raise HTTPException(status_code=400, detail="garment_urls cannot be empty")
+    # Parse unmatched_descriptions (items with no wardrobe image; use text in prompt)
+    parsed_unmatched: List[Dict[str, str]] = []
+    if unmatched_descriptions:
+        try:
+            raw = json.loads(unmatched_descriptions)
+            if isinstance(raw, list):
+                parsed_unmatched = [
+                    {"role": str(x.get("role", "")), "description": str(x.get("description", ""))}
+                    for x in raw if isinstance(x, dict)
+                ]
+        except Exception:
+            pass
+
+    if not garment_list and not parsed_unmatched:
+        raise HTTPException(
+            status_code=400,
+            detail="Either garment_urls or unmatched_descriptions must be provided and non-empty",
+        )
 
     # Determine person image input (local file path or URL)
     if not person_image and not person_image_url:
@@ -1736,95 +1819,138 @@ async def try_on(
     # Save user's custom prompt before it gets overwritten by system prompt
     user_custom_prompt = prompt  # This is the user's original input from Form parameter
 
-    try:
-        garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{user_id}_collage.png"
-        garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
+    # Build unmatched-descriptions section for prompt (text-only garment items)
+    unmatched_desc_section = ""
+    if parsed_unmatched:
+        lines = [f"- {x['role']}: {x['description']}" for x in parsed_unmatched if x.get("description")]
+        if lines:
+            unmatched_desc_section = (
+                "\nAdditionally, the person must wear these items (described by text, not shown in any garment image):\n"
+                + "\n".join(lines)
+                + "\n"
+            )
 
-        # Query garment items details from database
-        garment_items = get_items_by_urls(garment_list, user_id)
-        
-        # Build garment descriptions text for prompt using description field
-        garment_descriptions = []
-        for item in garment_items:
-            if item.get("id") and item.get("description"):  # Only include items found in database with description
-                garment_descriptions.append(item["description"])
-        
-        # Build base prompt with garment descriptions
-        garment_desc_text = ""
-        if garment_descriptions:
-            garment_desc_text = f"\nItem details in Image 1:\n" + "\n".join([f"- {desc}" for desc in garment_descriptions]) + "\n"
-        
-        image_inputs: List[Any] = [garments_collage_path, person_input]
-        # Build action/pose description section if provided
-        action_description_section = ""
-        if background_action_prompt:
-            action_description_section = f"Image 2 Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
-            logger.info(f"[Try-On] Background action prompt received: {background_action_prompt}")
+    action_description_section = ""
+    if background_action_prompt:
+        action_description_section = f"Image 2 Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
+        logger.info(f"[Try-On] Background action prompt received: {background_action_prompt}")
+    else:
+        logger.info("[Try-On] No background action prompt provided")
+
+    image_inputs: List[Any]
+    prompt: str
+    negative_prompt: str
+    garment_collage_index: Optional[int]
+
+    try:
+        if garment_list:
+            garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{user_id}_collage.png"
+            garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
+
+            garment_items = get_items_by_urls(garment_list, user_id)
+            garment_descriptions = []
+            for item in garment_items:
+                if item.get("id") and item.get("description"):
+                    garment_descriptions.append(item["description"])
+            garment_desc_text = ""
+            if garment_descriptions:
+                garment_desc_text = f"\nItem details in Image 1:\n" + "\n".join([f"- {d}" for d in garment_descriptions]) + "\n"
+            garment_desc_text += unmatched_desc_section
+
+            image_inputs = [garments_collage_path, person_input]
+            if background_image_url:
+                image_inputs.append(background_image_url)
+            if background_image_url:
+                prompt = (
+                    "Use the person from Image 2 (model photo), have this person wear all clothes and accessories from Image 1, "
+                    "then place this person wearing new clothes in the background shown in Image 3. "
+                    + action_description_section
+                    + " Keep Image 3's environment and background as the final background, only use Image 3's background elements, "
+                    "the person must come from Image 2, do not use any person from Image 3. "
+                    "All items must be correctly worn on the model: "
+                    "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
+                    "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
+                    "bags on the shoulder or held in hand. "
+                    "Prohibit any items floating in the air or scattered on the ground. "
+                    "CRITICAL: Pay careful attention to perspective and spatial consistency. "
+                    "The model's perspective, scale, and pose must match the background's perspective and vanishing points. "
+                    "The model's size and proportions are consistent with the background's depth and scale. "
+                    "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
+                    "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
+                    + garment_desc_text
+                )
+                negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."
+            else:
+                prompt = (
+                    "Person from Image 2 wearing all clothes and accessories from Image 1, keep person identity and original background natural and reasonable, "
+                    "only replace clothing, do not remove or replace Image 2's background. "
+                    "All items must be correctly worn on the model: "
+                    "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
+                    "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
+                    "bags on the shoulder or held in hand. "
+                    "Prohibit any items floating in the air or scattered on the ground. "
+                    "CRITICAL: Maintain the original perspective and spatial relationships from Image 2. "
+                    "The model's pose, scale, and perspective must remain consistent with the original background. "
+                    "All proportions match the original scene's depth and perspective. "
+                    "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
+                    "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
+                    + garment_desc_text
+                )
+                negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."
+            garment_collage_index = 0
         else:
-            logger.info("[Try-On] No background action prompt provided")
-        
-        # If background image URL is provided, use it as Image 3 (background)
-        if background_image_url:
-            image_inputs.append(background_image_url)
-            prompt = (
-                "Use the person from Image 2 (model photo), have this person wear all clothes and accessories from Image 1, "
-                "then place this person wearing new clothes in the background shown in Image 3. "
-                + action_description_section
-                + " Keep Image 3's environment and background as the final background, only use Image 3's background elements, "
-                "the person must come from Image 2, do not use any person from Image 3. "
-                "All items must be correctly worn on the model: "
-                "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
-                "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
-                "bags on the shoulder or held in hand. "
-                "Prohibit any items floating in the air or scattered on the ground. "
-                "CRITICAL: Pay careful attention to perspective and spatial consistency. "
-                "The model's perspective, scale, and pose must match the background's perspective and vanishing points. "
-                "The model's size and proportions are consistent with the background's depth and scale. "
-                "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
-                "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
-                + garment_desc_text
+            # Text-only garments: no collage; person is Image 1, optional background is Image 2
+            image_inputs = [person_input]
+            if background_image_url:
+                image_inputs.append(background_image_url)
+            desc_lines = [f"{x['role']}: {x['description']}" for x in parsed_unmatched if x.get("description")]
+            text_wearing = (
+                "The person in Image 1 must wear all of the following items (described by text): "
+                + "; ".join(desc_lines) + ". "
             )
-            negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit persons from garment collage and background image, prohibit items scattered or floating, prohibit perspective issues
-        else:
-            # Prompt: Person from Image 2 wearing all clothes from Image 1, keep model and original background
-            prompt = (
-                "Person from Image 2 wearing all clothes and accessories from Image 1, keep person identity and original background natural and reasonable, "
-                "only replace clothing, do not remove or replace Image 2's background. "
-                "All items must be correctly worn on the model: "
-                "Tops and bottoms must be worn on the corresponding body positions, shoes must be worn on feet, "
-                "outerwear must be worn on the outer layer, accessories like glasses must be worn on the face, hats on the head, "
-                "bags on the shoulder or held in hand. "
-                "Prohibit any items floating in the air or scattered on the ground. "
-                "CRITICAL: Maintain the original perspective and spatial relationships from Image 2. "
-                "The model's pose, scale, and perspective must remain consistent with the original background. "
-                "All proportions match the original scene's depth and perspective. "
-                "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
-                "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
-                + garment_desc_text
-            )
-            negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."  # Prohibit person from garment collage, prohibit items scattered or floating, prohibit perspective issues
-        
-        # Log final prompt for debugging
-        logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
-        logger.info(f"[Try-On] Full prompt sent to API:\n{prompt}")
-        if action_description_section:
-            logger.info(f"[Try-On] Action description included: {action_description_section[:100]}...")
-        else:
-            logger.info("[Try-On] No action description in prompt")
+            action_text = ""
+            if background_action_prompt:
+                action_text = f" The person in Image 1 should be performing this action: \"{background_action_prompt}\". "
+            if background_image_url:
+                prompt = (
+                    "Replace the background of Image 1 with the environment in Image 2; keep Image 2 as the final background. "
+                    "The model in Image 1 should perform this pose or action: " + (f'"{background_action_prompt}". ' if background_action_prompt else "natural standing or sitting. ")
+                    + "Replace the model's clothing in Image 1 with the following items: "
+                    + "; ".join(desc_lines) + ". "
+                    "All items must be correctly worn on the model (tops on torso, bottoms on legs, shoes on feet, outerwear as outer layer, accessories in place). "
+                    "CRITICAL: Preserve perspective and spatial consistency; the model must fit naturally into Image 2's scene. "
+                    "Result should be harmonious, natural, with consistent lighting and correct perspective alignment."
+                )
+                negative_prompt = "Prohibit items floating in the air or scattered on the ground. Prohibit perspective distortion, mismatched scale, model floating above ground, warped backgrounds."
+            else:
+                prompt = (
+                    "Keep the person and original background of Image 1. "
+                    "The model in Image 1 should perform this pose or action: "
+                    + (f'"{background_action_prompt}". ' if background_action_prompt else "natural standing or sitting. ")
+                    + "Replace the model's clothing in Image 1 with the following items: "
+                    + "; ".join(desc_lines) + ". "
+                    "All items must be correctly worn on the model (tops on torso, bottoms on legs, shoes on feet, outerwear as outer layer, accessories in place). "
+                    "CRITICAL: Maintain the original perspective and spatial relationships from Image 1. "
+                    "Result should be harmonious, natural, with consistent lighting and correct perspective alignment."
+                )
+                negative_prompt = "Prohibit items floating in the air or scattered on the ground. Prohibit perspective distortion, mismatched scale, warped backgrounds."
+            garment_collage_index = None
     except Exception as e:
-        print(f"Failed to build garment collage: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to build garment collage: {e}")
+        print(f"Failed to build try-on inputs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to build try-on inputs: {e}")
+
+    logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
+    logger.info(f"[Try-On] Full prompt sent to API:\n{prompt}")
 
     try:
-        # Index 0 is the garment collage (Image 1), set it to expire in 7 days
         edited_path = await client.edit_image(
             image_inputs=image_inputs,
             prompt=prompt,
             n=1,
             negative_prompt=negative_prompt,
             output_path=output_path,
-            garment_collage_index=0,  # Image 1 (garment collage) will expire in 7 days
-            size=output_size,  # Set resolution based on subscription plan
+            garment_collage_index=garment_collage_index,
+            size=output_size,
         )
     except Exception as e:
         import traceback

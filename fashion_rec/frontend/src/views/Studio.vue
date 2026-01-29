@@ -1,10 +1,10 @@
 <script setup lang="ts">
 defineOptions({ name: 'Studio' })
-import { ref, onMounted, onUnmounted, onActivated, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Search, Image, RotateCw } from 'lucide-vue-next'
-import type { Item, Recommendation, AgentOutfit, AgentOutfitItem } from '../types'
+import { Wand2, X, Clock, Upload, ChevronLeft, ChevronRight, Heart, Trash2, Shirt, Image, RotateCw } from 'lucide-vue-next'
+import type { Item, Recommendation, AgentOutfit } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
@@ -739,13 +739,6 @@ const getRecommendations = async () => {
   tryOnImageUrl.value = null
 
   try {
-    // Ensure uploadedItems is loaded before generating outfits
-    if (uploadedItems.value.length === 0) {
-      const restored = restoreItemsFromCache()
-      if (!restored) {
-        await loadUserItems()
-      }
-    }
     // Background image should already be uploaded in handleBackgroundImageChange
     // If we have a file but no URL, upload it now (fallback)
     if (backgroundImageFile.value && !backgroundImageUrl.value) {
@@ -766,17 +759,27 @@ const getRecommendations = async () => {
       }
     }
 
-    const hasBaseSelection = selectedBaseItems.value.length > 0
     // Get currently active items as base (for supplementing deleted items)
     // Priority: activeWardrobeIds > selectedBaseItems
     let activeItemIds: string[] | undefined = undefined
     if (activeWardrobeIds.value.length > 0) {
+      // If activeWardrobeIds has values, use them directly (no need to load uploadedItems)
       activeItemIds = activeWardrobeIds.value
-    } else if (hasBaseSelection) {
-      activeItemIds = selectedBaseItems.value
-        .map((it) => it.id)
-        .filter((id): id is string | number => id !== undefined)
-        .map(id => String(id))
+    } else {
+      // Only load uploadedItems if we need selectedBaseItems (when activeWardrobeIds is empty)
+      if (uploadedItems.value.length === 0) {
+        const restored = restoreItemsFromCache()
+        if (!restored) {
+          await loadUserItems()
+        }
+      }
+      const hasBaseSelection = selectedBaseItems.value.length > 0
+      if (hasBaseSelection) {
+        activeItemIds = selectedBaseItems.value
+          .map((it) => it.id)
+          .filter((id): id is string | number => id !== undefined)
+          .map(id => String(id))
+      }
     }
 
     // Build prompt with information about missing roles (if any)
@@ -810,6 +813,7 @@ const getRecommendations = async () => {
       prompt: enhancedPrompt,
       background_image_url: backgroundImageUrl.value || undefined,
       background_action_prompt: backgroundImageUrl.value && backgroundActionPrompt.value ? backgroundActionPrompt.value : undefined,
+      model_image_url: modelImagePreviewUrl.value || undefined,
       selected_items_roles: selectedItemsRoles,
     }
     
@@ -1314,16 +1318,20 @@ const performTryOn = async () => {
     }, 100)
     return
   }
-  if (!activeWardrobeItems.value.length) {
-    alert(t('studio.outfitPlans.pleaseChooseOutfit'))
-    return
-  }
 
   const garmentUrls = activeWardrobeItems.value
     .map((item) => item.url || item.features.path)
     .filter((u): u is string => !!u)
 
-  if (!garmentUrls.length) {
+  const unmatched_descriptions = unmatchedOutfitDescriptions.value
+
+  const hasGarments = garmentUrls.length > 0
+  const hasUnmatchedText = unmatched_descriptions.length > 0
+  if (!hasGarments && !hasUnmatchedText) {
+    alert(t('studio.outfitPlans.pleaseChooseOutfit'))
+    return
+  }
+  if (activeWardrobeItems.value.length > 0 && garmentUrls.length === 0 && !hasUnmatchedText) {
     alert(t('studio.outfitPlans.missingImageUrls'))
     return
   }
@@ -1355,6 +1363,9 @@ const performTryOn = async () => {
       formData.append('person_image_url', modelImagePreviewUrl.value)
     }
     formData.append('garment_urls', JSON.stringify(garmentUrls))
+    if (unmatched_descriptions.length > 0) {
+      formData.append('unmatched_descriptions', JSON.stringify(unmatched_descriptions))
+    }
     if (backgroundImageUrl.value) {
       formData.append('background_image_url', backgroundImageUrl.value)
     }
@@ -1853,15 +1864,6 @@ const saveFavorite = async () => {
   }
 }
 
-// Helper functions for outfit items
-const getMissingItems = (outfit: AgentOutfit): AgentOutfitItem[] => {
-  return outfit.items.filter(item => {
-    // Item is missing if it has no wardrobe_id or the wardrobe_id doesn't exist in uploadedItems
-    if (!item.wardrobe_id) return true
-    return !findWardrobeItemById(item.wardrobe_id)
-  })
-}
-
 // Helper function to translate role names
 const translateRole = (role: string): string => {
   const roleKey = role.toLowerCase()
@@ -1875,38 +1877,21 @@ const translateRole = (role: string): string => {
   return roleMap[roleKey] || role
 }
 
-const hasAnyWardrobeItem = (outfit: AgentOutfit): boolean => {
-  // Check if at least one item in the outfit exists in the wardrobe
-  return outfit.items.some(item => {
-    if (!item.wardrobe_id) return false
-    return !!findWardrobeItemById(item.wardrobe_id)
-  })
-}
+// Unmatched outfit items (no wardrobe_id or not in uploadedItems) with description, for text-only try-on prompt
+const unmatchedOutfitDescriptions = computed(() => {
+  const items = originalAppliedOutfit.value?.items ?? []
+  return items
+    .filter((it) => {
+      if (!it.wardrobe_id) return !!(it.description ?? '').trim()
+      return !uploadedItems.value.some((u) => String(u.id) === String(it.wardrobe_id)) && !!(it.description ?? '').trim()
+    })
+    .map((it) => ({ role: it.role ?? '', description: (it.description ?? '').trim() }))
+    .filter((it) => it.description.length > 0)
+})
 
-const searchOnGoogle = (description: string, event?: Event) => {
-  // Prevent any event propagation that might affect the UI
-  if (event) {
-    event.preventDefault()
-    event.stopPropagation()
-  }
-  
-  try {
-    const searchQuery = encodeURIComponent(description)
-    const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`
-    const newWindow = window.open(googleSearchUrl, '_blank', 'noopener,noreferrer')
-    
-    // If popup was blocked, show a fallback message
-    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-      // Popup was blocked, provide alternative: copy search query or show message
-      console.warn('Popup blocked, search query:', description)
-      // Optionally: show a toast or copy to clipboard
-      alert(`Search query: ${description}\n\nPlease allow popups or search manually on Google.`)
-    }
-  } catch (error) {
-    console.error('Failed to open search:', error)
-    // Don't let errors affect the UI state
-  }
-}
+const hasTryOnInput = computed(
+  () => activeWardrobeItems.value.length > 0 || unmatchedOutfitDescriptions.value.length > 0,
+)
 
 // Note: Multi-angle generation is now in separate MultiAngle.vue page
 
@@ -1915,6 +1900,246 @@ const searchOnGoogle = (description: string, event?: Event) => {
 <template>
   <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <main class="space-y-8">
+      <!-- Model photo uploader (moved to top) -->
+      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
+        <div>
+          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+            {{ $t('studio.modelPhoto.title') }}
+          </h2>
+        </div>
+
+        <!-- Model photo uploader with integrated empty state -->
+        <div
+          data-model-uploader
+          :class="[
+            'border rounded-xl bg-white transition-all focus-within:shadow-md overflow-hidden',
+            showModelImageError ? 'border-red-500 border-2 shadow-red-200' : 'border-gray-200 focus-within:border-gray-400',
+          ]"
+        >
+          <!-- Model photo preview or empty state -->
+          <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.modelPhoto.title') }}</p>
+                <p class="text-xs text-pink-500">
+                  {{ $t('studio.modelPhoto.description') }}
+                </p>
+              </div>
+              <button
+                v-if="modelImagePreviewUrl && !isUploadingModelImage"
+                @click="removeModelImage"
+                class="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md flex-shrink-0"
+                :title="$t('studio.modelPhoto.deleteModelPhoto')"
+              >
+                <X class="w-4 h-4" />
+              </button>
+            </div>
+            <div class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+              <img
+                v-if="modelImagePreviewUrl"
+                :src="getMediumImageUrl(modelImagePreviewUrl)"
+                loading="lazy"
+                :alt="$t('studio.modelPhoto.modelPreview')"
+                class="w-full h-full object-cover"
+              />
+              <!-- Upload progress overlay -->
+              <div
+                v-if="isUploadingModelImage"
+                class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
+              >
+                <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
+                <span class="text-white text-xs">{{ modelImageUploadProgress }}%</span>
+              </div>
+              <!-- Progress bar -->
+              <div v-if="isUploadingModelImage" class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
+                <div
+                  class="h-full bg-blue-500 transition-all duration-300"
+                  :style="{ width: `${modelImageUploadProgress}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty state with upload button -->
+          <div v-else class="p-8">
+            <div class="text-center">
+              <Wand2 class="w-12 h-12 mx-auto mb-3 text-pink-600" />
+              <div class="flex flex-col items-center gap-3">
+                <div class="flex items-center gap-3">
+                  <label
+                    for="modelImageInput"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                  >
+                    <Upload class="w-4 h-4" />
+                    <span>{{ $t('studio.modelPhoto.uploadNewPhoto') }}</span>
+                  </label>
+                  <input
+                    id="modelImageInput"
+                    type="file"
+                    accept="image/*"
+                    @change="handleModelImageChange"
+                    class="hidden"
+                  />
+                  <button
+                    v-if="historicalModelImages.length > 0"
+                    @click="showModelImageHistory = !showModelImageHistory"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                  >
+                    <Clock class="w-4 h-4" />
+                    <span>{{ $t('studio.modelPhoto.history') }}</span>
+                  </button>
+                  <button
+                    @click="showExampleModelImages = !showExampleModelImages"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                  >
+                    <Image class="w-4 h-4" />
+                    <span>{{ $t('studio.example') }}</span>
+                  </button>
+                </div>
+                <p class="text-xs text-pink-600">
+                  {{ $t('studio.modelPhoto.description') }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload button when photo exists (for replacement) -->
+          <div v-if="modelImagePreviewUrl" class="px-4 pb-4 border-t border-gray-100 pt-3">
+            <div class="flex items-center gap-2">
+              <label
+                for="modelImageInputReplace"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
+              >
+                <Upload class="w-4 h-4" />
+                <span>{{ t('studio.modelPhoto.replacePhoto') }}</span>
+              </label>
+              <input
+                id="modelImageInputReplace"
+                type="file"
+                accept="image/*"
+                @change="handleModelImageChange"
+                class="hidden"
+              />
+              <button
+                v-if="historicalModelImages.length > 0"
+                @click="showModelImageHistory = !showModelImageHistory"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                <Clock class="w-4 h-4" />
+                <span>{{ $t('studio.modelPhoto.history') }}</span>
+              </button>
+              <button
+                @click="showExampleModelImages = !showExampleModelImages"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
+              >
+                <Image class="w-4 h-4" />
+                <span>{{ $t('studio.example') }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Historical model images modal -->
+        <div
+          v-if="showModelImageHistory"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showModelImageHistory = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
+              <button
+                @click="showModelImageHistory = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-pink-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-pink-400">
+                <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
+                <p>No historical model images</p>
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div
+                  v-for="image in historicalModelImages"
+                  :key="image.id"
+                  @click="selectHistoricalModelImage(image)"
+                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
+                >
+                  <img
+                    :src="getThumbnailUrl(image.image_url)"
+                    loading="lazy"
+                    :alt="`Model image ${image.id}`"
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <!-- Delete button -->
+                  <button
+                    @click.stop="deleteHistoricalModelImage(image, $event)"
+                    class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
+                    title="Delete this image"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
+                      {{ new Date(image.created_at).toLocaleDateString('en-US') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Example model images modal -->
+        <div
+          v-if="showExampleModelImages"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="showExampleModelImages = false"
+        >
+          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleModel') }}</h3>
+              <button
+                @click="showExampleModelImages = false"
+                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+              >
+                <X class="w-5 h-5 text-pink-500" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+              <div v-if="exampleModelImages.length === 0" class="text-center py-12 text-pink-400">
+                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
+                <p>{{ $t('studio.noExampleModel') }}</p>
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div
+                  v-for="(imageUrl, index) in exampleModelImages"
+                  :key="index"
+                  @click="selectExampleModelImage(imageUrl)"
+                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
+                >
+                  <img
+                    :src="getMediumImageUrl(imageUrl)"
+                    loading="lazy"
+                    :alt="`Example model ${index + 1}`"
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
+                      {{ $t('studio.clickToUse') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Describe today & generate outfits -->
       <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
         <div>
@@ -2145,39 +2370,18 @@ const searchOnGoogle = (description: string, event?: Event) => {
                         <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
                         <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
                       </div>
-                      <button
-                        v-if="!findWardrobeItemById(it.wardrobe_id)"
-                        @click.stop="searchOnGoogle(it.description, $event)"
-                        type="button"
-                        class="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
-                        :title="$t('studio.outfitPlans.searchOnGoogle', { description: it.description })"
-                      >
-                        <Search class="w-3.5 h-3.5 text-pink-600" />
-                      </button>
                     </li>
                   </ul>
                 </div>
                 <div class="mt-3 flex flex-col gap-2">
                   <button
-                    v-if="hasAnyWardrobeItem(outfit)"
+                    v-if="outfit.items && outfit.items.length > 0"
                     type="button"
                     @click.prevent="applyOutfit(outfit)"
                     class="text-xs px-3 py-1 rounded-full border border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 transition-colors self-end"
                   >
                     {{ $t('studio.outfitPlans.applyOutfit') }}
                   </button>
-                  <div v-if="getMissingItems(outfit).length > 0" class="flex flex-wrap gap-2">
-                    <button
-                      v-for="(missingItem, idx) in getMissingItems(outfit)"
-                      :key="idx"
-                      @click.stop="searchOnGoogle(missingItem.description, $event)"
-                      type="button"
-                      class="text-xs px-2 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center gap-1"
-                    >
-                      <Search class="w-3 h-3" />
-                      <span>{{ $t('studio.outfitPlans.searchRole', { role: translateRole(missingItem.role) }) }}</span>
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -2278,245 +2482,6 @@ const searchOnGoogle = (description: string, event?: Event) => {
           <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.reviewOutfits') }}</h2>
         </div>
 
-        <!-- Model photo uploader with integrated empty state -->
-        <div 
-          data-model-uploader
-          :class="[
-            'border rounded-xl bg-white transition-all focus-within:shadow-md overflow-hidden',
-            showModelImageError 
-              ? 'border-red-500 border-2 shadow-red-200' 
-              : 'border-gray-200 focus-within:border-gray-400'
-          ]"
-        >
-          <!-- Model photo preview or empty state -->
-          <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
-            <div class="flex items-center justify-between mb-3">
-              <div>
-                <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.modelPhoto.title') }}</p>
-                <p class="text-xs text-pink-500">
-                  {{ $t('studio.modelPhoto.description') }}
-                </p>
-              </div>
-              <button
-                v-if="modelImagePreviewUrl && !isUploadingModelImage"
-                @click="removeModelImage"
-                class="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md flex-shrink-0"
-                :title="$t('studio.modelPhoto.deleteModelPhoto')"
-              >
-                <X class="w-4 h-4" />
-              </button>
-            </div>
-            <div class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
-              <img 
-                v-if="modelImagePreviewUrl"
-                :src="getMediumImageUrl(modelImagePreviewUrl)" 
-                loading="lazy"
-                :alt="$t('studio.modelPhoto.modelPreview')" 
-                class="w-full h-full object-cover"
-              />
-              <!-- Upload progress overlay -->
-              <div
-                v-if="isUploadingModelImage"
-                class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
-              >
-                <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
-                <span class="text-white text-xs">{{ modelImageUploadProgress }}%</span>
-              </div>
-              <!-- Progress bar -->
-              <div
-                v-if="isUploadingModelImage"
-                class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200"
-              >
-                <div
-                  class="h-full bg-blue-500 transition-all duration-300"
-                  :style="{ width: `${modelImageUploadProgress}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Empty state with upload button -->
-          <div v-else class="p-8">
-            <div class="text-center">
-              <!-- Show empty state message only when no results generated -->
-              <template v-if="!recommendations.length && !agentOutfits.length && !isGenerating">
-                <Wand2 class="w-12 h-12 mx-auto mb-3 text-pink-600" />
-              </template>
-              <div class="flex flex-col items-center gap-3">
-                <div class="flex items-center gap-3">
-                  <label
-                    for="modelImageInput"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
-                  >
-                    <Upload class="w-4 h-4" />
-                    <span>{{ $t('studio.modelPhoto.uploadNewPhoto') }}</span>
-                  </label>
-                  <input
-                    id="modelImageInput"
-                    type="file"
-                    accept="image/*"
-                    @change="handleModelImageChange"
-                    class="hidden"
-                  />
-                  <button
-                    v-if="historicalModelImages.length > 0"
-                    @click="showModelImageHistory = !showModelImageHistory"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
-                  >
-                    <Clock class="w-4 h-4" />
-                    <span>{{ $t('studio.modelPhoto.history') }}</span>
-                  </button>
-                  <button
-                    @click="showExampleModelImages = !showExampleModelImages"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
-                  >
-                    <Image class="w-4 h-4" />
-                    <span>{{ $t('studio.example') }}</span>
-                  </button>
-                </div>
-                <p class="text-xs text-pink-600">
-                  {{ $t('studio.modelPhoto.description') }}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Upload button when photo exists (for replacement) -->
-          <div v-if="modelImagePreviewUrl" class="px-4 pb-4 border-t border-gray-100 pt-3">
-            <div class="flex items-center gap-2">
-              <label
-                for="modelImageInputReplace"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-              >
-                <Upload class="w-4 h-4" />
-                <span>{{ t('studio.modelPhoto.replacePhoto') }}</span>
-              </label>
-              <input
-                id="modelImageInputReplace"
-                type="file"
-                accept="image/*"
-                @change="handleModelImageChange"
-                class="hidden"
-              />
-              <button
-                v-if="historicalModelImages.length > 0"
-                @click="showModelImageHistory = !showModelImageHistory"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
-              >
-                <Clock class="w-4 h-4" />
-                <span>{{ $t('studio.modelPhoto.history') }}</span>
-              </button>
-              <button
-                @click="showExampleModelImages = !showExampleModelImages"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-              >
-                <Image class="w-4 h-4" />
-                <span>{{ $t('studio.example') }}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Historical model images modal -->
-        <div
-          v-if="showModelImageHistory"
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          @click.self="showModelImageHistory = false"
-        >
-          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
-            <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
-              <button
-                @click="showModelImageHistory = false"
-                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-              >
-                <X class="w-5 h-5 text-pink-500" />
-              </button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-pink-400">
-                <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                <p>No historical model images</p>
-              </div>
-              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <div
-                  v-for="image in historicalModelImages"
-                  :key="image.id"
-                  @click="selectHistoricalModelImage(image)"
-                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
-                >
-                  <img
-                    :src="getThumbnailUrl(image.image_url)"
-                    loading="lazy"
-                    :alt="`Model image ${image.id}`"
-                    class="w-full h-full object-cover"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
-                  <!-- Delete button -->
-                  <button
-                    @click.stop="deleteHistoricalModelImage(image, $event)"
-                    class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
-                    title="Delete this image"
-                  >
-                    <Trash2 class="w-4 h-4" />
-                  </button>
-                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
-                      {{ new Date(image.created_at).toLocaleDateString('en-US') }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Example model images modal -->
-        <div
-          v-if="showExampleModelImages"
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          @click.self="showExampleModelImages = false"
-        >
-          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
-            <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleModel') }}</h3>
-              <button
-                @click="showExampleModelImages = false"
-                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-              >
-                <X class="w-5 h-5 text-pink-500" />
-              </button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="exampleModelImages.length === 0" class="text-center py-12 text-pink-400">
-                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                <p>{{ $t('studio.noExampleModel') }}</p>
-              </div>
-              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <div
-                  v-for="(imageUrl, index) in exampleModelImages"
-                  :key="index"
-                  @click="selectExampleModelImage(imageUrl)"
-                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
-                >
-                  <img
-                    :src="getMediumImageUrl(imageUrl)"
-                    loading="lazy"
-                    :alt="`Example model ${index + 1}`"
-                    class="w-full h-full object-cover"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
-                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
-                      {{ $t('studio.clickToUse') }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Example background images modal -->
         <div
           v-if="showExampleBackgroundImages"
@@ -2564,19 +2529,19 @@ const searchOnGoogle = (description: string, event?: Event) => {
         </div>
 
         <!-- Try-on controls -->
-        <div v-if="activeWardrobeItems.length" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
+        <div v-if="hasTryOnInput" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
           <div class="flex items-center justify-between mb-3">
             <div>
               <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.readyToTryOn') }}</p>
               <p class="text-xs text-pink-500">
-                {{ activeWardrobeItems.length }} items selected. Click below to generate a virtual try-on.
+                {{ activeWardrobeItems.length > 0 ? (activeWardrobeItems.length + ' items selected. ') : (unmatchedOutfitDescriptions.length + ' items described by text. ') }}Click below to generate a virtual try-on.
               </p>
             </div>
           </div>
           <div class="flex flex-col sm:flex-row sm:items-center gap-3">
             <button
               @click="performTryOn"
-              :disabled="!activeWardrobeItems.length || isTryingOn"
+              :disabled="!hasTryOnInput || isTryingOn"
               class="px-4 py-2 rounded-lg border border-pink-500 text-pink-600 hover:border-pink-700 hover:text-pink-700 hover:bg-pink-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Wand2 v-if="!isTryingOn" class="w-4 h-4" />

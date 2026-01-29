@@ -839,21 +839,25 @@ export default {
           })
         }
         
-        const backendRequest = routeToBackend(request, backendUrl)
-        console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)
-        
-        const fetchStartTime = Date.now()
-        
         // Add timeout to backend fetch using AbortController
-        // For try-on, upload, outfit, and generate-angles operations (LLM/AI processing with images), use longer timeout (4 minutes to be under frontend's 5min timeout)
-        // For PUT/DELETE operations, use 60 seconds (to be under frontend's timeout)
-        // For other operations, use 25 seconds (to be under frontend's 30s timeout)
+        // generate-angles: 6 minutes (fal queue + poll + download + R2 + userinfo + Supabase; observed ~4.5 min)
+        // try-on, upload, outfit: 4 minutes (to be under frontend's 5min timeout)
+        // PUT/DELETE: 60 seconds; others: 25 seconds
         const isTryOnRequest = path === '/try-on'
         const isUploadRequest = path === '/upload'
         const isOutfitRequest = path === '/outfit'
         const isGenerateAnglesRequest = path === '/generate-angles'
         const isPutOrDeleteRequest = request.method === 'PUT' || request.method === 'DELETE'
-        const timeoutMs = (isTryOnRequest || isUploadRequest || isOutfitRequest || isGenerateAnglesRequest) ? 240000 : (isPutOrDeleteRequest ? 60000 : 25000) // 4 minutes for try-on/upload/outfit/generate-angles, 60 seconds for PUT/DELETE, 25 seconds for others
+        const timeoutMs = isGenerateAnglesRequest
+          ? 360000
+          : (isTryOnRequest || isUploadRequest || isOutfitRequest)
+            ? 240000
+            : (isPutOrDeleteRequest ? 60000 : 25000)
+        
+        const backendRequest = routeToBackend(request, backendUrl)
+        console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)
+        
+        const fetchStartTime = Date.now()
         
         const abortController = new AbortController()
         const timeoutId = setTimeout(() => {
