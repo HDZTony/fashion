@@ -1892,12 +1892,12 @@ const hasTryOnInput = computed(
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
-    <div class="px-4 sm:px-6">
-      <main class="space-y-[20px] max-w-4xl mx-auto px-4 sm:px-6">
+    <div class="px-2.5">
+      <main class="space-y-2.5 max-w-4xl mx-auto px-2.5">
       <!-- Model photo uploader (moved to top) -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
+      <section class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-2.5">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+          <h2 class="text-2xl font-bold mb-2.5 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
             {{ $t('studio.modelPhoto.title') }}
           </h2>
         </div>
@@ -1911,8 +1911,8 @@ const hasTryOnInput = computed(
           ]"
         >
           <!-- Model photo preview or empty state -->
-          <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-4">
-            <div class="flex items-center justify-between mb-3">
+          <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-2.5">
+            <div class="flex items-center justify-between mb-2.5">
               <div>
                 <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.modelPhoto.title') }}</p>
                 <p class="text-xs text-pink-500">
@@ -1955,14 +1955,14 @@ const hasTryOnInput = computed(
           </div>
 
           <!-- Empty state with upload button -->
-          <div v-else class="p-8">
+          <div v-else class="p-2.5">
             <div class="text-center">
-              <Wand2 class="w-12 h-12 mx-auto mb-3 text-pink-600" />
-              <div class="flex flex-col items-center gap-3">
-                <div class="flex items-center gap-3">
+              <Wand2 class="w-12 h-12 mx-auto mb-2.5 text-pink-600" />
+              <div class="flex flex-col items-center gap-2.5">
+                <div class="flex flex-wrap items-center justify-center gap-1">
                   <label
                     for="modelImageInput"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
                   >
                     <Upload class="w-4 h-4" />
                     <span>{{ $t('studio.modelPhoto.uploadNewPhoto') }}</span>
@@ -1977,14 +1977,14 @@ const hasTryOnInput = computed(
                   <button
                     v-if="historicalModelImages.length > 0"
                     @click="showModelImageHistory = !showModelImageHistory"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
                   >
                     <Clock class="w-4 h-4" />
                     <span>{{ $t('studio.modelPhoto.history') }}</span>
                   </button>
                   <button
                     @click="showExampleModelImages = !showExampleModelImages"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-pink-200 hover:border-pink-600 hover:text-gray-900 cursor-pointer transition-colors"
+                    class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
                   >
                     <Image class="w-4 h-4" />
                     <span>{{ $t('studio.example') }}</span>
@@ -1998,8 +1998,8 @@ const hasTryOnInput = computed(
           </div>
 
           <!-- Upload button when photo exists (for replacement) -->
-          <div v-if="modelImagePreviewUrl" class="px-4 pb-4 border-t border-gray-100 pt-3">
-            <div class="flex items-center gap-2">
+          <div v-if="modelImagePreviewUrl" class="px-2.5 pb-2.5 border-t border-gray-100 pt-2.5">
+            <div class="flex flex-wrap items-center gap-1">
               <label
                 for="modelImageInputReplace"
                 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
@@ -2135,12 +2135,12 @@ const hasTryOnInput = computed(
       </section>
 
       <!-- Describe today & generate outfits -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
+      <section class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-2.5">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.tellAIAboutDay') }}</h2>
+          <h2 class="text-2xl font-bold mb-2.5 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.tellAIAboutDay') }}</h2>
         </div>
-        <div class="flex flex-col gap-4">
-          <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-2.5">
+          <div class="flex flex-col gap-2.5">
             <!-- Tabs for background image options (horizontal, fixed width, left-aligned) -->
             <Tabs v-model="backgroundTabValue" default-value="no-background" class="w-full">
               <TabsList class="inline-flex items-center justify-start h-auto w-auto p-1 bg-muted rounded-lg">
@@ -2160,7 +2160,7 @@ const hasTryOnInput = computed(
             </Tabs>
             
             <!-- Content area -->
-            <div class="w-full space-y-4">
+            <div class="w-full space-y-2.5">
               <!-- Action prompt input (only shown in "with-background" tab) -->
               <Transition
                 enter-active-class="transition-all duration-300 ease-out"
@@ -2170,19 +2170,19 @@ const hasTryOnInput = computed(
                 leave-from-class="opacity-100 translate-y-0"
                 leave-to-class="opacity-0 -translate-y-2"
               >
-                <div v-if="backgroundTabValue === 'with-background'" class="space-y-2">
-                  <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
-                    <div class="flex items-center gap-2 px-4 py-3">
-                      <input
+                <div v-if="backgroundTabValue === 'with-background'" class="space-y-2.5">
+                  <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md overflow-hidden">
+                    <div class="flex flex-col gap-2.5 px-2.5 py-2.5">
+                      <textarea
                         v-model="backgroundActionPrompt"
-                        type="text"
-                        class="flex-1 text-sm focus:outline-none border-0 placeholder:text-pink-600 bg-transparent"
+                        rows="3"
+                        class="w-full text-sm focus:outline-none border-0 placeholder:text-pink-600 bg-transparent resize-none rounded-xl"
                         :placeholder="$t('studio.backgroundActionPromptPlaceholder')"
-                      />
-                      <div class="flex items-center gap-2 border-l border-pink-100 pl-3">
-                        <!-- Background image preview -->
-                        <div v-if="backgroundImagePreviewUrl || isUploadingBackgroundImage" class="relative">
-                          <div class="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+                      ></textarea>
+                      <div class="flex flex-wrap items-center justify-center gap-1 pt-2.5 border-t border-pink-100">
+                        <!-- Background image preview (when has image) -->
+                        <div v-if="backgroundImagePreviewUrl || isUploadingBackgroundImage" class="flex items-center gap-2.5">
+                          <div class="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative shrink-0">
                             <img 
                               v-if="backgroundImagePreviewUrl"
                               :src="getSmallImageUrl(backgroundImagePreviewUrl)" 
@@ -2190,7 +2190,6 @@ const hasTryOnInput = computed(
                               alt="Background preview" 
                               class="w-full h-full object-cover"
                             />
-                            <!-- Upload progress overlay -->
                             <div
                               v-if="isUploadingBackgroundImage"
                               class="absolute inset-0 bg-gray-900/50 flex items-center justify-center"
@@ -2200,21 +2199,21 @@ const hasTryOnInput = computed(
                           </div>
                           <button
                             v-if="backgroundImagePreviewUrl && !isUploadingBackgroundImage"
+                            type="button"
                             @click="removeBackgroundImage"
-                            class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md cursor-pointer"
+                            class="w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md cursor-pointer shrink-0"
                             :title="$t('studio.deleteBackgroundImage')"
                           >
-                            <X class="w-3 h-3" />
+                            <X class="w-4 h-4" />
                           </button>
                         </div>
-                        <!-- Upload button -->
+                        <!-- Upload button (pink style) -->
                         <label
                           for="backgroundImageInput"
-                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                          :title="$t('studio.uploadBackgroundImage')"
+                          class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
                         >
                           <Upload class="w-4 h-4" />
-                          <span class="hidden sm:inline">{{ $t('studio.uploadBackgroundImage') }}</span>
+                          <span>{{ $t('studio.uploadBackgroundImage') }}</span>
                         </label>
                         <input
                           id="backgroundImageInput"
@@ -2225,21 +2224,21 @@ const hasTryOnInput = computed(
                         />
                         <!-- History button -->
                         <button
+                          type="button"
                           @click="showBackgroundImageHistory = !showBackgroundImageHistory"
-                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                          :title="$t('studio.pickFromBackgroundHistory')"
+                          class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
                         >
                           <Clock class="w-4 h-4" />
-                          <span class="hidden sm:inline">{{ $t('studio.viewHistory') }}</span>
+                          <span>{{ $t('studio.viewHistory') }}</span>
                         </button>
                         <!-- Example button -->
                         <button
+                          type="button"
                           @click="showExampleBackgroundImages = !showExampleBackgroundImages"
-                          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                          :title="$t('studio.chooseExampleBackground')"
+                          class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
                         >
                           <Image class="w-4 h-4" />
-                          <span class="hidden sm:inline">{{ $t('studio.example') }}</span>
+                          <span>{{ $t('studio.example') }}</span>
                         </button>
                       </div>
                     </div>
@@ -2403,16 +2402,16 @@ const hasTryOnInput = computed(
       </section>
 
       <!-- Applied Outfit Items - Independent Section -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-4">
+      <section class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-2.5">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.appliedOutfitItems.title') }}</h2>
+          <h2 class="text-2xl font-bold mb-2.5 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.appliedOutfitItems.title') }}</h2>
           <p class="text-sm text-gray-700">
             {{ $t('studio.appliedOutfitItems.description') }}
           </p>
         </div>
         
-        <div class="p-4 border border-pink-100 rounded-xl bg-pink-50/50">
-          <div class="flex items-center justify-between mb-3">
+        <div class="p-2.5 border border-pink-100 rounded-xl bg-pink-50/50">
+          <div class="flex items-center justify-between mb-2.5">
             <p class="text-sm font-medium text-gray-700">
               {{ $t('studio.appliedOutfitItems.itemsCount', { count: activeWardrobeItems.length }) }}
             </p>
@@ -2422,10 +2421,10 @@ const hasTryOnInput = computed(
           </div>
           
           <!-- Empty state -->
-          <div v-if="activeWardrobeItems.length === 0" class="py-8 text-center">
-            <Shirt class="w-12 h-12 mx-auto mb-3 text-pink-600" />
-            <p class="text-sm text-gray-700 mb-2">{{ $t('studio.appliedOutfitItems.noItemsSelected') }}</p>
-            <p class="text-xs text-pink-600 mb-4">{{ $t('studio.appliedOutfitItems.goToWardrobePrompt') }}</p>
+          <div v-if="activeWardrobeItems.length === 0" class="py-2.5 text-center">
+            <Shirt class="w-12 h-12 mx-auto mb-2.5 text-pink-600" />
+            <p class="text-sm text-gray-700 mb-2.5">{{ $t('studio.appliedOutfitItems.noItemsSelected') }}</p>
+            <p class="text-xs text-pink-600 mb-2.5">{{ $t('studio.appliedOutfitItems.goToWardrobePrompt') }}</p>
             <button
               @click="$router.push('/wardrobe')"
               class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-pink-200 text-gray-700 hover:border-pink-600 hover:text-gray-900 transition-colors"
@@ -2436,7 +2435,7 @@ const hasTryOnInput = computed(
           </div>
           
           <!-- Items display -->
-          <div v-else class="flex flex-wrap gap-3 mb-3">
+          <div v-else class="flex flex-wrap gap-2.5 mb-2.5">
             <div
               v-for="(item, index) in activeWardrobeItems"
               :key="item.id"
@@ -2467,7 +2466,7 @@ const hasTryOnInput = computed(
                   <X class="w-4 h-4" />
                 </button>
               </div>
-              <div class="mt-1 text-center">
+              <div class="mt-2.5 text-center">
                 <p class="text-xs text-gray-700 truncate max-w-[80px]">
                   {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
                 </p>
@@ -2483,9 +2482,9 @@ const hasTryOnInput = computed(
       <!-- Step 2 moved to dedicated Wardrobe page -->
 
       <!-- Step 3: Review outfits & virtual try-on -->
-      <section class="bg-white p-8 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-8">
+      <section class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-2.5">
         <div>
-          <h2 class="text-2xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.reviewOutfits') }}</h2>
+          <h2 class="text-2xl font-bold mb-2.5 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.reviewOutfits') }}</h2>
         </div>
 
         <!-- Example background images modal -->
@@ -2535,16 +2534,16 @@ const hasTryOnInput = computed(
         </div>
 
         <!-- Try-on controls -->
-        <div v-if="hasTryOnInput" class="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
-          <div class="flex items-center justify-between mb-3">
+        <div v-if="hasTryOnInput" class="p-2.5 border border-gray-100 rounded-xl bg-gray-50/50">
+          <div class="flex items-center justify-between mb-2.5">
             <div>
-              <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.readyToTryOn') }}</p>
+              <p class="text-sm font-medium text-gray-700 mb-2.5">{{ $t('studio.readyToTryOn') }}</p>
               <p class="text-xs text-pink-500">
                 {{ activeWardrobeItems.length > 0 ? (activeWardrobeItems.length + ' items selected. ') : (unmatchedOutfitDescriptions.length + ' items described by text. ') }}Click below to generate a virtual try-on.
               </p>
             </div>
           </div>
-          <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2.5">
             <button
               @click="performTryOn"
               :disabled="!hasTryOnInput || isTryingOn"

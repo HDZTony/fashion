@@ -17,11 +17,14 @@ const props = withDefaults(
     defaultOpen?: boolean
     open?: boolean | null  // 使用 null 作为"未传递"的标记，避免 Vue 3 的布尔规范化问题
     storageKey?: string
+    /** offcanvas = 关闭时完全隐藏；icon = 关闭时收成图标条 */
+    collapsible?: 'offcanvas' | 'icon' | 'none'
   }>(),
   {
     defaultOpen: true,
     storageKey: 'sidebar:state',
     open: null,  // 明确设置默认值为 null，这样未传递时就是 null
+    collapsible: 'icon',
   }
 )
 
@@ -51,6 +54,9 @@ const open = computed({
 const state = computed<'expanded' | 'collapsed'>(() => {
   return open.value ? 'expanded' : 'collapsed'
 })
+
+// 供 SidebarInset 用：关闭时 offcanvas=完全隐藏(占位0)，icon=图标条(占位64px)
+const collapsible = computed(() => props.collapsible ?? 'icon')
 
 const setOpen = (value: boolean) => {
   open.value = value
@@ -82,6 +88,7 @@ const contextRefs = {
   open,
   openMobile,
   isMobile: computed(() => isMobile.value),
+  collapsible,
   setOpen,
   setOpenMobile,
   toggleSidebar,
@@ -93,7 +100,7 @@ provide('sidebar', contextRefs)
 <template>
   <div 
     class="group/sidebar-wrapper peer" 
-    :data-state="isMobile ? (openMobile ? 'open' : 'closed') : (open ? 'open' : 'collapsed')"
+    :data-state="isMobile ? (openMobile ? 'open' : 'closed') : (open ? 'open' : (props.collapsible === 'offcanvas' ? 'closed' : 'collapsed'))"
   >
     <slot />
   </div>

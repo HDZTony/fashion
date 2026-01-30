@@ -38,7 +38,10 @@
     "myBlog": "My Blog",
     "login": "Login",
     "logout": "Logout",
-    "language": "Language"
+    "language": "Language",
+    "sidebarGroupMain": "Main",
+    "sidebarGroupHistory": "History & Favorites",
+    "sidebarGroupAccount": "Account"
   },
   "home": {
     "title": "Discover Your Perfect Style",

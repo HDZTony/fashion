@@ -38,7 +38,10 @@
     "myBlog": "我的博客",
     "login": "登录",
     "logout": "退出",
-    "language": "语言"
+    "language": "语言",
+    "sidebarGroupMain": "主功能",
+    "sidebarGroupHistory": "历史与收藏",
+    "sidebarGroupAccount": "账户"
   },
   "home": {
     "title": "发现您的完美风格",
