@@ -15,7 +15,9 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@fashion-rec/shared": ["../shared/src/index.ts"],
+      "@fashion-rec/shared/*": ["../shared/src/*"]
     },
 
     /* Linting */

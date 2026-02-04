@@ -1,0 +1,26 @@
+{
+  "name": "fashion-rec",
+  "private": true,
+  "description": "Fashion Rec monorepo (frontend, uniapp-v2, shared)",
+  "scripts": {
+    "dev:uniapp-v2": "pnpm --filter fashion-rec-uniapp-v2 dev:h5",
+    "build:uniapp-v2": "pnpm --filter fashion-rec-uniapp-v2 build:h5"
+  },
+  "pnpm": {
+    "overrides": {
+      "@dcloudio/uni-app": "3.0.0-4080720251210001",
+      "@dcloudio/uni-app-harmony": "3.0.0-4080720251210001",
+      "@dcloudio/uni-app-plus": "3.0.0-4080720251210001",
+      "@dcloudio/uni-components": "3.0.0-4080720251210001",
+      "@dcloudio/uni-h5": "3.0.0-4080720251210001",
+      "@dcloudio/uni-cli-shared": "3.0.0-4080720251210001",
+      "@dcloudio/vite-plugin-uni": "3.0.0-4080720251210001"
+    },
+    "peerDependencyRules": {
+      "ignoreMissing": [],
+      "allowedVersions": {
+        "vue": "3.5"
+      }
+    }
+  }
+}

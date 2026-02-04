@@ -89,6 +89,32 @@ async def get_current_user_and_token(request: Request, token: Optional[str] = De
         raise credentials_exception
 
 
+async def get_optional_user_and_token(request: Request, token: Optional[str] = Depends(oauth2_scheme)):
+    """
+    Optional auth: returns (user_id, token) if valid token present, else (None, None).
+    Does NOT raise 401 when no token or invalid token. Used for guest-capable endpoints
+    (try-on, outfit, model-image, background-image) where IP-based rate limit applies for guests.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not token:
+        cookie_token = request.cookies.get('auth_token')
+        if cookie_token:
+            token = cookie_token
+
+    if not token or not supabase:
+        return (None, None)
+
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response.user:
+            return (None, None)
+        return (user_response.user.id, token)
+    except Exception:
+        return (None, None)
+
+
 async def get_current_user_token(request: Request, token: Optional[str] = Depends(oauth2_scheme)) -> str:
     """
     Get the current user's JWT token.

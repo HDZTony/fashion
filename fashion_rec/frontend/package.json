@@ -13,6 +13,7 @@
     "deploy": "pnpm run build && pnpm exec wrangler pages deploy dist --project-name fashion-rec-frontend"
   },
   "dependencies": {
+    "@fashion-rec/shared": "workspace:*",
     "embla-carousel-vue": "^8.6.0",
     "@supabase/supabase-js": "^2.90.1",
     "@vueuse/core": "^14.1.0",

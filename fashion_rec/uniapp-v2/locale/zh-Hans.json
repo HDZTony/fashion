@@ -1,0 +1,10 @@
+{
+  "app.name": "Fashion Rec",
+  "nav.home": "首页",
+  "nav.blog": "博客",
+  "nav.profile": "个人",
+  "nav.login": "登录",
+  "nav.logout": "退出登录",
+  "index.title": "首页",
+  "blog-list.title": "博客"
+}

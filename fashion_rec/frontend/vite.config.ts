@@ -13,6 +13,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@fashion-rec/shared': path.resolve(__dirname, '../shared/src/index.ts'),
+      '@fashion-rec/shared/i18n': path.resolve(__dirname, '../shared/src/i18n/index.ts'),
+      '@fashion-rec/shared/api/client': path.resolve(__dirname, '../shared/src/api/client.ts'),
+      '@fashion-rec/shared/api/config': path.resolve(__dirname, '../shared/src/api/config.ts'),
+      '@fashion-rec/shared/types': path.resolve(__dirname, '../shared/src/types.ts'),
     },
   },
   server: {

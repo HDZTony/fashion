@@ -1,0 +1,10 @@
+{
+  "app.name": "Fashion Rec",
+  "nav.home": "Home",
+  "nav.blog": "Blog",
+  "nav.profile": "Profile",
+  "nav.login": "Login",
+  "nav.logout": "Log out",
+  "index.title": "Home",
+  "blog-list.title": "Blog"
+}

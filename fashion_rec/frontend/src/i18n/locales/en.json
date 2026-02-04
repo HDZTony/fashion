@@ -167,6 +167,8 @@
     "aiSuggestions": "AI Suggestions",
     "tryOnThisOutfit": "Try on this outfit",
     "readyToTryOn": "Ready to try on",
+    "guestTryQuota": "Guest: {{ remaining }}/{{ limit }} try-ons left today (by IP).",
+    "guestOutfitQuota": "Guest: {{ remaining }}/{{ limit }} outfit suggestions left today (by IP).",
     "customPrompt": "Custom Prompt",
     "backgroundImage": "Background Image",
     "selectFromWardrobe": "Select from Wardrobe",

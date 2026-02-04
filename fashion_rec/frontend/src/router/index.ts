@@ -62,8 +62,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'studio',
         name: 'studio',
-        component: Studio,
-        meta: { requiresAuth: true }
+        component: Studio
       },
       {
         path: 'wardrobe',

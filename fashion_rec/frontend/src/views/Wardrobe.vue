@@ -1026,11 +1026,11 @@ onUnmounted(() => {
           </div>
           <div v-else-if="isUploading" class="flex flex-col items-center gap-2 pointer-events-none">
             <div class="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-            <span class="text-sm text-pink-500">Analyzing...</span>
+            <span class="text-sm text-pink-500">{{ $t('wardrobe.analyzing') }}</span>
           </div>
           <div v-else class="pointer-events-none">
-            <p class="font-medium text-gray-700">Click or drag to upload</p>
-            <p class="text-xs text-pink-600 mt-2">You can select multiple photos (JPG, PNG, WEBP, AVIF)</p>
+            <p class="font-medium text-gray-700">{{ $t('wardrobe.upload.clickOrDrag') }}</p>
+            <p class="text-xs text-pink-600 mt-2">{{ $t('wardrobe.upload.multipleHint') }}</p>
           </div>
         </div>
         
@@ -1040,7 +1040,7 @@ onUnmounted(() => {
           <div class="space-y-2">
             <textarea
               v-model="imageUrlInput"
-              placeholder="Enter one or more image URLs, one per line:&#10;https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+              :placeholder="$t('wardrobe.upload.urlPlaceholder')"
               rows="4"
               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent resize-y font-mono text-sm"
               :disabled="isUploadingUrl || isUploading"
@@ -1061,7 +1061,7 @@ onUnmounted(() => {
                 class="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <span v-if="isUploadingUrl">Uploading...</span>
-                <span v-else>Upload URL(s)</span>
+                <span v-else>{{ $t('wardrobe.uploadUrls') }}</span>
                 <div v-if="isUploadingUrl" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               </button>
             </div>
@@ -1078,7 +1078,7 @@ onUnmounted(() => {
               class="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-lg hover:from-pink-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span v-if="isImporting">Importing...</span>
-              <span v-else>Import Women's sample</span>
+              <span v-else>{{ $t('wardrobe.importWomensSample') }}</span>
               <div v-if="isImporting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             </button>
             <button
@@ -1087,7 +1087,7 @@ onUnmounted(() => {
               class="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <span v-if="isImporting">Importing...</span>
-              <span v-else>Import Men's sample</span>
+              <span v-else>{{ $t('wardrobe.importMensSample') }}</span>
               <div v-if="isImporting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             </button>
           </div>
@@ -1101,7 +1101,7 @@ onUnmounted(() => {
             <Shirt class="w-5 h-5" />
             {{ $t('wardrobe.title') }}
             <span v-if="uploadedItems.length > 0" class="text-sm font-normal text-pink-600 ml-2">
-              ({{ uploadedItems.length }} items)
+              ({{ $t('wardrobe.itemsCount', { count: uploadedItems.length }) }})
             </span>
           </h2>
           <div class="flex items-center gap-2">
@@ -1112,14 +1112,14 @@ onUnmounted(() => {
               title="Refresh data"
             >
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoadingItems }" />
-              <span>Refresh</span>
+              <span>{{ $t('wardrobe.refresh') }}</span>
             </button>
             <button
               @click="toggleSelectionMode"
               class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
               :class="isSelectionMode ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border-pink-600' : 'border-pink-200 text-pink-600 hover:border-pink-600'"
             >
-              {{ isSelectionMode ? 'Cancel selection' : 'Bulk select' }}
+              {{ isSelectionMode ? $t('wardrobe.cancelSelection') : $t('wardrobe.bulkSelect') }}
             </button>
             <button
               v-if="isSelectionMode && selectedCount > 0"
@@ -1137,9 +1137,9 @@ onUnmounted(() => {
             @click="toggleSelectAll"
             class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-pink-600 hover:border-black transition-colors"
           >
-            {{ isAllSelected ? 'Unselect all' : 'Select all' }}
+            {{ isAllSelected ? $t('wardrobe.unselectAll') : $t('wardrobe.selectAll') }}
           </button>
-          <span class="text-sm text-pink-500">Selected {{ selectedCount }} / {{ filteredItems.length }} items</span>
+          <span class="text-sm text-pink-500">{{ $t('wardrobe.selectedCount', { selected: selectedCount, total: filteredItems.length }) }}</span>
         </div>
         <div class="flex flex-wrap gap-2 mb-4">
           <button

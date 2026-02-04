@@ -167,6 +167,8 @@
     "aiSuggestions": "AI 建议",
     "tryOnThisOutfit": "试穿此穿搭",
     "readyToTryOn": "准备试穿",
+    "guestTryQuota": "访客：今日剩余 {{ remaining }}/{{ limit }} 次试穿（按 IP）。",
+    "guestOutfitQuota": "访客：今日剩余 {{ remaining }}/{{ limit }} 次穿搭推荐（按 IP）。",
     "customPrompt": "自定义提示",
     "backgroundImage": "背景图片",
     "selectFromWardrobe": "从衣橱选择",

@@ -30,8 +30,14 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from services.recognition import analyze_image
 from services.vector_db import add_to_wardrobe, search_similar, get_user_items, get_items_by_urls, get_user_items_with_embedding
 from services.try_on import generate_try_on
-from auth import get_current_user, get_current_user_token, get_current_user_and_token
+from auth import get_current_user, get_current_user_token, get_current_user_and_token, get_optional_user_and_token
 from fastapi import Depends
+from services.guest_quota import (
+    check_and_consume_tryon,
+    check_and_consume_outfit,
+    get_guest_quota,
+    get_client_ip as get_guest_client_ip,
+)
 
 app = FastAPI(title="Fashion Recommendation API")
 
@@ -1406,14 +1412,25 @@ async def import_example_items(
 async def generate_outfit(
     request: OutfitAgentRequest,
     http_request: Request,
-    user_id: str = Depends(get_current_user),
+    auth: tuple = Depends(get_optional_user_and_token),
 ):
     """
     Generate outfit recommendations using the outfit agent.
     Images are optimized to 800px resolution using Cloudflare Image Resize before being passed to the model.
     R2 still stores original images.
+    Guest (no auth): allowed with IP-based limit of 100/day. Uses empty wardrobe.
     """
     from services.outfit_agent import generate_outfit_suggestions
+
+    user_id, _ = auth
+    if user_id is None:
+        allowed, remaining, limit = check_and_consume_outfit(http_request)
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Guest outfit recommendation limit reached for today (100 per IP). Sign in for more.",
+            )
+        user_id = "guest"  # empty wardrobe for outfit_agent
 
     try:
         # Optimize image URLs to 800px resolution using Cloudflare Image Resize
@@ -1429,7 +1446,7 @@ async def generate_outfit(
             background_image_url=optimized_background_url,
             background_action_prompt=request.background_action_prompt,
             model_image_url=optimized_model_url,
-            client_ip=http_request.client.host if http_request.client else None,
+            client_ip=get_guest_client_ip(http_request),
             selected_items_roles=request.selected_items_roles,
         )
         
@@ -1467,6 +1484,7 @@ async def generate_outfit(
 
 @app.post("/try-on")
 async def try_on(
+    request: Request,
     person_image: Optional[UploadFile] = File(None),
     person_image_url: Optional[str] = Form(None),
     garment_urls: str = Form(...),
@@ -1474,7 +1492,7 @@ async def try_on(
     background_image_url: Optional[str] = Form(None),
     background_action_prompt: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
-    auth: tuple[str, str] = Depends(get_current_user_and_token),
+    auth: tuple = Depends(get_optional_user_and_token),
 ):
     """
     Virtual try-on:
@@ -1485,51 +1503,58 @@ async def try_on(
 
     Image order: Image 1 (garment collage) → Image 2 (model photo) → Image 3 (background, optional)
     At least one of person_image or person_image_url must be provided.
+    Guest (no auth): allowed with IP-based limit of 3/day. No history saved.
     """
     from services.qwen_image_edit import QwenImageEditClient, _load_env_config
     from services.storage import upload_file_to_r2
     import httpx
-    
-    # Extract user_id and user_token from auth tuple
+
     user_id, user_token = auth
-    
-    # Check and consume try-on count (call subscription-service), also get subscription status to determine resolution
+    if user_id is None:
+        allowed, remaining, limit = check_and_consume_tryon(request)
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Guest try-on limit reached for today (3 per IP). Sign in for more.",
+            )
+        effective_user_id = f"guest_{get_guest_client_ip(request).replace('.', '_')}"
+    else:
+        effective_user_id = user_id
+
+    # Check and consume try-on count (subscription-service) for logged-in users only
     SUBSCRIPTION_SERVICE_URL = os.getenv("SUBSCRIPTION_SERVICE_URL", "http://localhost:3001")
     user_plan = "free"  # Default to free plan
-    try:
-        async with httpx.AsyncClient() as client:
-            # First, get subscription status to determine resolution
-            status_response = await client.get(
-                f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
-                params={"user_id": user_id},
-                timeout=5.0
-            )
-            if status_response.is_success:
-                status_data = status_response.json()
-                plan_name = status_data.get("planName", "Free").lower()
-                # Map plan names to plan identifiers
-                if "premium plus" in plan_name or "premium_plus" in plan_name:
-                    user_plan = "premium_plus"
-                elif "premium pro" in plan_name or "premium_pro" in plan_name:
-                    user_plan = "premium_pro"
-                elif "premium" in plan_name:
-                    user_plan = "premium"
-                else:
-                    user_plan = "free"
-            
-            # Then check and consume try count
-            response = await client.post(
-                f"{SUBSCRIPTION_SERVICE_URL}/subscription/check-try",
-                json={"user_id": user_id},
-                timeout=5.0
-            )
-            if response.status_code == 403:
-                raise HTTPException(status_code=403, detail=response.json().get("error", "Insufficient try-on count"))
-            elif not response.is_success:
-                raise HTTPException(status_code=500, detail="Failed to check try-on count")
-    except httpx.RequestError as e:
-        logger.warning(f"Failed to check subscription service: {e}, allowing try-on to proceed")
-        # If subscription service is unavailable, allow to continue (development environment)
+    if user_id is not None:
+        try:
+            async with httpx.AsyncClient() as client:
+                status_response = await client.get(
+                    f"{SUBSCRIPTION_SERVICE_URL}/userinfo",
+                    params={"user_id": user_id},
+                    timeout=5.0
+                )
+                if status_response.is_success:
+                    status_data = status_response.json()
+                    plan_name = status_data.get("planName", "Free").lower()
+                    if "premium plus" in plan_name or "premium_plus" in plan_name:
+                        user_plan = "premium_plus"
+                    elif "premium pro" in plan_name or "premium_pro" in plan_name:
+                        user_plan = "premium_pro"
+                    elif "premium" in plan_name:
+                        user_plan = "premium"
+                    else:
+                        user_plan = "free"
+
+                response = await client.post(
+                    f"{SUBSCRIPTION_SERVICE_URL}/subscription/check-try",
+                    json={"user_id": user_id},
+                    timeout=5.0
+                )
+                if response.status_code == 403:
+                    raise HTTPException(status_code=403, detail=response.json().get("error", "Insufficient try-on count"))
+                elif not response.is_success:
+                    raise HTTPException(status_code=500, detail="Failed to check try-on count")
+        except httpx.RequestError as e:
+            logger.warning(f"Failed to check subscription service: {e}, allowing try-on to proceed")
 
     # Parse garment URLs
     try:
@@ -1568,7 +1593,7 @@ async def try_on(
     if person_image:
         # Save person image to a temporary file
         try:
-            person_filename = f"person_{user_id}_{person_image.filename}"
+            person_filename = f"person_{effective_user_id}_{person_image.filename}"
             person_path = UPLOAD_DIR / "tryon" / person_filename
             person_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1596,7 +1621,7 @@ async def try_on(
         # Use URL directly for person image
         person_input = person_image_url  # type: ignore[assignment]
         # Ensure output directory exists
-        output_path = UPLOAD_DIR / "tryon" / f"tryon_{user_id}.png"
+        output_path = UPLOAD_DIR / "tryon" / f"tryon_{effective_user_id}.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         person_img_path = None  # Will use URL for resolution calculation
 
@@ -1844,10 +1869,10 @@ async def try_on(
 
     try:
         if garment_list:
-            garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{user_id}_collage.png"
+            garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{effective_user_id}_collage.png"
             garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
 
-            garment_items = get_items_by_urls(garment_list, user_id)
+            garment_items = get_items_by_urls(garment_list, effective_user_id) if user_id is not None else []
             garment_descriptions = []
             for item in garment_items:
                 if item.get("id") and item.get("description"):
@@ -1972,26 +1997,31 @@ async def try_on(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload try-on image: {e}")
 
-    # Save try-on history (automatically uses user's subscription plan to determine retention period)
-    # Retention period: Free (7 days), Premium (90 days), Premium Plus (365 days)
-    try:
-        from services.tryon_history import save_tryon_history
-        # Use user's custom prompt (saved before system prompt overwrote it), otherwise None
-        # Note: The Qwen API uses its own internal prompt, but we save the user's custom prompt for history
-        save_tryon_history(user_id, {
-            "image_url": public_url,
-            "garment_urls": garment_list,  # Use parsed list, not JSON string (selected items from Applied Outfit Items)
-            "background_image_url": background_image_url,
-            "prompt": user_custom_prompt,  # User's original custom prompt (from Form parameter), not the system-generated prompt
-            "model_image_url": person_image_url,  # Model image URL for restoration (always exists)
-        }, user_token)
-    except Exception as e:
-        # Log error but don't fail the request
-        import traceback
-        print(f"[Try-On History] Failed to save history: {e}")
-        print(f"[Try-On History] Traceback: {traceback.format_exc()}")
+    # Save try-on history only for logged-in users (retention by subscription plan)
+    if user_id is not None:
+        try:
+            from services.tryon_history import save_tryon_history
+            save_tryon_history(user_id, {
+                "image_url": public_url,
+                "garment_urls": garment_list,
+                "background_image_url": background_image_url,
+                "prompt": user_custom_prompt,
+                "model_image_url": person_image_url,
+            }, user_token)
+        except Exception as e:
+            import traceback
+            print(f"[Try-On History] Failed to save history: {e}")
+            print(f"[Try-On History] Traceback: {traceback.format_exc()}")
 
     return {"url": public_url}
+
+
+@app.get("/guest-quota")
+async def guest_quota(request: Request):
+    """
+    Return guest try-on and outfit remaining counts for this IP (no auth required).
+    """
+    return get_guest_quota(request)
 
 
 @app.post("/generate-angles")
@@ -2258,10 +2288,10 @@ async def upload_multiangle_source(
 @app.post("/background-image")
 async def upload_background_image(
     file: UploadFile = File(...),
-    auth: tuple[str, str] = Depends(get_current_user_and_token),
+    auth: tuple = Depends(get_optional_user_and_token),
 ):
     """
-    Upload a background image to R2 (with 7-day expiration) and save it to user's history.
+    Upload a background image to R2 (with 7-day expiration). Logged-in: save to user history. Guest: upload only.
     """
     from services.storage import upload_file_to_r2
     from services.user_images import save_user_image
@@ -2269,22 +2299,17 @@ async def upload_background_image(
     user_id, user_token = auth
 
     try:
-        # Upload to R2 with 7-day expiration
         public_url = await upload_file_to_r2(
             file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=7
         )
-        
-        # Extract R2 filename from URL for deletion purposes
-        import os
-        r2_public_url = os.getenv("R2_PUBLIC_URL", "")
-        if r2_public_url and public_url.startswith(r2_public_url):
-            r2_filename = public_url.replace(r2_public_url + '/', '')
-        else:
-            r2_filename = public_url.split('/')[-1]
-
-        # Save to user history with R2 filename for deletion
-        save_user_image(user_id, public_url, "background", user_token, r2_filename=r2_filename)
-
+        if user_id is not None and user_token is not None:
+            import os
+            r2_public_url = os.getenv("R2_PUBLIC_URL", "")
+            if r2_public_url and public_url.startswith(r2_public_url):
+                r2_filename = public_url.replace(r2_public_url + '/', '')
+            else:
+                r2_filename = public_url.split('/')[-1]
+            save_user_image(user_id, public_url, "background", user_token, r2_filename=r2_filename)
         return {"url": public_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload background image: {e}")
@@ -2293,10 +2318,10 @@ async def upload_background_image(
 @app.post("/model-image")
 async def upload_model_image(
     file: UploadFile = File(...),
-    auth: tuple[str, str] = Depends(get_current_user_and_token),
+    auth: tuple = Depends(get_optional_user_and_token),
 ):
     """
-    Upload a model image to R2 (no expiration - permanent storage) and save it to user's history.
+    Upload a model image to R2 (no expiration for logged-in; 7-day for guest). Logged-in: save to user history. Guest: upload only.
     """
     from services.storage import upload_file_to_r2
     from services.user_images import save_user_image
@@ -2304,22 +2329,18 @@ async def upload_model_image(
     user_id, user_token = auth
 
     try:
-        # Upload to R2 without expiration (permanent storage for model images)
+        expires = None if user_id is not None else 7
         public_url = await upload_file_to_r2(
-            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=None
+            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=expires
         )
-        
-        # Extract R2 filename from URL for deletion purposes
-        import os
-        r2_public_url = os.getenv("R2_PUBLIC_URL", "")
-        if r2_public_url and public_url.startswith(r2_public_url):
-            r2_filename = public_url.replace(r2_public_url + '/', '')
-        else:
-            r2_filename = public_url.split('/')[-1]
-
-        # Save to user history with R2 filename for deletion
-        save_user_image(user_id, public_url, "model", user_token, r2_filename=r2_filename)
-
+        if user_id is not None and user_token is not None:
+            import os
+            r2_public_url = os.getenv("R2_PUBLIC_URL", "")
+            if r2_public_url and public_url.startswith(r2_public_url):
+                r2_filename = public_url.replace(r2_public_url + '/', '')
+            else:
+                r2_filename = public_url.split('/')[-1]
+            save_user_image(user_id, public_url, "model", user_token, r2_filename=r2_filename)
         return {"url": public_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload model image: {e}")

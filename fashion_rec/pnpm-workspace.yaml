@@ -1,0 +1,4 @@
+packages:
+  - 'frontend'
+  - 'uniapp-v2'
+  - 'shared'

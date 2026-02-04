@@ -1,0 +1,17 @@
+{
+  "app.name": "Fashion Rec",
+  "common": {
+    "uni.app.quit": "Press again to exit",
+    "uni.async.error": "Connection timed out, tap to retry",
+    "uni.showActionSheet.cancel": "Cancel",
+    "uni.showModal.cancel": "Cancel",
+    "uni.showModal.confirm": "Confirm",
+    "uni.chooseImage.cancel": "Cancel",
+    "uni.chooseImage.sourceType.album": "Choose from album",
+    "uni.chooseImage.sourceType.camera": "Take photo",
+    "uni.picker.done": "Done",
+    "uni.picker.cancel": "Cancel"
+  },
+  "ios": {},
+  "android": {}
+}

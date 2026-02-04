@@ -1,0 +1,17 @@
+{
+  "app.name": "Fashion Rec",
+  "common": {
+    "uni.app.quit": "再按一次退出应用",
+    "uni.async.error": "连接服务器超时，点击屏幕重试",
+    "uni.showActionSheet.cancel": "取消",
+    "uni.showModal.cancel": "取消",
+    "uni.showModal.confirm": "确定",
+    "uni.chooseImage.cancel": "取消",
+    "uni.chooseImage.sourceType.album": "从相册选择",
+    "uni.chooseImage.sourceType.camera": "拍摄",
+    "uni.picker.done": "完成",
+    "uni.picker.cancel": "取消"
+  },
+  "ios": {},
+  "android": {}
+}

@@ -1,6 +1,6 @@
 User-agent: *
 Allow: /
-Disallow: /studio
+Allow: /studio
 Disallow: /history
 Disallow: /wardrobe
 Disallow: /lv-products

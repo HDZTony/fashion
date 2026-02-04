@@ -41,22 +41,17 @@ const setUserVersion = async (version: 'stable' | 'v2' = 'v2') => {
 
 const handleGetStarted = async () => {
   if (isAuthenticated.value) {
-    // Set user version to v2 when entering studio (lazy routing)
-    // This ensures the user is assigned a version and cached in KV
     isSettingVersion.value = true
     try {
-      // Set version to v2 (or 'stable' if you prefer)
-      // The version will be cached in KV, so subsequent requests won't query database
       await setUserVersion('v2')
     } catch (error) {
       console.warn('Failed to set user version, continuing anyway:', error)
     } finally {
       isSettingVersion.value = false
     }
-    router.push('/studio')
-  } else {
-    router.push('/login')
   }
+  // Studio is available without login (guest: 3 try-on/day, 100 outfit/day by IP)
+  router.push('/studio')
 }
 
 const buttonText = computed(() => {

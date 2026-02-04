@@ -9,6 +9,7 @@ import type { Item, Recommendation, AgentOutfit } from '../types'
 import { supabase } from '../lib/supabase'
 import { apiClient, uploadApiClient, subscriptionClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
+import { useAuthStore } from '../stores/auth'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Carousel,
@@ -16,13 +17,25 @@ import {
   CarouselItem,
 } from '@/components/ui/carousel'
 import { getThumbnailUrl, getSmallImageUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { useSEO } from '@/composables/useSEO'
+import { siteBaseUrl } from '@/config/seo'
+
+useSEO({
+  title: 'Studio | Fashion Rec - AI Virtual Try-On & Outfit Generator',
+  description: 'Try on clothes virtually with AI. Generate outfit recommendations and create your perfect look. No sign-in required to try.',
+  path: '/studio',
+  image: `${siteBaseUrl}/images/brand/hdz.png`,
+})
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const authStore = useAuthStore()
 
 // Initialize Pinia store
 const studioStore = useStudioStore()
+
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 // Uploaded wardrobe items (persisted via store)
 const uploadedItems = computed({
@@ -199,11 +212,38 @@ const isUploadingModelImage = ref(false)
 // Model image error state
 const showModelImageError = ref(false)
 
-// Subscription info
+// Subscription info (logged-in only)
 const subscriptionInfo = ref<any>(null)
 const isLoadingSubscription = ref(false)
 
-// Load subscription info
+// Guest quota (IP-based: try 3/day, outfit 100/day)
+const guestQuota = ref<{
+  try_remaining: number
+  try_limit: number
+  outfit_remaining: number
+  outfit_limit: number
+} | null>(null)
+const isLoadingGuestQuota = ref(false)
+
+const loadGuestQuota = async () => {
+  isLoadingGuestQuota.value = true
+  try {
+    const response = await apiClient.get<{
+      try_remaining: number
+      try_limit: number
+      outfit_remaining: number
+      outfit_limit: number
+    }>('/guest-quota')
+    guestQuota.value = response.data
+  } catch (error: any) {
+    console.error('Failed to load guest quota:', error)
+    guestQuota.value = null
+  } finally {
+    isLoadingGuestQuota.value = false
+  }
+}
+
+// Load subscription info (logged-in only)
 const loadSubscriptionInfo = async () => {
   isLoadingSubscription.value = true
   try {
@@ -218,7 +258,6 @@ const loadSubscriptionInfo = async () => {
     subscriptionInfo.value = response.data
   } catch (error: any) {
     console.error('Failed to load subscription info:', error)
-    // If no subscription, default to Free plan
     subscriptionInfo.value = {
       planName: 'Free',
       remainingTries: 0,
@@ -275,8 +314,9 @@ const loadUserItems = async () => {
   }
 }
 
-// Load historical images
+// Load historical images (only when authenticated - guests have no user images)
 const loadHistoricalImages = async () => {
+  if (!isAuthenticated.value) return
   try {
     console.log('[loadHistoricalImages] Starting to load historical images...')
     const [backgroundResp, modelResp] = await Promise.all([
@@ -366,30 +406,27 @@ onMounted(async () => {
     checkFavoriteStatus()
   }
   
-  // Wait for authentication to be ready before loading other data
-  // Note: We don't load items from backend here because Applied outfit items only show
-  // items selected from Wardrobe page, which are already in sessionStorage cache
+  // Load quota/subscription: guest = GET /guest-quota; logged-in = historical images + subscription
   try {
     const { data } = await supabase.auth.getSession()
     if (data.session) {
-      // Authentication is ready, load other data (not items)
       await Promise.all([
         loadHistoricalImages(),
         loadSubscriptionInfo()
       ])
     } else {
-      console.warn('No session found on mount, but still attempting to load data')
+      await loadGuestQuota()
+    }
+  } catch (error) {
+    console.error('Failed to check session on mount:', error)
+    if (!authStore.isAuthenticated) {
+      await loadGuestQuota()
+    } else {
       await Promise.all([
         loadHistoricalImages(),
         loadSubscriptionInfo()
       ])
     }
-  } catch (error) {
-    console.error('Failed to check session on mount:', error)
-    await Promise.all([
-      loadHistoricalImages(),
-      loadSubscriptionInfo()
-    ])
   }
   
   // Check if we need to restore a look from history
@@ -827,7 +864,9 @@ const getRecommendations = async () => {
 
     console.log('Agent raw outfit text:', response.data.raw_text)
     agentOutfits.value = response.data.outfits || []
-    // State is automatically persisted by Pinia store
+    if (!isAuthenticated.value) {
+      await loadGuestQuota()
+    }
   } catch (error: any) {
     console.error('Recommendation failed:', error)
     alert('Failed to get recommendations')
@@ -1380,7 +1419,9 @@ const performTryOn = async () => {
     tryOnImageUrl.value = response.data.url
     // Reset favorite status when generating new try-on result
     studioStore.setFavoriteStatus(false, null)
-    // State is automatically persisted by Pinia store
+    if (!isAuthenticated.value) {
+      await loadGuestQuota()
+    }
   } catch (error: any) {
     console.error('Try-on failed:', error)
     
@@ -1766,14 +1807,15 @@ const openTryOnImageViewer = () => {
 const isSavingFavorite = ref(false)
 // favoriteSaved and currentFavoriteId are now managed by Pinia store (computed above)
 
-// Check if current try-on result is already in favorites
+// Check if current try-on result is already in favorites (logged-in only)
 const checkFavoriteStatus = async () => {
-  if (!tryOnImageUrl.value) {
-    favoriteSaved.value = false
-    currentFavoriteId.value = null
+  if (!tryOnImageUrl.value || !isAuthenticated.value) {
+    if (!tryOnImageUrl.value) {
+      favoriteSaved.value = false
+      currentFavoriteId.value = null
+    }
     return
   }
-  
   try {
     const response = await apiClient.get<{ favorites: Array<{ id: string; image_url: string }> }>('/favorites')
     const favorite = response.data.favorites.find(f => f.image_url === tryOnImageUrl.value)
@@ -2330,6 +2372,9 @@ const hasTryOnInput = computed(
               <Wand2 class="w-5 h-5" />
               {{ isGenerating ? $t('studio.aiThinking') : $t('studio.generateOutfit') }}
             </button>
+            <p v-if="!isAuthenticated && guestQuota !== null" class="text-xs text-gray-500">
+              {{ $t('studio.guestOutfitQuota', { remaining: guestQuota.outfit_remaining, limit: guestQuota.outfit_limit }) }}
+            </p>
             <!-- AI branding and transparency note -->
             <div class="flex items-center gap-2 text-xs text-pink-600">
               <span class="font-medium text-gray-700">fashion</span>
@@ -2541,6 +2586,9 @@ const hasTryOnInput = computed(
               <p class="text-xs text-pink-500">
                 {{ activeWardrobeItems.length > 0 ? (activeWardrobeItems.length + ' items selected. ') : (unmatchedOutfitDescriptions.length + ' items described by text. ') }}Click below to generate a virtual try-on.
               </p>
+              <p v-if="!isAuthenticated && guestQuota !== null" class="text-xs text-gray-500 mt-1">
+                {{ $t('studio.guestTryQuota', { remaining: guestQuota.try_remaining, limit: guestQuota.try_limit }) }}
+              </p>
             </div>
           </div>
           <div class="flex flex-col sm:flex-row sm:items-center gap-2.5">
@@ -2553,7 +2601,6 @@ const hasTryOnInput = computed(
               <div v-else class="w-4 h-4 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
               <span>{{ isTryingOn ? $t('studio.generatingTryOn') : $t('studio.tryOnThisOutfit') }}</span>
             </button>
-           
           </div>
         </div>
 
@@ -2590,6 +2637,7 @@ const hasTryOnInput = computed(
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-lg font-semibold">{{ $t('studio.virtualTryOn.title') }}</h3>
             <button
+              v-if="isAuthenticated"
               @click="saveFavorite"
               :disabled="isSavingFavorite"
               :class="[
@@ -2614,9 +2662,8 @@ const hasTryOnInput = computed(
           <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:border-gray-300 transition-colors" @click="openTryOnImageViewer">
             <img :src="getLargeImageUrl(tryOnImageUrl || '')" loading="lazy" :alt="$t('studio.virtualTryOn.tryOnResult')" class="w-full object-contain" />
           </div>
-          
-          <!-- Multi-Angle Link -->
-          <div class="mt-4 flex justify-center">
+          <!-- Multi-Angle Link (logged-in only) -->
+          <div v-if="isAuthenticated" class="mt-4 flex justify-center">
             <router-link 
               :to="{ path: '/multi-angle', query: { sourceImage: tryOnImageUrl } }"
               class="inline-flex items-center gap-2 px-4 py-2 text-sm text-pink-600 hover:text-pink-800 hover:bg-pink-50 rounded-lg transition-colors"
