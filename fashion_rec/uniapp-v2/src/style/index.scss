@@ -18,6 +18,13 @@ page {
   // --wot-button-primary-bg-color: green;
 }
 
+/* 去除 uni-app 默认按钮边框 - 全局生效 */
+button {
+  border: none;
+  border-width: 0;
+  outline: none;
+}
+
 /*
 border-t-1
 由于uniapp中无法使用*选择器，使用魔法代替*，加上此规则可以简化border与divide的使用，并提升布局的兼容性
