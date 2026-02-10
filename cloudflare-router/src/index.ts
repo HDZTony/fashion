@@ -26,6 +26,8 @@ interface Env {
   STABLE_SUBSCRIPTION_SERVICE_URL: string
   V2_SUBSCRIPTION_SERVICE_URL: string
   BLOG_SERVICE_URL: string
+  /** Service Binding: 内部调用 Blog Worker，绕过 Cloudflare Access */
+  BLOG_SERVICE: Fetcher
   USER_VERSIONS: KVNamespace
 }
 
@@ -663,19 +665,19 @@ export default {
         // Route requests to appropriate service
         let backendUrl: string
         if (isBlogRequest) {
-          // Route blog requests to blog service
-          backendUrl = env.BLOG_SERVICE_URL
+          // Route blog requests via Service Binding (绕过 Cloudflare Access)
+          // 如果 Service Binding 不可用，fallback 到 BLOG_SERVICE_URL
+          const usesServiceBinding = !!env.BLOG_SERVICE
           
-          if (!backendUrl) {
-            console.error(`[Router] ❌ [${path}] Blog service URL is undefined`)
+          if (!usesServiceBinding && !env.BLOG_SERVICE_URL) {
+            console.error(`[Router] ❌ [${path}] Blog service is not configured (no Service Binding and no BLOG_SERVICE_URL)`)
             const origin = request.headers.get('Origin')
             const corsHeaders = getCorsHeaders(origin)
             
             return new Response(JSON.stringify({
               error: 'Configuration error',
-              detail: 'Blog service URL is not configured. Please set BLOG_SERVICE_URL environment variable.\n\nFor local development:\n1. Ensure .dev.vars file exists in cloudflare-router directory\n2. Add BLOG_SERVICE_URL=http://127.0.0.1:8788\n3. Restart wrangler dev after adding environment variables',
+              detail: 'Blog service is not configured. Please add a Service Binding (BLOG_SERVICE) in wrangler.toml or set BLOG_SERVICE_URL environment variable.',
               path: path,
-              missingEnvVar: 'BLOG_SERVICE_URL'
             }), {
               status: 500,
               statusText: 'Internal Server Error',
@@ -686,11 +688,23 @@ export default {
             })
           }
           
-          console.log(`[Router] ✅ [${path}] Routing blog request ${request.method} to: ${backendUrl}`)
+          // 构建去掉 /blog 前缀的内部请求路径
+          let blogPath = path.substring(5) // Remove '/blog'
+          if (!blogPath) blogPath = '/'
+          const blogInternalUrl = new URL(blogPath + url.search, 'https://blog-internal')
+
+          // 保留原始请求的 headers（包括 Authorization）
+          const headers = new Headers(request.headers)
+          headers.set('Host', 'blog-internal')
           
-          // Use special routing function that removes /blog prefix
-          const blogRequest = routeToBlogService(request, backendUrl)
-          console.log(`[Router] Blog request URL: ${blogRequest.url}, method: ${blogRequest.method}, hasAuth: ${!!blogRequest.headers.get('Authorization')}`)
+          const blogRequest = new Request(blogInternalUrl.toString(), {
+            method: request.method,
+            headers: headers,
+            body: request.body,
+            redirect: request.redirect,
+          })
+          
+          console.log(`[Router] ✅ [${path}] Routing blog request ${request.method} via ${usesServiceBinding ? 'Service Binding' : 'HTTP fetch'}, internal path: ${blogPath}`)
           
           const fetchStartTime = Date.now()
           
@@ -707,43 +721,37 @@ export default {
               signal: abortController.signal
             })
             
-            response = await fetch(requestWithSignal)
+            if (usesServiceBinding) {
+              // 使用 Service Binding 内部调用，绕过 Cloudflare Access
+              response = await env.BLOG_SERVICE.fetch(requestWithSignal)
+            } else {
+              // Fallback: 通过公网 HTTP fetch
+              const fallbackRequest = routeToBlogService(request, env.BLOG_SERVICE_URL)
+              response = await fetch(new Request(fallbackRequest, { signal: abortController.signal }))
+            }
             clearTimeout(timeoutId)
             
             console.log(`[Router] Blog service response: status ${response.status} ${response.statusText} for ${path}`)
           } catch (fetchError: any) {
             clearTimeout(timeoutId)
             const errorDuration = Date.now() - fetchStartTime
-            console.error(`[Router] Blog service fetch failed for ${blogRequest.url} after ${errorDuration}ms:`, fetchError)
+            console.error(`[Router] Blog service fetch failed after ${errorDuration}ms:`, fetchError)
             
             const origin = request.headers.get('Origin')
             const corsHeaders = getCorsHeaders(origin)
             
-            // Determine error type
             let errorDetail = fetchError.message || 'Request timeout or connection error'
-            let troubleshooting = ''
-            
-            if (fetchError.name === 'AbortError' || fetchError.message?.includes('aborted')) {
-              if (errorDuration < 1000) {
-                errorDetail = 'Connection refused - Blog service may not be running'
-                troubleshooting = 'Please ensure the blog service is running on port 8788. Run: cd cloudflare-blog && pnpm dev'
-              } else {
-                errorDetail = `Request timeout after ${errorDuration}ms`
-                troubleshooting = 'The blog service took too long to respond. Check if the service is running and responding correctly.'
-              }
-            } else if (fetchError.message?.includes('ECONNREFUSED') || fetchError.message?.includes('Failed to fetch')) {
-              errorDetail = 'Connection refused - Blog service may not be running'
-              troubleshooting = 'Please ensure the blog service is running on port 8788. Run: cd cloudflare-blog && pnpm dev'
+            if (fetchError.name === 'AbortError') {
+              errorDetail = errorDuration < 1000
+                ? 'Connection refused - Blog service may not be running'
+                : `Request timeout after ${errorDuration}ms`
             }
             
             return new Response(JSON.stringify({
               error: 'Blog service request failed',
               detail: errorDetail,
               path: path,
-              backend_host: new URL(blogRequest.url).hostname,
-              backend_url: blogRequest.url,
               duration_ms: errorDuration,
-              troubleshooting: troubleshooting || undefined
             }), {
               status: 502,
               statusText: 'Bad Gateway',
