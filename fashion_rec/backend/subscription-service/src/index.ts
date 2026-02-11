@@ -562,19 +562,28 @@ app.get('/userinfo', async (c) => {
       return c.json(status);
     }
 
-    // 步骤1: 通过邮箱获取客户ID
-    const customerByEmail = await creem.customers.get({
-      email: userEmail,
-    });
+    // 步骤1: 通过邮箱获取客户ID（Creem 在无客户时可能抛错而非返回 null，需捕获后按“未订阅”返回 200）
+    let customerByEmail: { id: string } | null = null;
+    try {
+      customerByEmail = await creem.customers.get({
+        email: userEmail,
+      }) as { id: string } | null;
+    } catch (creemErr: any) {
+      const msg = (creemErr?.message || '').toLowerCase();
+      const isNotFound = msg.includes('customer not found') || msg.includes('not found') ||
+        creemErr?.status === 404 || creemErr?.statusCode === 404;
+      if (isNotFound) {
+        console.log(`No Creem customer for email ${userEmail}, returning free account status`);
+        const status = await subscriptionService.getSubscriptionStatus(userId);
+        return c.json(status);
+      }
+      throw creemErr;
+    }
 
     if (!customerByEmail || !customerByEmail.id) {
-      return c.json(
-        {
-          error: 'Customer not found',
-          message: `No Creem customer found for email ${userEmail}`,
-        },
-        404
-      );
+      console.log(`No Creem customer found for email ${userEmail}, returning free account status`);
+      const status = await subscriptionService.getSubscriptionStatus(userId);
+      return c.json(status);
     }
 
     const customerId = customerByEmail.id;
@@ -717,6 +726,21 @@ app.get('/userinfo', async (c) => {
     });
   } catch (error: any) {
     console.error('Error getting subscription status:', error);
+    const msg = (error?.message || '').toLowerCase();
+    const isCustomerNotFound =
+      msg.includes('customer not found') || msg.includes('not found') ||
+      error?.status === 404 || error?.statusCode === 404;
+    if (isCustomerNotFound) {
+      try {
+        const userIdForStatus = c.req.query('user_id');
+        if (userIdForStatus) {
+          const status = await getServices(c).subscriptionService.getSubscriptionStatus(userIdForStatus);
+          return c.json(status);
+        }
+      } catch (_) {
+        // fall through to 500
+      }
+    }
     return c.json(
       {
         error: 'Failed to get subscription status',
