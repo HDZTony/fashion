@@ -515,6 +515,7 @@ export default {
       if (request.method === 'OPTIONS' && (isApiForCors || 
           path === '/api/router/get-version' || 
           path === '/api/router/set-version' || 
+          path === '/api/auth/google-native' ||
           path === '/webhook' || 
           path === '/test-webhook' ||
           isSubscriptionServicePath ||
@@ -619,6 +620,137 @@ export default {
               'Content-Type': 'application/json',
               ...corsHeaders
             }
+          })
+        }
+      }
+
+      // Handle Google native login token exchange (App 端 Google 登录)
+      if (path === '/api/auth/google-native' && request.method === 'POST') {
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+
+        try {
+          const body = await request.json() as { access_token: string }
+          const { access_token: googleAccessToken } = body
+
+          if (!googleAccessToken) {
+            return new Response(JSON.stringify({ error: 'Missing access_token' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          // 1. 用 Google API 验证 access_token 并获取用户信息
+          const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${googleAccessToken}` },
+          })
+
+          if (!googleRes.ok) {
+            console.error('[Auth] Google userinfo failed:', googleRes.status)
+            return new Response(JSON.stringify({ error: 'Invalid Google access token' }), {
+              status: 401,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          const googleUser = await googleRes.json() as {
+            sub: string
+            email: string
+            email_verified: boolean
+            name?: string
+            picture?: string
+          }
+
+          if (!googleUser.email) {
+            return new Response(JSON.stringify({ error: 'Google account has no email' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          console.log('[Auth] Google user verified:', googleUser.email)
+
+          // 2. 创建 Supabase admin 客户端
+          const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+          })
+
+          // 3. 生成 magic link OTP，然后服务端验证 OTP 获取 session tokens
+          let otp: string | undefined
+          const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email: googleUser.email,
+          })
+
+          if (linkError) {
+            // 用户可能不存在，先创建
+            console.log('[Auth] User not found, creating:', googleUser.email)
+            const { error: createError } = await supabaseAdmin.auth.admin.createUser({
+              email: googleUser.email,
+              email_confirm: true,
+              user_metadata: {
+                full_name: googleUser.name,
+                avatar_url: googleUser.picture,
+                provider: 'google',
+              },
+            })
+
+            if (createError && !createError.message.includes('already')) {
+              console.error('[Auth] Create user error:', createError.message)
+              return new Response(JSON.stringify({ error: createError.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              })
+            }
+
+            // 创建后重新生成 magic link
+            const { data: retryData, error: retryError } = await supabaseAdmin.auth.admin.generateLink({
+              type: 'magiclink',
+              email: googleUser.email,
+            })
+
+            if (retryError) {
+              console.error('[Auth] Generate link retry error:', retryError.message)
+              return new Response(JSON.stringify({ error: retryError.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              })
+            }
+
+            otp = retryData.properties.email_otp
+          } else {
+            otp = linkData.properties.email_otp
+          }
+
+          // 4. 服务端验证 OTP，直接获取 session tokens
+          const { data: sessionData, error: verifyError } = await supabaseAdmin.auth.verifyOtp({
+            email: googleUser.email,
+            token: otp!,
+            type: 'magiclink',
+          })
+
+          if (verifyError || !sessionData.session) {
+            console.error('[Auth] Verify OTP error:', verifyError?.message)
+            return new Response(JSON.stringify({ error: verifyError?.message || 'Failed to create session' }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          // 5. 返回 session tokens，客户端直接 setSession
+          console.log('[Auth] Google native login success for:', googleUser.email)
+          return new Response(JSON.stringify({
+            access_token: sessionData.session.access_token,
+            refresh_token: sessionData.session.refresh_token,
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          })
+        } catch (error: any) {
+          console.error('[Auth] Google native login error:', error)
+          return new Response(JSON.stringify({ error: error.message || 'Internal error' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
           })
         }
       }

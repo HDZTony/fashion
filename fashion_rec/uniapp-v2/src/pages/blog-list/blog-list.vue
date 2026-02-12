@@ -9,16 +9,16 @@
       :right-text="hasToken ? t('blog.create') : ''"
       @click-right="goToCreate"
     />
-    <view v-if="isLoading" class="loading-wrap">
-      <text class="loading-text">{{ t('blog.loading') }}</text>
-    </view>
-    <view v-else-if="error" class="error-wrap">
-      <text class="error-text">{{ error }}</text>
-    </view>
-    <view v-else-if="posts.length === 0" class="empty">
-      <text class="empty-desc">{{ t('blog.noPosts') }}</text>
-    </view>
-    <scroll-view v-else scroll-y class="list" :style="{ height: listScrollHeight }" @scrolltolower="loadMore">
+    <z-paging
+      ref="pagingRef"
+      v-model="posts"
+      :fixed="false"
+      :auto="true"
+      :default-page-size="pageSize"
+      :safe-area-inset-bottom="true"
+      :style="{ height: listHeight }"
+      @query="queryList"
+    >
       <view class="grid">
         <view
           v-for="post in posts"
@@ -54,56 +54,24 @@
           </view>
         </view>
       </view>
-      <view v-if="posts.length > 0 && hasMore" class="load-more">
-        <button class="btnLoadMore" :disabled="isLoadingMore" @click="loadMore">
-          {{ isLoadingMore ? t('common.loading') : t('blog.loadMore') }}
-        </button>
-      </view>
-    </scroll-view>
-    <!-- 接口调试信息：始终显示 -->
-    <view class="debug-section">
-      <view class="debug-header" @click="debugExpanded = !debugExpanded">
-        <text class="debug-title">接口调试</text>
-        <text class="debug-count">{{ apiLogs.length }} 条</text>
-        <text class="debug-toggle">{{ debugExpanded ? '▼' : '▶' }}</text>
-      </view>
-      <view v-if="debugExpanded" class="debug-body">
-        <button class="btnClear" @click.stop="clearApiLogs">清空</button>
-        <view v-if="apiLogs.length === 0" class="debug-empty">暂无请求记录</view>
-        <view v-else class="debug-list">
-          <view v-for="log in apiLogs" :key="log.id" class="debug-item" :class="{ 'debug-error': log.status === 'error' || (typeof log.status === 'number' && log.status >= 400) }">
-            <view class="debug-row">
-              <text class="debug-method">{{ log.method }}</text>
-              <text class="debug-status">{{ log.status }}</text>
-              <text class="debug-duration">{{ log.duration }}ms</text>
-              <text class="debug-time">{{ log.time }}</text>
-            </view>
-            <text class="debug-url">{{ log.url }}</text>
-            <text v-if="log.preview" class="debug-preview">{{ log.preview }}</text>
-          </view>
-        </view>
-      </view>
-    </view>
+    </z-paging>
     <CustomTabBar current-tab="blog" />
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+definePage({
+  style: {
+    navigationStyle: 'custom',
+  },
+})
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import CustomTabBar from '@/components/CustomTabBar.vue'
 import { apiClient } from '@/lib/api-client'
-import { supabase } from '@/lib/supabase'
-import { getApiLogs, clearApiLogs as doClearApiLogs } from '@/lib/apiDebug'
 
 const { t } = useI18n()
-const apiLogs = getApiLogs()
-const debugExpanded = ref(false)
-
-function clearApiLogs() {
-  doClearApiLogs()
-}
 
 interface MediaItem {
   url: string
@@ -124,25 +92,19 @@ interface BlogPost {
 }
 
 const posts = ref<BlogPost[]>([])
-const isLoading = ref(false)
-const isLoadingMore = ref(false)
-const error = ref('')
-const hasMore = ref(true)
-const offset = ref(0)
-const limit = 20
 const hasToken = ref(false)
+const pagingRef = ref<any>(null)
+const pageSize = 20
 
-// Android 上 scroll-view 需要明确高度
-const sysInfo = ref<UniApp.GetSystemInfoSyncResult | null>(uni.getSystemInfoSync())
-const listScrollHeight = computed(() => {
-  const s = sysInfo.value
-  if (!s) return 'calc(100vh - 120rpx - 50px)'
-  const winH = s.windowHeight ?? s.screenHeight ?? 0
-  const safeBottom = (s as { safeAreaInsets?: { bottom?: number } }).safeAreaInsets?.bottom ?? 0
-  const navbarH = 44
+// 计算列表可用高度：窗口高度 - navbar - tabbar - safeBottom
+const sysInfo = uni.getSystemInfoSync()
+const listHeight = computed(() => {
+  const winH = sysInfo.windowHeight ?? sysInfo.screenHeight ?? 0
+  const statusBarH = sysInfo.statusBarHeight ?? 0
+  const navbarH = 44 + statusBarH
   const tabBarH = 50
-  const padding = 60
-  const h = winH - navbarH - tabBarH - safeBottom - padding
+  const safeBottom = (sysInfo as { safeAreaInsets?: { bottom?: number } }).safeAreaInsets?.bottom ?? 0
+  const h = winH - navbarH - tabBarH - safeBottom
   return `${Math.max(200, h)}px`
 })
 
@@ -154,38 +116,29 @@ function getFirstMediaUrl(post: BlogPost): { url: string; thumb?: string; isYout
   return { url: media.thumbnail ?? media.url }
 }
 
-async function loadPosts(reset = false) {
-  if (reset) {
-    offset.value = 0
-    posts.value = []
-    hasMore.value = true
-  }
-  if (isLoading.value || isLoadingMore.value) return
-  if (reset) isLoading.value = true
-  else isLoadingMore.value = true
-  error.value = ''
+/**
+ * z-paging 查询回调
+ * @param pageNo 当前页码（从 1 开始）
+ * @param pageSize 每页数量
+ */
+async function queryList(pageNo: number, pageSize: number) {
   try {
+    const offset = (pageNo - 1) * pageSize
     const response = await apiClient.get<{ posts: BlogPost[] }>('/blog/posts', {
-      params: { limit, offset: offset.value, status: 'published' },
+      params: {
+        limit: String(pageSize),
+        offset: String(offset),
+        status: 'published',
+      },
       timeout: 30000,
     })
     const newPosts = response.data?.posts ?? []
-    if (reset) posts.value = newPosts
-    else posts.value.push(...newPosts)
-    hasMore.value = newPosts.length === limit
-    offset.value += newPosts.length
+    pagingRef.value?.complete(newPosts)
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { error?: string } }; message?: string }
-    error.value = err.response?.data?.error ?? err.message ?? t('blog.loadError')
-  } finally {
-    isLoading.value = false
-    isLoadingMore.value = false
+    pagingRef.value?.complete(false)
+    const err = e as { message?: string }
+    uni.showToast({ title: err.message ?? t('blog.loadError'), icon: 'none' })
   }
-}
-
-function loadMore() {
-  if (!hasMore.value || isLoadingMore.value) return
-  loadPosts(false)
 }
 
 function goToPost(id: string) {
@@ -201,57 +154,87 @@ function goToCreate() {
 }
 
 onShow(() => {
-  sysInfo.value = uni.getSystemInfoSync()
   hasToken.value = !!uni.getStorageSync('auth_token')
-})
-
-onMounted(() => {
-  hasToken.value = !!uni.getStorageSync('auth_token')
-  loadPosts(true)
 })
 </script>
 
 <style scoped>
-.page { padding: 24rpx; padding-bottom: calc(24rpx + 50px + env(safe-area-inset-bottom)); min-height: 100vh; background: linear-gradient(180deg, #fdf2f8 0%, #fff 30%, #faf5ff 100%); }
-.btnCreate { padding: 16rpx 32rpx; background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; border-radius: 16rpx; font-size: 28rpx; }
-.loading-wrap, .error-wrap { padding: 48rpx; text-align: center; }
-.loading-text { color: #be185d; font-size: 28rpx; }
-.error-text { color: #dc2626; font-size: 28rpx; }
-.empty { padding: 48rpx; text-align: center; }
-.empty-desc { font-size: 28rpx; color: #6b7280; }
-.list { height: calc(100vh - var(--window-top, 0px) - 120rpx - 50px - env(safe-area-inset-bottom)); }
-.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24rpx; padding-bottom: 24rpx; }
-.card { width: 100%; background: #fff; border-radius: 24rpx; overflow: hidden; border: 1rpx solid rgba(236, 72, 153, 0.2); box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06); }
-.card-media { width: 100%; height: 280rpx; background: #f3f4f6; position: relative; }
-.card-img { width: 100%; height: 100%; }
-.card-media-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-.youtube-wrap { position: relative; }
-.play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); }
-.play-icon { font-size: 64rpx; color: #fff; }
-.placeholder-icon { font-size: 64rpx; }
-.card-body { padding: 20rpx; }
-.card-title { font-size: 30rpx; font-weight: 600; color: #111827; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-tags { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 12rpx; }
-.tag { padding: 4rpx 12rpx; border-radius: 999rpx; background: rgba(236, 72, 153, 0.1); color: #be185d; font-size: 22rpx; }
-.load-more { padding: 24rpx; text-align: center; }
-.btnLoadMore { padding: 20rpx 40rpx; border: 1rpx solid rgba(236, 72, 153, 0.3); border-radius: 16rpx; color: #be185d; font-size: 28rpx; }
-.debug-section { margin-top: 24rpx; background: #1e1e2e; border-radius: 16rpx; overflow: hidden; }
-.debug-header { padding: 20rpx 24rpx; display: flex; align-items: center; gap: 16rpx; background: #2d2d3d; }
-.debug-title { font-size: 26rpx; font-weight: 600; color: #a5b4fc; }
-.debug-count { font-size: 24rpx; color: #94a3b8; }
-.debug-toggle { margin-left: auto; font-size: 24rpx; color: #94a3b8; }
-.debug-body { padding: 20rpx; max-height: 400rpx; overflow-y: auto; }
-.btnClear { padding: 8rpx 20rpx; font-size: 24rpx; color: #94a3b8; background: #374151; border-radius: 8rpx; margin-bottom: 16rpx; }
-.debug-empty { font-size: 24rpx; color: #64748b; text-align: center; padding: 24rpx; }
-.debug-list { display: flex; flex-direction: column; gap: 16rpx; }
-.debug-item { padding: 16rpx; background: #27272a; border-radius: 12rpx; border-left: 4rpx solid #22c55e; }
-.debug-item.debug-error { border-left-color: #ef4444; }
-.debug-row { display: flex; align-items: center; gap: 16rpx; flex-wrap: wrap; margin-bottom: 8rpx; }
-.debug-method { font-size: 22rpx; font-weight: 600; color: #60a5fa; }
-.debug-status { font-size: 22rpx; color: #22c55e; }
-.debug-item.debug-error .debug-status { color: #ef4444; }
-.debug-duration { font-size: 22rpx; color: #fbbf24; }
-.debug-time { font-size: 22rpx; color: #64748b; }
-.debug-url { font-size: 22rpx; color: #94a3b8; display: block; word-break: break-all; }
-.debug-preview { font-size: 20rpx; color: #64748b; display: block; margin-top: 8rpx; word-break: break-all; }
+.page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #fdf2f8 0%, #fff 30%, #faf5ff 100%);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24rpx;
+  padding: 24rpx;
+}
+.card {
+  width: 100%;
+  background: #fff;
+  border-radius: 24rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(236, 72, 153, 0.2);
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+.card-media {
+  width: 100%;
+  height: 280rpx;
+  background: #f3f4f6;
+  position: relative;
+}
+.card-img {
+  width: 100%;
+  height: 100%;
+}
+.card-media-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.youtube-wrap {
+  position: relative;
+}
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+}
+.play-icon {
+  font-size: 64rpx;
+  color: #fff;
+}
+.placeholder-icon {
+  font-size: 64rpx;
+}
+.card-body {
+  padding: 20rpx;
+}
+.card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #111827;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 12rpx;
+}
+.tag {
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(236, 72, 153, 0.1);
+  color: #be185d;
+  font-size: 22rpx;
+}
 </style>

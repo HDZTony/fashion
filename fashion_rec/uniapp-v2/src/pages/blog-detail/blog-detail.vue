@@ -184,6 +184,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import { apiClient } from '@/lib/api-client'
+import { supabase } from '@/lib/supabase'
 import { extractYouTubeVideoId, getYouTubeThumbnail } from '@/lib/youtube'
 
 const { t } = useI18n()
@@ -280,7 +281,6 @@ onLoad((options?: Record<string, string | undefined>) => {
 })
 
 onMounted(async () => {
-  const { supabase } = await import('@/lib/supabase')
   const { data: { user } } = await supabase.auth.getUser()
   if (user) {
     currentUserId.value = user.id

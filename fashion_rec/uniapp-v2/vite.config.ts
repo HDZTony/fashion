@@ -252,8 +252,8 @@ export default defineConfig(({ command, mode }) => {
     },
 
     optimizeDeps: {
-      // pnpm monorepo 下 Supabase/Alova 子包解析问题，排除预构建由 Vite 正常解析
-      exclude: ['@supabase/supabase-js', 'alova', '@alova/adapter-uniapp', 'alova/vue'],
+      // pnpm monorepo 下 Alova 子包解析问题，排除预构建由 Vite 正常解析
+      exclude: ['alova', '@alova/adapter-uniapp', 'alova/vue'],
     },
     resolve: {
       alias: {
@@ -268,18 +268,6 @@ export default defineConfig(({ command, mode }) => {
           catch {
             return path.join(process.cwd(), 'node_modules/@intlify/shared/dist/shared.esm-bundler.js')
           }
-        })(),
-        // pnpm 下 supabase-js 子包解析：显式映射到实际路径
-        ...(() => {
-          const aliases: Record<string, string> = {}
-          for (const name of ['functions-js', 'postgrest-js', 'realtime-js', 'storage-js', 'auth-js']) {
-            try {
-              aliases[`@supabase/${name}`] = path.dirname(require.resolve(`@supabase/${name}/package.json`))
-            } catch {
-              // 包未安装时跳过
-            }
-          }
-          return aliases
         })(),
         '@img': path.join(process.cwd(), './src/static/images'),
         '@fashion-rec/shared/i18n': path.resolve(process.cwd(), '../shared/src/i18n/index.ts'),
@@ -315,6 +303,16 @@ export default defineConfig(({ command, mode }) => {
       target: 'es6',
       // 开发环境不用压缩
       minify: mode === 'development' ? false : 'esbuild',
+      // App 端使用 IIFE，与 code-splitting 不兼容，强制内联动态 import
+      ...(UNI_PLATFORM === 'app'
+        ? {
+            rollupOptions: {
+              output: {
+                inlineDynamicImports: true,
+              },
+            },
+          }
+        : {}),
     },
   })
 })

@@ -1,20 +1,16 @@
 <template>
-  <view class="p-6 min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50">
+  <view class="page">
     <view class="mb-6">
       <text class="text-2xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block">{{ t('favorites.title') }}</text>
     </view>
-    <view v-if="isLoading" class="py-12 text-center text-pink-600">
-      <text class="loading-text">{{ t('favorites.loading') }}</text>
-    </view>
-    <view v-else-if="error" class="py-6 text-center text-red-600">
-      <text class="error-text">{{ error }}</text>
-    </view>
-    <view v-else-if="favorites.length === 0" class="text-center py-20">
-      <text class="empty-icon">❤</text>
-      <text class="empty-title">{{ t('favorites.noFavorites') }}</text>
-      <text class="empty-desc">{{ t('favorites.noFavoritesDesc') }}</text>
-    </view>
-    <scroll-view v-else scroll-y class="list">
+    <z-paging
+      ref="pagingRef"
+      v-model="favorites"
+      :fixed="false"
+      :auto="true"
+      :default-page-size="100"
+      @query="queryList"
+    >
       <view class="grid">
         <view v-for="(favorite, index) in favorites" :key="favorite.id" class="card">
           <view class="card-img-wrap" @click="previewImage(index)">
@@ -36,12 +32,12 @@
           </view>
         </view>
       </view>
-    </scroll-view>
+    </z-paging>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, inject } from 'vue'
+import { ref, inject } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/lib/api-client'
@@ -65,8 +61,7 @@ interface Favorite {
 }
 
 const favorites = ref<Favorite[]>([])
-const isLoading = ref(false)
-const error = ref('')
+const pagingRef = ref<any>(null)
 
 const CACHE_KEY = 'favorites_cache'
 
@@ -94,24 +89,25 @@ function restoreFavoritesFromCache(): boolean {
   return false
 }
 
-async function loadFavorites() {
-  if (isLoading.value) return
-  isLoading.value = true
-  error.value = ''
+async function queryList(pageNo: number, _pageSize: number) {
+  // 非首页不再加载（收藏无分页，一次全量加载）
+  if (pageNo > 1) {
+    pagingRef.value?.complete([])
+    return
+  }
   try {
     const response = await apiClient.get<{ favorites: Favorite[] }>('/favorites', { timeout: 30000 })
-    favorites.value = response.data?.favorites ?? []
+    const items = response.data?.favorites ?? []
     saveFavoritesToCache()
+    pagingRef.value?.complete(items)
   } catch (e: unknown) {
-    const err = e as { response?: { status: number; data?: { detail?: string } }; message?: string }
-    const detail = err.response?.data?.detail ?? err.message ?? 'Failed to load favorites'
+    const err = e as { response?: { status: number } }
     if (err.response?.status === 401 && favorites.value.length > 0) {
-      error.value = ''
+      // 有缓存，不报错
+      pagingRef.value?.complete([])
       return
     }
-    if (favorites.value.length === 0) error.value = detail
-  } finally {
-    isLoading.value = false
+    pagingRef.value?.complete(false)
   }
 }
 
@@ -126,7 +122,8 @@ async function deleteFavorite(favoriteId: string) {
   if (!ok) return
   try {
     await apiClient.delete(`/favorites/${favoriteId}`)
-    await loadFavorites()
+    // 删除后刷新
+    pagingRef.value?.reload()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } }; message?: string }
     uni.showToast({ title: err.response?.data?.detail ?? err.message ?? 'Delete failed', icon: 'none' })
@@ -193,29 +190,12 @@ onShow(() => {
     return
   }
   restoreFavoritesFromCache()
-  loadFavorites()
-})
-
-onMounted(() => {
-  if (props.embedded) {
-    restoreFavoritesFromCache()
-    loadFavorites()
-  }
+  pagingRef.value?.reload()
 })
 </script>
 
 <style scoped>
 .page { padding: 24rpx; min-height: 100%; background: linear-gradient(180deg, #fdf2f8 0%, #fff 30%, #faf5ff 100%); }
-.header { margin-bottom: 24rpx; }
-.title { font-size: 40rpx; font-weight: 700; background: linear-gradient(90deg, #ec4899, #a855f7); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.loading-wrap, .error-wrap { padding: 48rpx; text-align: center; }
-.loading-text { color: #be185d; font-size: 28rpx; }
-.error-text { color: #dc2626; font-size: 28rpx; }
-.empty { padding: 48rpx; text-align: center; }
-.empty-icon { font-size: 80rpx; display: block; margin-bottom: 16rpx; }
-.empty-title { font-size: 30rpx; font-weight: 500; color: #374151; display: block; margin-bottom: 8rpx; }
-.empty-desc { font-size: 24rpx; color: #ec4899; display: block; }
-.list { height: calc(100vh - 200rpx); }
 .grid { display: flex; flex-wrap: wrap; gap: 24rpx; padding-bottom: 24rpx; }
 .card { width: calc(50% - 12rpx); background: #fff; border-radius: 24rpx; overflow: hidden; border: 1rpx solid rgba(236, 72, 153, 0.2); box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06); }
 .card-img-wrap { width: 100%; aspect-ratio: 1; background: #f9fafb; }

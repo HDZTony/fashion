@@ -80,6 +80,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
+import { supabase } from '@/lib/supabase'
 
 const { t } = useI18n()
 const email = ref('')
@@ -141,9 +142,8 @@ async function signIn() {
   loading.value = true
   error.value = ''
   try {
-    console.log('[Login] importing supabase...')
-    const { supabase } = await import('@/lib/supabase')
-    console.log('[Login] supabase imported, calling auth...')
+    console.log('[Login] calling auth...')
+
     if (isSignUp.value) {
       const { data, error: err } = await supabase.auth.signUp({
         email: email.value,
@@ -214,7 +214,6 @@ async function sendReset() {
   loading.value = true
   error.value = ''
   try {
-    const { supabase } = await import('@/lib/supabase')
     const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
       redirectTo: `${getCallbackUrl()}?type=recovery`,
     })
@@ -231,14 +230,73 @@ async function handleGoogleLogin() {
   loading.value = true
   error.value = ''
   try {
-    const { supabase } = await import('@/lib/supabase')
-    const { error: err } = await supabase.auth.signInWithOAuth({
+    // #ifdef APP-PLUS
+    // App 端：使用 uni.login 调起原生 Google 登录
+    const loginRes: any = await new Promise((resolve, reject) => {
+      uni.login({
+        provider: 'google',
+        success: (res: any) => resolve(res),
+        fail: (err: any) => reject(new Error(`Google 登录失败: ${err?.errMsg || JSON.stringify(err)}`)),
+      })
+    })
+    console.log('[Login] uni.login authResult:', JSON.stringify(loginRes.authResult))
+
+    const googleAccessToken = loginRes.authResult?.access_token
+    if (!googleAccessToken) {
+      throw new Error('未获取到 Google access_token')
+    }
+
+    // 将 Google access_token 发送到服务端，换取 Supabase session
+    const apiUrl = (import.meta.env.VITE_API_URL as string) || 'https://fashion-rec.com'
+    const serverRes: any = await new Promise((resolve, reject) => {
+      uni.request({
+        url: `${apiUrl}/api/auth/google-native`,
+        method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        data: { access_token: googleAccessToken },
+        success: (res: any) => resolve(res),
+        fail: (err: any) => reject(new Error(`服务端认证失败: ${err?.errMsg || JSON.stringify(err)}`)),
+      })
+    })
+
+    if (serverRes.statusCode !== 200) {
+      const errMsg = (serverRes.data as any)?.error || `HTTP ${serverRes.statusCode}`
+      throw new Error(`服务端认证失败: ${errMsg}`)
+    }
+
+    const { access_token, refresh_token } = serverRes.data as { access_token: string, refresh_token: string }
+    console.log('[Login] Server returned session tokens')
+
+    // 存储 token 用于 API 请求
+    uni.setStorageSync('auth_token', access_token)
+
+    // 尝试设置 Supabase session（如果 auth 模块可用）
+    try {
+      if (supabase?.auth?.setSession) {
+        await supabase.auth.setSession({ access_token, refresh_token })
+        console.log('[Login] Supabase session set OK')
+      }
+    } catch (e) {
+      console.warn('[Login] setSession failed, continuing with stored token:', e)
+    }
+
+    afterLogin()
+    // #endif
+
+    // #ifdef H5
+    // H5 端：使用 OAuth 重定向流程
+    const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: getCallbackUrl() },
     })
-    if (err) throw err
+    if (oauthErr) throw oauthErr
+    // 页面会重定向到 Google，无需后续处理
+    return
+    // #endif
   } catch (e: unknown) {
+    console.error('[Login] Google login error', e)
     error.value = (e as { message?: string })?.message || t('login.googleLoginFailed')
+  } finally {
     loading.value = false
   }
 }
@@ -252,7 +310,6 @@ async function handleResendConfirmation() {
   loading.value = true
   error.value = ''
   try {
-    const { supabase } = await import('@/lib/supabase')
     const { error: err } = await supabase.auth.resend({
       type: 'signup',
       email: email.value,

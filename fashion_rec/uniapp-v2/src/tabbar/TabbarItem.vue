@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CustomTabBarItem } from './types'
+import { useI18n } from 'vue-i18n'
 import { tabbarStore } from './store'
 
 defineProps<{
@@ -7,6 +8,14 @@ defineProps<{
   index: number
   isBulge?: boolean
 }>()
+
+const { t } = useI18n()
+
+/** 解析 %key% 格式的 i18n 占位符，如 %nav.home% -> t('nav.home') */
+function resolveText(text: string): string {
+  const m = text.match(/^%([^%]+)%$/)
+  return m ? t(m[1]) : text
+}
 
 function getImageByIndex(index: number, item: CustomTabBarItem) {
   if (!item.iconActive) {
@@ -33,7 +42,7 @@ function getImageByIndex(index: number, item: CustomTabBarItem) {
       <image :src="getImageByIndex(index, item)" mode="scaleToFill" :class="isBulge ? 'h-80px w-80px' : 'h-24px w-24px'" />
     </template>
     <view v-if="!isBulge" class="mt-2px text-12px">
-      {{ item.text }}
+      {{ resolveText(item.text) }}
     </view>
     <!-- 角标显示 -->
     <view v-if="item.badge">
