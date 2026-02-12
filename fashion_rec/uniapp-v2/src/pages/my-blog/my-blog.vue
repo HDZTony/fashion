@@ -1,5 +1,5 @@
 <template>
-  <view class="p-6 min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50">
+  <view class="page">
     <wd-navbar
       v-if="!embedded"
       :title="t('blog.myBlog')"
@@ -10,17 +10,19 @@
       bordered
       @click-right="openCreate"
     />
-    <view v-if="isLoading" class="py-12 text-center text-pink-600">
-      <text class="loading-text">{{ t('blog.loading') }}</text>
+    <!-- 未登录提示 -->
+    <view v-if="!currentUserId" class="text-center py-20">
+      <text class="text-sm text-gray-500 block mb-4">Please sign in to view your blog posts</text>
     </view>
-    <view v-else-if="error" class="error-wrap">
-      <text class="error-text">{{ error }}</text>
-    </view>
-    <view v-else-if="posts.length === 0" class="text-center py-20">
-      <text class="text-sm text-gray-500 block mb-4">{{ t('blog.noPosts') }}</text>
-      <button class="py-4 px-8 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-2xl text-sm" @click="openCreate">{{ t('blog.create') }}</button>
-    </view>
-    <scroll-view v-else scroll-y class="list" @scrolltolower="loadMore">
+    <z-paging
+      v-else
+      ref="pagingRef"
+      v-model="posts"
+      :fixed="false"
+      :auto="true"
+      :default-page-size="pageSize"
+      @query="queryList"
+    >
       <view class="grid">
         <view v-for="post in posts" :key="post.id" class="card">
           <view class="card-media" @click="goToPost(post.id)">
@@ -49,12 +51,7 @@
           </view>
         </view>
       </view>
-      <view v-if="posts.length > 0 && hasMore" class="load-more">
-        <button class="btnLoadMore" :disabled="isLoadingMore" @click="loadMore">
-          {{ isLoadingMore ? t('common.loading') : t('blog.loadMore') }}
-        </button>
-      </view>
-    </scroll-view>
+    </z-paging>
   </view>
 </template>
 
@@ -87,12 +84,8 @@ interface BlogPost {
 }
 
 const posts = ref<BlogPost[]>([])
-const isLoading = ref(false)
-const isLoadingMore = ref(false)
-const error = ref('')
-const hasMore = ref(true)
-const offset = ref(0)
-const limit = 20
+const pagingRef = ref<any>(null)
+const pageSize = 20
 const currentUserId = ref<string | null>(null)
 
 function getFirstMediaUrl(post: BlogPost): string {
@@ -102,42 +95,26 @@ function getFirstMediaUrl(post: BlogPost): string {
   return media.thumbnail ?? media.url
 }
 
-async function loadPosts(reset = false) {
+async function queryList(pageNo: number, pageSize: number) {
   if (!currentUserId.value) {
-    error.value = 'Please sign in to view your blog posts'
+    pagingRef.value?.complete([])
     return
   }
-  if (reset) {
-    offset.value = 0
-    posts.value = []
-    hasMore.value = true
-  }
-  if (isLoading.value || isLoadingMore.value) return
-  if (reset) isLoading.value = true
-  else isLoadingMore.value = true
-  error.value = ''
   try {
+    const offset = (pageNo - 1) * pageSize
     const response = await apiClient.get<{ posts: BlogPost[] }>('/blog/posts', {
-      params: { limit, offset: offset.value, user_id: currentUserId.value },
+      params: {
+        limit: String(pageSize),
+        offset: String(offset),
+        user_id: currentUserId.value,
+      },
       timeout: 30000,
     })
     const newPosts = response.data?.posts ?? []
-    if (reset) posts.value = newPosts
-    else posts.value.push(...newPosts)
-    hasMore.value = newPosts.length === limit
-    offset.value += newPosts.length
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { error?: string } }; message?: string }
-    error.value = err.response?.data?.error ?? err.message ?? t('blog.loadError')
-  } finally {
-    isLoading.value = false
-    isLoadingMore.value = false
+    pagingRef.value?.complete(newPosts)
+  } catch {
+    pagingRef.value?.complete(false)
   }
-}
-
-function loadMore() {
-  if (!hasMore.value || isLoadingMore.value) return
-  loadPosts(false)
 }
 
 function goToPost(id: string) {
@@ -163,12 +140,22 @@ async function deletePost(id: string) {
   if (!ok) return
   try {
     await apiClient.delete(`/blog/posts/${id}`)
+    // 从列表中移除并刷新
     posts.value = posts.value.filter((p) => p.id !== id)
     uni.showToast({ title: t('blog.deleteSuccess'), icon: 'success' })
   } catch (e: unknown) {
     const err = e as { response?: { data?: { error?: string } }; message?: string }
     uni.showToast({ title: err.response?.data?.error ?? err.message ?? t('blog.deleteError'), icon: 'none' })
   }
+}
+
+function initUser() {
+  supabase.auth.getUser().then(({ data: { user } }) => {
+    if (user) {
+      currentUserId.value = user.id
+      pagingRef.value?.reload()
+    }
+  })
 }
 
 onShow(() => {
@@ -178,41 +165,16 @@ onShow(() => {
     uni.navigateTo({ url: '/pages/login/login?redirect=' + encodeURIComponent('/pages/my-blog/my-blog') })
     return
   }
-  supabase.auth.getUser().then(({ data: { user } }) => {
-    if (user) {
-      currentUserId.value = user.id
-      loadPosts(true)
-    } else {
-      error.value = 'Please sign in to view your blog posts'
-    }
-  })
+  initUser()
 })
 
 onMounted(() => {
-  if (props.embedded) {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        currentUserId.value = user.id
-        loadPosts(true)
-      } else {
-        error.value = 'Please sign in to view your blog posts'
-      }
-    })
-  }
+  if (props.embedded) initUser()
 })
 </script>
 
 <style scoped>
 .page { padding: 24rpx; min-height: 100%; background: linear-gradient(180deg, #fdf2f8 0%, #fff 30%, #faf5ff 100%); }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24rpx; }
-.title { font-size: 40rpx; font-weight: 700; background: linear-gradient(90deg, #ec4899, #a855f7); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.btnCreate { padding: 16rpx 32rpx; background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; border-radius: 16rpx; font-size: 28rpx; }
-.loading-wrap, .error-wrap { padding: 48rpx; text-align: center; }
-.loading-text { color: #be185d; font-size: 28rpx; }
-.error-text { color: #dc2626; font-size: 28rpx; }
-.empty { padding: 48rpx; text-align: center; }
-.empty-desc { font-size: 28rpx; color: #6b7280; display: block; margin-bottom: 24rpx; }
-.list { height: calc(100vh - var(--window-top, 0px) - 200rpx); }
 .grid { display: flex; flex-wrap: wrap; gap: 24rpx; padding-bottom: 24rpx; }
 .card { width: calc(50% - 12rpx); background: #fff; border-radius: 24rpx; overflow: hidden; border: 1rpx solid rgba(236, 72, 153, 0.2); box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06); }
 .card-media { width: 100%; height: 240rpx; background: #f3f4f6; position: relative; }
@@ -229,6 +191,4 @@ onMounted(() => {
 .card-actions { display: flex; gap: 16rpx; }
 .btnEdit { flex: 1; font-size: 24rpx; border: 1rpx solid #ec4899; color: #ec4899; border-radius: 12rpx; }
 .btnDel { flex: 1; font-size: 24rpx; background: #fee2e2; color: #dc2626; border-radius: 12rpx; }
-.load-more { padding: 24rpx; text-align: center; }
-.btnLoadMore { padding: 20rpx 40rpx; border: 1rpx solid rgba(236, 72, 153, 0.3); border-radius: 16rpx; color: #be185d; font-size: 28rpx; }
 </style>

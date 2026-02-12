@@ -18,11 +18,13 @@ const {
   VITE_WX_APPID,
   VITE_APP_PUBLIC_BASE,
   VITE_FALLBACK_LOCALE = 'auto',
+  VITE_GOOGLE_IOS_CLIENT_ID = '',
+  VITE_GOOGLE_ANDROID_CLIENT_ID = '',
 } = env
 // console.log('manifest.config.ts env:', env)
 
 export default defineManifestConfig({
-  'name': '%app.name%',
+  'name': 'Fashion Rec',
   'appid': VITE_UNI_APPID,
   'description': '',
   'versionName': '1.0.0',
@@ -49,7 +51,9 @@ export default defineManifestConfig({
       delay: 0,
     },
     /* 模块配置 */
-    modules: {},
+    modules: {
+      OAuth: {},
+    },
     /* 应用发布信息 */
     distribute: {
       /* android打包配置 */
@@ -78,7 +82,13 @@ export default defineManifestConfig({
       /* ios打包配置 */
       ios: {},
       /* SDK配置 */
-      sdkConfigs: {},
+      sdkConfigs: {
+        oauth: {
+          google: {
+            clientid: VITE_GOOGLE_IOS_CLIENT_ID,
+          },
+        },
+      },
       /* 图标配置 */
       icons: {
         android: {

@@ -16,6 +16,22 @@ page {
 
   // 修改按钮背景色
   // --wot-button-primary-bg-color: green;
+
+  /* 去除黑边：页面背景延伸至安全区域，避免刘海/底部出现黑边 */
+  background: linear-gradient(180deg, #fdf2f8 0%, #fff 50%, #faf5ff 100%);
+  min-height: 100vh;
+}
+
+/* 去除黑边：body 背景与页面一致，防止边缘黑边 */
+body {
+  background: linear-gradient(180deg, #fdf2f8 0%, #fff 50%, #faf5ff 100%);
+}
+
+/* 去除 uni-app 默认按钮边框 - 全局生效 */
+button {
+  border: none;
+  border-width: 0;
+  outline: none;
 }
 
 /*

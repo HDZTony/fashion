@@ -4,10 +4,10 @@ import { tabBar } from './src/tabbar/config'
 export default defineUniPages({
   globalStyle: {
     navigationStyle: 'default',
-    navigationBarTitleText: '%app.name%',
+    navigationBarTitleText: 'Fashion Rec',
     navigationBarBackgroundColor: '#f8f8f8',
     navigationBarTextStyle: 'black',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fdf2f8', /* 与页面渐变一致，去除黑边 */
   },
   easycom: {
     autoscan: true,

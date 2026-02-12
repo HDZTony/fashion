@@ -23,6 +23,11 @@ compatibility_date = "2024-01-01"
 binding = "USER_VERSIONS"
 id = "e335d5ff4f4948718434187ca14f94b7"
 
+# Service Binding: 内部调用 Blog Worker，绕过 Cloudflare Access
+[[services]]
+binding = "BLOG_SERVICE"
+service = "fashion-rec-blog"
+
 # Routes configuration
 # Configure routes in Cloudflare Dashboard:
 # Workers & Pages → fashion-rec-router → Settings → Triggers → Routes

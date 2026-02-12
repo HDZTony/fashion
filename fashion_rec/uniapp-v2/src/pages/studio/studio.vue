@@ -167,16 +167,28 @@
       </view>
     </view>
     <view v-if="showExampleBg" class="modal" @click.self="showExampleBg = false">
-      <view class="modalContent">
+      <view class="modalContent modalExampleBg">
         <view class="modalHeader">
           <text>{{ t('studio.chooseExampleBackground') }}</text>
-          <button size="mini" @click="showExampleBg = false">✕</button>
+          <view class="modalCloseBtn" @click="showExampleBg = false">✕</view>
         </view>
-        <scroll-view scroll-y class="modalBody">
-          <view class="imgGrid">
-            <image v-for="(ex, i) in exampleBgImages" :key="i" :src="getSmallImageUrl(ex.url)" class="gridImg" mode="aspectFill" @click="selectExampleBg(ex)" />
+        <scroll-view scroll-y class="modalBody modalExampleBgBody">
+          <view v-if="exampleBgImages.length === 0" class="emptyModal">{{ t('studio.noExampleBackground') }}</view>
+          <view v-else class="exampleBgGrid">
+            <view
+              v-for="(ex, i) in exampleBgImages"
+              :key="i"
+              class="exampleBgItem"
+              @click="selectExampleBg(ex)"
+            >
+              <image :src="getSmallImageUrl(ex.url)" class="exampleBgImg" mode="aspectFill" />
+              <view class="exampleBgOverlay">
+                <text class="exampleBgHint">{{ t('studio.clickToUse') }}</text>
+              </view>
+            </view>
           </view>
         </scroll-view>
+        
       </view>
     </view>
   </scroll-view>
@@ -200,6 +212,48 @@ const exampleModelImages = ['https://r2.fashion-rec.com/example/IMG_9953.JPG', '
 const exampleBgImages = [
   { url: 'https://r2.fashion-rec.com/example/nature-wallpaper-7541423_1920.jpg', prompt: 'studio.exampleBackgroundPrompts.001' },
   { url: 'https://r2.fashion-rec.com/example/pexels-abdul-ahad-2158214293-35229355.jpg', prompt: 'studio.exampleBackgroundPrompts.002' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adamowicz-adamsky-2149308693-30925021.jpg', prompt: 'studio.exampleBackgroundPrompts.003' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-adriannacalvo-23384610.jpg', prompt: 'studio.exampleBackgroundPrompts.004' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alecdoua-34864230.jpg', prompt: 'studio.exampleBackgroundPrompts.005' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alexandre-moreira-2527876-34593721.jpg', prompt: 'studio.exampleBackgroundPrompts.006' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445409.jpg', prompt: 'studio.exampleBackgroundPrompts.007' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alina-zahorulko-48514961-31445410.jpg', prompt: 'studio.exampleBackgroundPrompts.008' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alinaskazka-34702608.jpg', prompt: 'studio.exampleBackgroundPrompts.009' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-aljona-ovtsinnikova-121486965-24740438.jpg', prompt: 'studio.exampleBackgroundPrompts.010' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-alyona-nagel-1468385055-35224891.jpg', prompt: 'studio.exampleBackgroundPrompts.011' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-buxteh-30221622.jpg', prompt: 'studio.exampleBackgroundPrompts.012' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-casnafu-35129031.jpg', prompt: 'studio.exampleBackgroundPrompts.013' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cheng-shi-song-427082720-33792335.jpg', prompt: 'studio.exampleBackgroundPrompts.014' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-christina99999-34801832.jpg', prompt: 'studio.exampleBackgroundPrompts.015' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-cigdem-bilgin-2154409770-35014795.jpg', prompt: 'studio.exampleBackgroundPrompts.016' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dario-rawert-724203352-26765041.jpg', prompt: 'studio.exampleBackgroundPrompts.017' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-davidexpedition-31225636.jpg', prompt: 'studio.exampleBackgroundPrompts.018' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-dawidtkocz-34686175.jpg', prompt: 'studio.exampleBackgroundPrompts.019' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diana-gp-358688833-14714743.jpg', prompt: 'studio.exampleBackgroundPrompts.020' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-diego-f-parra-33199-25254926.jpg', prompt: 'studio.exampleBackgroundPrompts.021' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-edgar-mosqueda-camacho-544076702-27204878.jpg', prompt: 'studio.exampleBackgroundPrompts.022' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-esrannuur-129682465-13820222.jpg', prompt: 'studio.exampleBackgroundPrompts.023' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ezgi-kaya-498261122-35188967.jpg', prompt: 'studio.exampleBackgroundPrompts.024' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-galina-kolonitskaia-485466282-35002554.jpg', prompt: 'studio.exampleBackgroundPrompts.025' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-holodna-34974763.jpg', prompt: 'studio.exampleBackgroundPrompts.026' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jan-korgaard-2426390-34712722.jpg', prompt: 'studio.exampleBackgroundPrompts.027' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-jonathan-yakubu-337910510-28041981.jpg', prompt: 'studio.exampleBackgroundPrompts.028' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-laura-paredis-1047081-27041249.jpg', prompt: 'studio.exampleBackgroundPrompts.029' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maksim-smirnov-27565989-32315717.jpg', prompt: 'studio.exampleBackgroundPrompts.030' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-maurits-bausenhart-1112663191-34865450.jpg', prompt: 'studio.exampleBackgroundPrompts.031' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-myfoodie-2551794.jpg', prompt: 'studio.exampleBackgroundPrompts.032' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-nilsr-28271725.jpg', prompt: 'studio.exampleBackgroundPrompts.033' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ramon-clemente-1097299-34314485.jpg', prompt: 'studio.exampleBackgroundPrompts.034' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-ricky-kwong-113005840-35360579.jpg', prompt: 'studio.exampleBackgroundPrompts.035' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-simon73-30560968.jpg', prompt: 'studio.exampleBackgroundPrompts.036' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-studio-lichtfang-2152913672-32488229.jpg', prompt: 'studio.exampleBackgroundPrompts.037' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tatilimiz-villada-2156582649-35141528.jpg', prompt: 'studio.exampleBackgroundPrompts.038' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-tobias-schwenk-2158345167-35319435.jpg', prompt: 'studio.exampleBackgroundPrompts.039' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-took-a-snap-789265640-20751943.jpg', prompt: 'studio.exampleBackgroundPrompts.040' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-urtimud-89-76108288-35117015.jpg', prompt: 'studio.exampleBackgroundPrompts.041' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-vahestnatukewild-34774915.jpg', prompt: 'studio.exampleBackgroundPrompts.042' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-valentin_21-808934417-31148513.jpg', prompt: 'studio.exampleBackgroundPrompts.043' },
+  { url: 'https://r2.fashion-rec.com/example/pexels-wael-belkahla-2158256982-35329797.jpg', prompt: 'studio.exampleBackgroundPrompts.044' },
 ]
 
 interface HistoricalImage { id: string; image_url: string; created_at: string }
@@ -453,7 +507,21 @@ function selectExampleBg(ex: { url: string; prompt: string }) {
     store.value.backgroundImagePreviewUrl = ex.url
     if (ex.prompt.startsWith('studio.')) store.value.backgroundActionPrompt = t(ex.prompt)
     else store.value.backgroundActionPrompt = ex.prompt
+    store.value.backgroundTabValue = 'with-background'
   }
+  showExampleBg.value = false
+  saveStore()
+}
+
+function chooseNoBackgroundAndClose() {
+  removeBackgroundImage()
+  store.value.backgroundTabValue = 'no-background'
+  showExampleBg.value = false
+  saveStore()
+}
+
+function chooseWithBackgroundAndClose() {
+  store.value.backgroundTabValue = 'with-background'
   showExampleBg.value = false
   saveStore()
 }
@@ -627,6 +695,9 @@ function previewImage(url: string) {
 .uploadOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
 .uploadPercent { color: #fff; font-size: 32rpx; }
 .modelActions, .row { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
+.bgSection { margin-top: 16rpx; }
+.bgPreview { position: relative; display: block; width: 100%; margin-top: 16rpx; }
+.bgThumb { width: 100%; height: 240rpx; border-radius: 16rpx; display: block; }
 .emptyIcon { font-size: 64rpx; display: block; text-align: center; margin-bottom: 16rpx; }
 .emptyDesc { font-size: 24rpx; color: #ec4899; display: block; margin-top: 16rpx; }
 .appliedCount { font-size: 26rpx; margin-bottom: 16rpx; }
@@ -658,8 +729,22 @@ function previewImage(url: string) {
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 48rpx; }
 .modalContent { background: #fff; border-radius: 24rpx; max-height: 80vh; width: 100%; overflow: hidden; }
 .modalHeader { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #eee; }
-.modalBody { max-height: 60vh; padding: 24rpx; }
+.modalBody { max-height: 60vh; }
 .imgGrid { display: flex; flex-wrap: wrap; gap: 24rpx; }
 .gridImg { width: 200rpx; height: 280rpx; border-radius: 12rpx; }
 .emptyModal { text-align: center; padding: 48rpx; color: #ec4899; }
+
+/* Example background modal - 完全复刻前端 */
+.modalExampleBg { display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 25rpx 50rpx rgba(0,0,0,0.15); }
+.modalCloseBtn { padding: 8rpx 16rpx; background: transparent; color: #ec4899; font-size: 28rpx; display: flex; align-items: center; justify-content: center; min-width: 64rpx; min-height: 64rpx; }
+.modalExampleBgBody { flex: 1; overflow-y: auto; max-height: 55vh; }
+.exampleBgGrid { display: flex; flex-direction: column; gap: 24rpx; width: 100%; box-sizing: border-box; }
+.exampleBgItem { position: relative; width: calc(100% - 48rpx); height: 360rpx; margin: 0 24rpx; border-radius: 16rpx; overflow: hidden; border: none; box-sizing: border-box; }
+.exampleBgImg { width: 100%; height: 100%; display: block; }
+.exampleBgOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2); display: flex; align-items: flex-end; justify-content: center; padding: 16rpx; }
+.exampleBgHint { font-size: 24rpx; background: rgba(255,255,255,0.9); color: #374151; padding: 8rpx 24rpx; border-radius: 8rpx; font-weight: 500; border: none; }
+.modalFooter { display: flex; gap: 24rpx; padding: 24rpx; border-top: 1rpx solid #fce7f3; }
+.exampleBgBtn { flex: 1; text-align: center; padding: 24rpx; border-radius: 16rpx; font-size: 28rpx; font-weight: 500; border: none; }
+.exampleBgBtnNo { background: #f3f4f6; color: #6b7280; }
+.exampleBgBtnYes { background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; }
 </style>

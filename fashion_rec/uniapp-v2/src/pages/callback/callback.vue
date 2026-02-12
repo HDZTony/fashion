@@ -21,13 +21,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { supabase } from '@/lib/supabase'
 
 const { t } = useI18n()
 const error = ref('')
 
 onMounted(async () => {
   try {
-    const { supabase } = await import('@/lib/supabase')
     const { data, error: sessionError } = await supabase.auth.getSession()
 
     if (sessionError) throw sessionError

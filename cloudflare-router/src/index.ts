@@ -26,6 +26,8 @@ interface Env {
   STABLE_SUBSCRIPTION_SERVICE_URL: string
   V2_SUBSCRIPTION_SERVICE_URL: string
   BLOG_SERVICE_URL: string
+  /** Service Binding: 内部调用 Blog Worker，绕过 Cloudflare Access */
+  BLOG_SERVICE: Fetcher
   USER_VERSIONS: KVNamespace
 }
 
@@ -513,6 +515,7 @@ export default {
       if (request.method === 'OPTIONS' && (isApiForCors || 
           path === '/api/router/get-version' || 
           path === '/api/router/set-version' || 
+          path === '/api/auth/google-native' ||
           path === '/webhook' || 
           path === '/test-webhook' ||
           isSubscriptionServicePath ||
@@ -621,6 +624,137 @@ export default {
         }
       }
 
+      // Handle Google native login token exchange (App 端 Google 登录)
+      if (path === '/api/auth/google-native' && request.method === 'POST') {
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+
+        try {
+          const body = await request.json() as { access_token: string }
+          const { access_token: googleAccessToken } = body
+
+          if (!googleAccessToken) {
+            return new Response(JSON.stringify({ error: 'Missing access_token' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          // 1. 用 Google API 验证 access_token 并获取用户信息
+          const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${googleAccessToken}` },
+          })
+
+          if (!googleRes.ok) {
+            console.error('[Auth] Google userinfo failed:', googleRes.status)
+            return new Response(JSON.stringify({ error: 'Invalid Google access token' }), {
+              status: 401,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          const googleUser = await googleRes.json() as {
+            sub: string
+            email: string
+            email_verified: boolean
+            name?: string
+            picture?: string
+          }
+
+          if (!googleUser.email) {
+            return new Response(JSON.stringify({ error: 'Google account has no email' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          console.log('[Auth] Google user verified:', googleUser.email)
+
+          // 2. 创建 Supabase admin 客户端
+          const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+          })
+
+          // 3. 生成 magic link OTP，然后服务端验证 OTP 获取 session tokens
+          let otp: string | undefined
+          const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email: googleUser.email,
+          })
+
+          if (linkError) {
+            // 用户可能不存在，先创建
+            console.log('[Auth] User not found, creating:', googleUser.email)
+            const { error: createError } = await supabaseAdmin.auth.admin.createUser({
+              email: googleUser.email,
+              email_confirm: true,
+              user_metadata: {
+                full_name: googleUser.name,
+                avatar_url: googleUser.picture,
+                provider: 'google',
+              },
+            })
+
+            if (createError && !createError.message.includes('already')) {
+              console.error('[Auth] Create user error:', createError.message)
+              return new Response(JSON.stringify({ error: createError.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              })
+            }
+
+            // 创建后重新生成 magic link
+            const { data: retryData, error: retryError } = await supabaseAdmin.auth.admin.generateLink({
+              type: 'magiclink',
+              email: googleUser.email,
+            })
+
+            if (retryError) {
+              console.error('[Auth] Generate link retry error:', retryError.message)
+              return new Response(JSON.stringify({ error: retryError.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              })
+            }
+
+            otp = retryData.properties.email_otp
+          } else {
+            otp = linkData.properties.email_otp
+          }
+
+          // 4. 服务端验证 OTP，直接获取 session tokens
+          const { data: sessionData, error: verifyError } = await supabaseAdmin.auth.verifyOtp({
+            email: googleUser.email,
+            token: otp!,
+            type: 'magiclink',
+          })
+
+          if (verifyError || !sessionData.session) {
+            console.error('[Auth] Verify OTP error:', verifyError?.message)
+            return new Response(JSON.stringify({ error: verifyError?.message || 'Failed to create session' }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+
+          // 5. 返回 session tokens，客户端直接 setSession
+          console.log('[Auth] Google native login success for:', googleUser.email)
+          return new Response(JSON.stringify({
+            access_token: sessionData.session.access_token,
+            refresh_token: sessionData.session.refresh_token,
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          })
+        } catch (error: any) {
+          console.error('[Auth] Google native login error:', error)
+          return new Response(JSON.stringify({ error: error.message || 'Internal error' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          })
+        }
+      }
+
       // Extract user ID from cookie
       const userId = extractUserIdFromCookie(request)
             
@@ -663,19 +797,19 @@ export default {
         // Route requests to appropriate service
         let backendUrl: string
         if (isBlogRequest) {
-          // Route blog requests to blog service
-          backendUrl = env.BLOG_SERVICE_URL
+          // Route blog requests via Service Binding (绕过 Cloudflare Access)
+          // 如果 Service Binding 不可用，fallback 到 BLOG_SERVICE_URL
+          const usesServiceBinding = !!env.BLOG_SERVICE
           
-          if (!backendUrl) {
-            console.error(`[Router] ❌ [${path}] Blog service URL is undefined`)
+          if (!usesServiceBinding && !env.BLOG_SERVICE_URL) {
+            console.error(`[Router] ❌ [${path}] Blog service is not configured (no Service Binding and no BLOG_SERVICE_URL)`)
             const origin = request.headers.get('Origin')
             const corsHeaders = getCorsHeaders(origin)
             
             return new Response(JSON.stringify({
               error: 'Configuration error',
-              detail: 'Blog service URL is not configured. Please set BLOG_SERVICE_URL environment variable.\n\nFor local development:\n1. Ensure .dev.vars file exists in cloudflare-router directory\n2. Add BLOG_SERVICE_URL=http://127.0.0.1:8788\n3. Restart wrangler dev after adding environment variables',
+              detail: 'Blog service is not configured. Please add a Service Binding (BLOG_SERVICE) in wrangler.toml or set BLOG_SERVICE_URL environment variable.',
               path: path,
-              missingEnvVar: 'BLOG_SERVICE_URL'
             }), {
               status: 500,
               statusText: 'Internal Server Error',
@@ -686,11 +820,23 @@ export default {
             })
           }
           
-          console.log(`[Router] ✅ [${path}] Routing blog request ${request.method} to: ${backendUrl}`)
+          // 构建去掉 /blog 前缀的内部请求路径
+          let blogPath = path.substring(5) // Remove '/blog'
+          if (!blogPath) blogPath = '/'
+          const blogInternalUrl = new URL(blogPath + url.search, 'https://blog-internal')
+
+          // 保留原始请求的 headers（包括 Authorization）
+          const headers = new Headers(request.headers)
+          headers.set('Host', 'blog-internal')
           
-          // Use special routing function that removes /blog prefix
-          const blogRequest = routeToBlogService(request, backendUrl)
-          console.log(`[Router] Blog request URL: ${blogRequest.url}, method: ${blogRequest.method}, hasAuth: ${!!blogRequest.headers.get('Authorization')}`)
+          const blogRequest = new Request(blogInternalUrl.toString(), {
+            method: request.method,
+            headers: headers,
+            body: request.body,
+            redirect: request.redirect,
+          })
+          
+          console.log(`[Router] ✅ [${path}] Routing blog request ${request.method} via ${usesServiceBinding ? 'Service Binding' : 'HTTP fetch'}, internal path: ${blogPath}`)
           
           const fetchStartTime = Date.now()
           
@@ -707,43 +853,37 @@ export default {
               signal: abortController.signal
             })
             
-            response = await fetch(requestWithSignal)
+            if (usesServiceBinding) {
+              // 使用 Service Binding 内部调用，绕过 Cloudflare Access
+              response = await env.BLOG_SERVICE.fetch(requestWithSignal)
+            } else {
+              // Fallback: 通过公网 HTTP fetch
+              const fallbackRequest = routeToBlogService(request, env.BLOG_SERVICE_URL)
+              response = await fetch(new Request(fallbackRequest, { signal: abortController.signal }))
+            }
             clearTimeout(timeoutId)
             
             console.log(`[Router] Blog service response: status ${response.status} ${response.statusText} for ${path}`)
           } catch (fetchError: any) {
             clearTimeout(timeoutId)
             const errorDuration = Date.now() - fetchStartTime
-            console.error(`[Router] Blog service fetch failed for ${blogRequest.url} after ${errorDuration}ms:`, fetchError)
+            console.error(`[Router] Blog service fetch failed after ${errorDuration}ms:`, fetchError)
             
             const origin = request.headers.get('Origin')
             const corsHeaders = getCorsHeaders(origin)
             
-            // Determine error type
             let errorDetail = fetchError.message || 'Request timeout or connection error'
-            let troubleshooting = ''
-            
-            if (fetchError.name === 'AbortError' || fetchError.message?.includes('aborted')) {
-              if (errorDuration < 1000) {
-                errorDetail = 'Connection refused - Blog service may not be running'
-                troubleshooting = 'Please ensure the blog service is running on port 8788. Run: cd cloudflare-blog && pnpm dev'
-              } else {
-                errorDetail = `Request timeout after ${errorDuration}ms`
-                troubleshooting = 'The blog service took too long to respond. Check if the service is running and responding correctly.'
-              }
-            } else if (fetchError.message?.includes('ECONNREFUSED') || fetchError.message?.includes('Failed to fetch')) {
-              errorDetail = 'Connection refused - Blog service may not be running'
-              troubleshooting = 'Please ensure the blog service is running on port 8788. Run: cd cloudflare-blog && pnpm dev'
+            if (fetchError.name === 'AbortError') {
+              errorDetail = errorDuration < 1000
+                ? 'Connection refused - Blog service may not be running'
+                : `Request timeout after ${errorDuration}ms`
             }
             
             return new Response(JSON.stringify({
               error: 'Blog service request failed',
               detail: errorDetail,
               path: path,
-              backend_host: new URL(blogRequest.url).hostname,
-              backend_url: blogRequest.url,
               duration_ms: errorDuration,
-              troubleshooting: troubleshooting || undefined
             }), {
               status: 502,
               statusText: 'Bad Gateway',
