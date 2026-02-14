@@ -30,7 +30,6 @@ docs/.vitepress/cache
 src/types
 # 单独把这个文件排除掉，用以解决部分电脑生成的 auto-import.d.ts 的API不完整导致类型提示报错问题
 !src/types/auto-import.d.ts
-src/manifest.json
 src/pages.json
 
 # 2025-10-15 by 菲鸽： lock 文件还是需要加入版本管理，今天又遇到版本不一致导致无法运行的问题了。

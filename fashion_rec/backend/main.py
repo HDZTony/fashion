@@ -30,7 +30,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from services.recognition import analyze_image
 from services.vector_db import add_to_wardrobe, search_similar, get_user_items, get_items_by_urls, get_user_items_with_embedding
 from services.try_on import generate_try_on
-from auth import get_current_user, get_current_user_token, get_current_user_and_token, get_optional_user_and_token
+from auth import get_current_user, get_current_user_token, get_current_user_and_token, get_optional_user_and_token, auth_router
 from fastapi import Depends
 from services.guest_quota import (
     check_and_consume_tryon,
@@ -40,6 +40,7 @@ from services.guest_quota import (
 )
 
 app = FastAPI(title="Fashion Recommendation API")
+app.include_router(auth_router)
 
 # Initialize app state for background tasks
 app.state.cleanup_task = None
@@ -77,6 +78,7 @@ async def log_auth_requests(request: Request, call_next):
 # Directories
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+
 
 class OutfitAgentRequest(BaseModel):
     location: Optional[str] = None  # Optional, will be extracted from prompt or IP if not provided

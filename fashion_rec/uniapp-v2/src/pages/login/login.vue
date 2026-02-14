@@ -226,6 +226,41 @@ async function sendReset() {
   }
 }
 
+/** 通过服务端 API 完成 Google 登录认证 */
+async function signInViaServer(data: Record<string, string>) {
+  const apiUrl = (import.meta.env.VITE_API_URL as string) || 'https://fashion-rec.com'
+  const serverRes: any = await new Promise((resolve, reject) => {
+    uni.request({
+      url: `${apiUrl}/api/auth/google-native`,
+      method: 'POST',
+      header: { 'Content-Type': 'application/json' },
+      data,
+      success: (res: any) => resolve(res),
+      fail: (err: any) => reject(new Error(`服务端认证失败: ${err?.errMsg || JSON.stringify(err)}`)),
+    })
+  })
+
+  if (serverRes.statusCode !== 200) {
+    const errMsg = (serverRes.data as any)?.detail || (serverRes.data as any)?.error || `HTTP ${serverRes.statusCode}`
+    throw new Error(`服务端认证失败: ${errMsg}`)
+  }
+
+  const { access_token, refresh_token } = serverRes.data as { access_token: string, refresh_token: string }
+  console.log('[Login] Server returned session tokens')
+  uni.setStorageSync('auth_token', access_token)
+
+  try {
+    if (supabase?.auth?.setSession) {
+      await supabase.auth.setSession({ access_token, refresh_token })
+      console.log('[Login] Supabase session set OK')
+    }
+  } catch (e) {
+    console.warn('[Login] setSession failed, continuing with stored token:', e)
+  }
+
+  afterLogin()
+}
+
 async function handleGoogleLogin() {
   loading.value = true
   error.value = ''
@@ -239,48 +274,84 @@ async function handleGoogleLogin() {
         fail: (err: any) => reject(new Error(`Google 登录失败: ${err?.errMsg || JSON.stringify(err)}`)),
       })
     })
-    console.log('[Login] uni.login authResult:', JSON.stringify(loginRes.authResult))
+    console.log('[Login] uni.login full result:', JSON.stringify(loginRes))
 
-    const googleAccessToken = loginRes.authResult?.access_token
-    if (!googleAccessToken) {
-      throw new Error('未获取到 Google access_token')
-    }
+    const authResult = loginRes.authResult || {}
+    let googleAccessToken = authResult.access_token || authResult.accessToken
+    let googleIdToken = authResult.idToken || authResult.id_token
 
-    // 将 Google access_token 发送到服务端，换取 Supabase session
-    const apiUrl = (import.meta.env.VITE_API_URL as string) || 'https://fashion-rec.com'
-    const serverRes: any = await new Promise((resolve, reject) => {
-      uni.request({
-        url: `${apiUrl}/api/auth/google-native`,
-        method: 'POST',
-        header: { 'Content-Type': 'application/json' },
-        data: { access_token: googleAccessToken },
-        success: (res: any) => resolve(res),
-        fail: (err: any) => reject(new Error(`服务端认证失败: ${err?.errMsg || JSON.stringify(err)}`)),
+    // uni.login 可能只返回 openid，需要通过 getUserInfo 获取完整 token
+    if (!googleAccessToken && !googleIdToken) {
+      console.log('[Login] No token in loginRes, trying getUserInfo...')
+      const userInfoRes: any = await new Promise((resolve, reject) => {
+        uni.getUserInfo({
+          provider: 'google',
+          success: (res: any) => resolve(res),
+          fail: (err: any) => reject(new Error(`获取 Google 用户信息失败: ${err?.errMsg || JSON.stringify(err)}`)),
+        })
       })
-    })
-
-    if (serverRes.statusCode !== 200) {
-      const errMsg = (serverRes.data as any)?.error || `HTTP ${serverRes.statusCode}`
-      throw new Error(`服务端认证失败: ${errMsg}`)
+      console.log('[Login] getUserInfo result:', JSON.stringify(userInfoRes))
+      const uiAuthResult = userInfoRes.authResult || {}
+      googleAccessToken = uiAuthResult.access_token || uiAuthResult.accessToken
+      googleIdToken = uiAuthResult.idToken || uiAuthResult.id_token
     }
 
-    const { access_token, refresh_token } = serverRes.data as { access_token: string, refresh_token: string }
-    console.log('[Login] Server returned session tokens')
-
-    // 存储 token 用于 API 请求
-    uni.setStorageSync('auth_token', access_token)
-
-    // 尝试设置 Supabase session（如果 auth 模块可用）
-    try {
-      if (supabase?.auth?.setSession) {
-        await supabase.auth.setSession({ access_token, refresh_token })
-        console.log('[Login] Supabase session set OK')
+    // 方式一：优先使用 ID token，直接通过 Supabase signInWithIdToken 认证（无需服务端中转）
+    if (googleIdToken) {
+      console.log('[Login] Using signInWithIdToken, idToken length:', googleIdToken.length)
+      const { data, error: err } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: googleIdToken,
+        access_token: googleAccessToken,
+      })
+      if (err) throw err
+      if (data.session) {
+        uni.setStorageSync('auth_token', data.session.access_token)
+        console.log('[Login] Supabase session set OK via signInWithIdToken')
+        afterLogin()
+        return
       }
-    } catch (e) {
-      console.warn('[Login] setSession failed, continuing with stored token:', e)
     }
 
-    afterLogin()
+    // 方式二：使用 access_token 通过服务端换取 Supabase session
+    if (googleAccessToken) {
+      console.log('[Login] Using access_token via server, token length:', googleAccessToken.length)
+      await signInViaServer({ access_token: googleAccessToken })
+      return
+    }
+
+    // 方式三：uni-app Google 模块未返回 token，但有用户信息（openid + email）
+    // 将 Google 验证过的用户信息发送到服务端，由服务端通过 Supabase Admin API 完成认证
+    const googleUserId = authResult.openid || authResult.unionid
+    if (googleUserId) {
+      // 获取用户详细信息
+      let userEmail = ''
+      let userName = ''
+      try {
+        const userInfoRes: any = await new Promise((resolve, reject) => {
+          uni.getUserInfo({
+            provider: 'google',
+            success: (res: any) => resolve(res),
+            fail: (err: any) => reject(err),
+          })
+        })
+        userEmail = userInfoRes.userInfo?.email || ''
+        userName = userInfoRes.userInfo?.nickname || userInfoRes.userInfo?.nickName || ''
+        console.log('[Login] Google user info:', { email: userEmail, name: userName, googleUserId })
+      } catch (e) {
+        console.warn('[Login] getUserInfo for email failed:', e)
+      }
+
+      if (!userEmail) {
+        throw new Error('未获取到 Google 邮箱，请重试')
+      }
+
+      console.log('[Login] Using google user info via server (no token available)')
+      await signInViaServer({ email: userEmail, google_user_id: googleUserId, name: userName })
+      return
+    }
+
+    throw new Error('Google 登录未返回有效信息，请重试')
     // #endif
 
     // #ifdef H5

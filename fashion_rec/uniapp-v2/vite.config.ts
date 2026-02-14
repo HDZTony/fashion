@@ -8,8 +8,6 @@ import Uni from '@uni-helper/plugin-uni'
 import UniComponents from '@uni-helper/vite-plugin-uni-components'
 // @see https://uni-helper.js.org/vite-plugin-uni-layouts
 import UniLayouts from '@uni-helper/vite-plugin-uni-layouts'
-// @see https://github.com/uni-helper/vite-plugin-uni-manifest
-import UniManifest from '@uni-helper/vite-plugin-uni-manifest'
 // @see https://uni-helper.js.org/vite-plugin-uni-pages
 import UniPages from '@uni-helper/vite-plugin-uni-pages'
 // @see https://github.com/uni-helper/vite-plugin-uni-platform
@@ -39,6 +37,7 @@ import openDevTools from './scripts/open-dev-tools'
 import { createCopyNativeResourcesPlugin } from './vite-plugins/copy-native-resources'
 import { markedUnicodeShim } from './vite-plugins/marked-unicode-shim'
 import syncManifestPlugin from './vite-plugins/sync-manifest-plugins'
+
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -82,7 +81,6 @@ export default defineConfig(({ command, mode }) => {
       // UniXXX 需要在 Uni 之前引入
       UniLayouts(),
       UniPlatform(),
-      UniManifest(),
       UniComponents({
         extensions: ['vue'],
         deep: true, // 是否递归扫描子目录，
@@ -252,6 +250,7 @@ export default defineConfig(({ command, mode }) => {
     },
 
     optimizeDeps: {
+      // pnpm monorepo 下 Alova 子包解析问题，排除预构建由 Vite 正常解析
       // pnpm monorepo 下 Alova 子包解析问题，排除预构建由 Vite 正常解析
       exclude: ['alova', '@alova/adapter-uniapp', 'alova/vue'],
     },
