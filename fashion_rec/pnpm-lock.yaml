@@ -12,6 +12,8 @@ overrides:
   '@dcloudio/uni-h5': 3.0.0-4080720251210001
   '@dcloudio/uni-cli-shared': 3.0.0-4080720251210001
   '@dcloudio/vite-plugin-uni': 3.0.0-4080720251210001
+  unconfig: 7.3.2
+  bin-wrapper: npm:bin-wrapper-china
 
 importers:
 
@@ -2659,8 +2661,8 @@ packages:
     peerDependencies:
       prettier: '*'
 
-  '@quansync/fs@1.0.0':
-    resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
+  '@quansync/fs@0.1.6':
+    resolution: {integrity: sha512-zoA8SqQO11qH9H8FCBR7NIbowYARIPmBz3nKjgAaOUDi/xPAAu1uAgebtV7KXHTc6CDZJVRZ1u4wIGvY5CWYaw==}
 
   '@rolldown/pluginutils@1.0.0-beta.53':
     resolution: {integrity: sha512-vENRlFU4YbrwVqNDZ7fLvy+JR1CRkyr01jhSiDpE1u6py3OMzQfztQU2jxykW3ALNxO4kSlqIDeYyD0Y9RcQeQ==}
@@ -7076,8 +7078,8 @@ packages:
   quansync@0.2.11:
     resolution: {integrity: sha512-AifT7QEbW9Nri4tAwR5M/uzpBuqfZf+zwaEM/QkzEjj7NBuFD2rBuy0K3dE+8wltbezDV7JMA0WfnCPYRSYbXA==}
 
-  quansync@1.0.0:
-    resolution: {integrity: sha512-5xZacEEufv3HSTPQuchrvV6soaiACMFnq1H8wkVioctoH3TRha9Sz66lOxRwPK/qZj7HPiSveih9yAyh98gvqA==}
+  quansync@0.3.0:
+    resolution: {integrity: sha512-dr5GyvHkdDbrAeXyl0MGi/jWKM6+/lZbNFVe+Ff7ivJi4RVry7O091VfXT/wuAVcF3FwNr86nwZVdxx8nELb2w==}
 
   querystringify@2.2.0:
     resolution: {integrity: sha512-FIqgj2EUvTa7R50u0rGsyTftzjYmv/a3hO345bZNrqabNqjtgiDMgmo4mkUjd+nzU5oF3dClKqFIPUKybUyqoQ==}
@@ -7807,14 +7809,8 @@ packages:
   ufo@1.6.3:
     resolution: {integrity: sha512-yDJTmhydvl5lJzBmy/hyOAA0d+aqCBuwl818haVdYCRrWV84o7YyeVm4QlVHStqNrrJSTb6jKuFAVqAFsr+K3Q==}
 
-  unconfig-core@7.4.2:
-    resolution: {integrity: sha512-VgPCvLWugINbXvMQDf8Jh0mlbvNjNC6eSUziHsBCMpxR05OPrNrvDnyatdMjRgcHaaNsCqz+wjNXxNw1kRLHUg==}
-
-  unconfig@7.0.0:
-    resolution: {integrity: sha512-G5CJSoG6ZTxgzCJblEfgpdRK2tos9+UdD2WtecDUVfImzQ0hFjwpH5RVvGMhP4pRpC9ML7NrC4qBsBl0Ttj35A==}
-
-  unconfig@7.4.2:
-    resolution: {integrity: sha512-nrMlWRQ1xdTjSnSUqvYqJzbTBFugoqHobQj58B2bc8qxHKBBHMNNsWQFP3Cd3/JZK907voM2geYPWqD4VK3MPQ==}
+  unconfig@7.3.2:
+    resolution: {integrity: sha512-nqG5NNL2wFVGZ0NA/aCFw0oJ2pxSf1lwg4Z5ill8wd7K4KX/rQbHlwbh+bjctXL5Ly1xtzHenHGOK0b+lG6JVg==}
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
@@ -11475,9 +11471,9 @@ snapshots:
       make-synchronized: 0.8.0
       prettier: 3.8.1
 
-  '@quansync/fs@1.0.0':
+  '@quansync/fs@0.1.6':
     dependencies:
-      quansync: 1.0.0
+      quansync: 0.3.0
 
   '@rolldown/pluginutils@1.0.0-beta.53': {}
 
@@ -12166,7 +12162,7 @@ snapshots:
       magic-string: 0.30.21
       proper-lockfile: 4.1.2
       typescript: 5.9.2
-      unconfig: 7.4.2
+      unconfig: 7.3.2
       vite: 5.2.8(@types/node@20.19.33)(lightningcss@1.30.2)(sass@1.77.8)(stylus@0.57.0)(terser@5.46.0)
       yaml: 2.8.2
     transitivePeerDependencies:
@@ -12245,12 +12241,12 @@ snapshots:
   '@unocss/config@66.0.0':
     dependencies:
       '@unocss/core': 66.0.0
-      unconfig: 7.0.0
+      unconfig: 7.3.2
 
   '@unocss/config@66.6.0':
     dependencies:
       '@unocss/core': 66.6.0
-      unconfig: 7.4.2
+      unconfig: 7.3.2
 
   '@unocss/core@66.0.0': {}
 
@@ -16728,7 +16724,7 @@ snapshots:
 
   quansync@0.2.11: {}
 
-  quansync@1.0.0: {}
+  quansync@0.3.0: {}
 
   querystringify@2.2.0: {}
 
@@ -17583,24 +17579,12 @@ snapshots:
 
   ufo@1.6.3: {}
 
-  unconfig-core@7.4.2:
+  unconfig@7.3.2:
     dependencies:
-      '@quansync/fs': 1.0.0
-      quansync: 1.0.0
-
-  unconfig@7.0.0:
-    dependencies:
-      '@antfu/utils': 8.1.1
+      '@quansync/fs': 0.1.6
       defu: 6.1.4
       jiti: 2.6.1
-
-  unconfig@7.4.2:
-    dependencies:
-      '@quansync/fs': 1.0.0
-      defu: 6.1.4
-      jiti: 2.6.1
-      quansync: 1.0.0
-      unconfig-core: 7.4.2
+      quansync: 0.2.11
 
   undici-types@6.21.0: {}
 

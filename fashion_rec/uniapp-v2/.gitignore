@@ -33,7 +33,8 @@ src/types
 src/pages.json
 
 # 2025-10-15 by 菲鸽： lock 文件还是需要加入版本管理，今天又遇到版本不一致导致无法运行的问题了。
-# pnpm-lock.yaml
+# 注意：workspace 模式下只需根目录的 pnpm-lock.yaml，子包的 lockfile 不生效，应忽略。
+pnpm-lock.yaml
 # package-lock.json
 
 # TIPS：如果某些文件已经加入了版本管理，现在重新加入 .gitignore 是不生效的，需要执行下面的操作
