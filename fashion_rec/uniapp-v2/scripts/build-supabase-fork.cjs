@@ -9,7 +9,15 @@
  */
 const path = require('path')
 const fs = require('fs')
-const esbuild = require('esbuild')
+
+// esbuild 是可选依赖：在 workspace 中其他包的 CI 部署流程中可能未安装
+let esbuild
+try {
+  esbuild = require('esbuild')
+} catch {
+  console.log('[build-supabase-fork] esbuild not available, skipping build (this is OK in CI for other workspace packages)')
+  process.exit(0)
+}
 
 // 构建顺序：子包优先，supabase-js 最后（它依赖其他子包）
 const PACKAGES = [
