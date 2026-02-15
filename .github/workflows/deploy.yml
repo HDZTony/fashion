@@ -223,7 +223,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: fashion_rec/frontend/pnpm-lock.yaml
+          cache-dependency-path: fashion_rec/pnpm-lock.yaml
       - name: Install Dependencies
         run: |
           # Clear any proxy settings that might interfere
@@ -232,8 +232,9 @@ jobs:
           if [ -f .npmrc ]; then
             sed -i.bak '/^proxy=/d; /^https-proxy=/d' .npmrc || true
           fi
-          pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/frontend
+          # Only install frontend and its workspace dependencies (skip uniapp-v2)
+          pnpm install --frozen-lockfile --filter fashion-rec-frontend...
+        working-directory: ./fashion_rec
       - name: Build
         run: pnpm build
         working-directory: ./fashion_rec/frontend
@@ -283,7 +284,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: fashion_rec/frontend/pnpm-lock.yaml
+          cache-dependency-path: fashion_rec/pnpm-lock.yaml
       - name: Install Dependencies
         run: |
           # Clear any proxy settings that might interfere
@@ -292,8 +293,9 @@ jobs:
           if [ -f .npmrc ]; then
             sed -i.bak '/^proxy=/d; /^https-proxy=/d' .npmrc || true
           fi
-          pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/frontend
+          # Only install frontend and its workspace dependencies (skip uniapp-v2)
+          pnpm install --frozen-lockfile --filter fashion-rec-frontend...
+        working-directory: ./fashion_rec
       - name: Build
         run: pnpm build
         working-directory: ./fashion_rec/frontend
