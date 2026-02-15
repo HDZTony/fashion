@@ -1,7 +1,7 @@
 <template>
   <view class="flex h-screen bg-gray-100" :style="{ height: pageHeightStyle }">
-    <!-- 侧边栏：对齐前端 Sidebar + SidebarNavUser -->
-    <view class="sidebar-wrap" :class="{ 'sidebar-hidden': isMobile && !sidebarVisible }">
+    <!-- 侧边栏：对齐前端 Sidebar + SidebarNavUser。Android 上用 style 控制显隐，避免 :class 触发 classList.remove 报错 -->
+    <view class="sidebar-wrap" :style="sidebarWrapStyle">
       <view class="flex flex-col h-full px-[10px]">
         <view class="p-4 border-b border-pink-100 flex items-center justify-center gap-2">
           <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Fashion Rec</text>
@@ -145,8 +145,8 @@
         </view>
       </view>
     </view>
-    <!-- 移动端遮罩 -->
-    <view v-if="sidebarVisible && isMobile" class="fixed inset-0 bg-black/40 z-[99]" @click="sidebarVisible = false" />
+    <!-- 移动端遮罩：用 v-show 避免 v-if 在 Android 上移除节点时触发 remove 报错 -->
+    <view v-show="sidebarVisible && isMobile" class="fixed inset-0 bg-black/40 z-[99]" @click="sidebarVisible = false" />
     <!-- 自定义 TabBar -->
     <CustomTabBar current-tab="index" />
   </view>
@@ -193,6 +193,14 @@ const pageHeightStyle = computed(() => {
   const safeBottom = (s as { safeAreaInsets?: { bottom?: number } }).safeAreaInsets?.bottom ?? 0
   const tabBarH = 50
   return `${Math.max(0, winH - tabBarH - safeBottom)}px`
+})
+
+/** 侧边栏容器样式：移动端隐藏时用 transform 代替 :class，避免 Android 上 classList.remove 报错 */
+const sidebarWrapStyle = computed(() => {
+  if (isMobile.value && !sidebarVisible.value) {
+    return { transform: 'translateX(-100%)' }
+  }
+  return {}
 })
 const mainScrollHeightFallback = computed(() => {
   const s = sysInfo.value
@@ -404,9 +412,6 @@ onShow(() => {
     left: 0;
     top: 0;
     bottom: calc(50px + env(safe-area-inset-bottom));
-  }
-  .sidebar-hidden {
-    transform: translateX(-100%);
   }
 }
 </style>
