@@ -11,8 +11,8 @@
       <!-- Model photo section -->
       <view class="bg-white rounded-2xl p-6 mb-6 border border-pink-100">
         <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block mb-4">{{ t('studio.modelPhoto.title') }}</text>
-        <view v-if="store.modelImagePreviewUrl || isUploadingModel" class="modelPreview">
-          <image v-if="store.modelImagePreviewUrl" :src="getMediumImageUrl(store.modelImagePreviewUrl)" class="modelImg" mode="aspectFill" />
+        <view v-if="activeModelUrl || isUploadingModel" class="modelPreview">
+          <image v-if="activeModelUrl" :src="getMediumImageUrl(activeModelUrl)" class="modelImg" mode="aspectFill" />
           <view v-if="isUploadingModel" class="uploadOverlay">
             <text class="uploadPercent">{{ modelUploadProgress }}%</text>
           </view>
@@ -54,10 +54,23 @@
           </view>
         </view>
         <textarea v-model="store.customPrompt" :placeholder="t('studio.promptPlaceholder')" class="w-full p-5 border border-pink-100 rounded-2xl text-sm box-border mt-4" rows="3" />
-        <button class="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-6 rounded-2xl text-base mt-4 disabled:opacity-50" :disabled="isGenerating" @click="getRecommendations">
-          {{ isGenerating ? t('studio.aiThinking') : t('studio.generateOutfit') }} ✨
-        </button>
-        <text class="branding">fashion | Powered by Qwen | Independent service</text>
+        <view class="flex gap-3 mt-4 items-center">
+          <button class="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white py-6 rounded-2xl text-base disabled:opacity-50" :disabled="isGenerating" @click="getRecommendations">
+            {{ isGenerating ? t('studio.aiThinking') : t('studio.generateOutfit') }} ✨
+          </button>
+          <!-- #ifdef H5 -->
+          <select v-model="store.selectedModel" class="model-select">
+            <option value="qwen">Qwen</option>
+            <option value="grok">Grok</option>
+          </select>
+          <!-- #endif -->
+          <!-- #ifndef H5 -->
+          <picker :range="modelOptions" :range-key="'label'" :value="modelPickerIndex" @change="onModelPickerChange">
+            <view class="model-select-app">{{ modelDisplayLabel }}</view>
+          </picker>
+          <!-- #endif -->
+        </view>
+        <text class="branding">fashion | Powered by {{ store.selectedModel === 'grok' ? 'Grok' : 'Qwen' }} | Independent service</text>
 
         <!-- AI Outfit plans carousel -->
         <view v-if="store.agentOutfits.length && !isGenerating" class="outfitPlans">
@@ -274,7 +287,40 @@ const appliedIdx = ref<number | null>(null)
 const isSavingFavorite = ref(false)
 const modelTempPath = ref('') // temp path when user picks new image (before upload completes)
 
-const step1Done = computed(() => !!store.value.modelImagePreviewUrl)
+// Model picker options (for non-H5 platforms)
+const modelOptions = [
+  { label: 'Qwen', value: 'qwen' as const },
+  { label: 'Grok', value: 'grok' as const },
+]
+const modelPickerIndex = computed(() => modelOptions.findIndex((o) => o.value === store.value.selectedModel))
+const modelDisplayLabel = computed(() => modelOptions[modelPickerIndex.value]?.label ?? 'Qwen')
+function onModelPickerChange(e: { detail: { value: number } }) {
+  store.value.selectedModel = modelOptions[e.detail.value].value
+  saveStore()
+}
+
+const EXAMPLE_MODELS = [
+  { id: 'example-IMG_9953', url: 'https://r2.fashion-rec.com/example/IMG_9953.JPG' },
+  { id: 'example-IMG_9954', url: 'https://r2.fashion-rec.com/example/IMG_9954.JPG' },
+]
+
+const activeModelUrl = computed<string | null>(() => {
+  const id = store.value.activeModelId
+  if (!id) return null
+  const ex = EXAMPLE_MODELS.find(e => e.id === id)
+  if (ex) return ex.url
+  const model = historicalModelImages.value.find(m => m.id === id)
+  return model?.image_url ?? null
+})
+
+function findModelIdByUrl(url: string): string | null {
+  const ex = EXAMPLE_MODELS.find(e => e.url === url)
+  if (ex) return ex.id
+  const model = historicalModelImages.value.find(m => m.image_url === url)
+  return model?.id ?? null
+}
+
+const step1Done = computed(() => !!store.value.activeModelId)
 const step2Done = computed(() => store.value.hasTryOnInput)
 const step3Done = computed(() => !!store.value.tryOnImageUrl)
 
@@ -301,8 +347,9 @@ watch(() => store.value.customPrompt, saveStore)
 watch(() => store.value.backgroundImageUrl, saveStore)
 watch(() => store.value.backgroundImagePreviewUrl, saveStore)
 watch(() => store.value.backgroundActionPrompt, saveStore)
-watch(() => store.value.modelImagePreviewUrl, saveStore)
+watch(() => store.value.activeModelId, saveStore)
 watch(() => store.value.tryOnImageUrl, saveStore)
+watch(() => store.value.selectedModel, saveStore)
 watch(() => store.value.agentOutfits, saveStore, { deep: true })
 watch(() => store.value.activeWardrobeIds, saveStore, { deep: true })
 watch(() => store.value.uploadedItems, saveStore, { deep: true })
@@ -339,7 +386,12 @@ function restoreFromTryonHistory() {
       store.value.backgroundImagePreviewUrl = data.background_image_url
     }
     if (data.image_url) store.value.tryOnImageUrl = data.image_url
-    if (data.model_image_url) store.value.modelImagePreviewUrl = data.model_image_url
+    if (data.model_image_id) {
+      store.value.activeModelId = data.model_image_id
+    } else if (data.model_image_url) {
+      const id = findModelIdByUrl(data.model_image_url)
+      if (id) store.value.activeModelId = id
+    }
     if (data.garment_urls && Array.isArray(data.garment_urls) && data.garment_urls.length > 0 && store.value.uploadedItems.length > 0) {
       const matched: string[] = []
       data.garment_urls.forEach((url: string) => {
@@ -412,9 +464,12 @@ function chooseModelImage() {
             try {
               const d = JSON.parse(u.data)
               if (d.url) {
-                store.value.modelImagePreviewUrl = d.url
                 modelTempPath.value = ''
-                loadHistoricalImages()
+                loadHistoricalImages().then(() => {
+                  const id = findModelIdByUrl(d.url)
+                  if (id) store.value.activeModelId = id
+                  saveStore()
+                })
               }
             } catch (_) {}
           }
@@ -431,22 +486,23 @@ function chooseModelImage() {
 }
 
 function removeModelImage() {
-  store.value.modelImagePreviewUrl = null
+  store.value.activeModelId = null
   modelTempPath.value = ''
   saveStore()
 }
 
 function selectHistoricalModel(img: HistoricalImage) {
-  store.value.modelImagePreviewUrl = img.image_url
+  store.value.activeModelId = img.id
   showModelHistory.value = false
   saveStore()
 }
 
 function selectExampleModel(url: string) {
-  if (url.includes('r2.fashion-rec.com')) {
-    store.value.modelImagePreviewUrl = url
+  const id = findModelIdByUrl(url)
+  if (id) {
+    store.value.activeModelId = id
   } else {
-    uni.showToast({ title: 'Use R2 URL', icon: 'none' })
+    uni.showToast({ title: 'Model not found', icon: 'none' })
   }
   showExampleModel.value = false
   saveStore()
@@ -544,8 +600,9 @@ async function getRecommendations() {
       prompt: store.value.customPrompt,
       background_image_url: store.value.backgroundImageUrl || undefined,
       background_action_prompt: store.value.backgroundTabValue === 'with-background' && store.value.backgroundActionPrompt ? store.value.backgroundActionPrompt : undefined,
-      model_image_url: store.value.modelImagePreviewUrl || undefined,
+      model_image_url: activeModelUrl.value || undefined,
       selected_items_roles: store.value.activeWardrobeIds.length ? Object.fromEntries(store.value.getActiveWardrobeRoleMap()) : undefined,
+      model: store.value.selectedModel,
     }
     const res = await uploadApiClient.post<{ outfits: AgentOutfit[] }>('/outfit', payload)
     store.value.agentOutfits = res.data?.outfits || []
@@ -602,7 +659,7 @@ function goToWardrobe() {
 }
 
 async function performTryOn() {
-  if (!store.value.modelImagePreviewUrl && !modelTempPath.value) {
+  if (!activeModelUrl.value && !modelTempPath.value) {
     uni.showToast({ title: t('studio.modelPhoto.pleaseUploadFirst'), icon: 'none' })
     return
   }
@@ -617,8 +674,8 @@ async function performTryOn() {
   store.value.setFavoriteStatus(false, null)
   try {
     const fd = new FormData()
-    if (store.value.modelImagePreviewUrl) {
-      fd.append('person_image_url', store.value.modelImagePreviewUrl)
+    if (activeModelUrl.value) {
+      fd.append('person_image_url', activeModelUrl.value)
     }
     fd.append('garment_urls', JSON.stringify(garmentUrls))
     if (unmatched.length) fd.append('unmatched_descriptions', JSON.stringify(unmatched))
@@ -659,7 +716,8 @@ async function saveFavorite() {
       garment_urls: garmentUrls.length ? garmentUrls : undefined,
       background_image_url: store.value.backgroundImageUrl || undefined,
       prompt: store.value.customPrompt || undefined,
-      model_image_url: store.value.modelImagePreviewUrl || undefined,
+      model_image_url: activeModelUrl.value || undefined,
+      model_image_id: store.value.activeModelId || undefined,
     })
     if (store.value.setFavoriteStatus) store.value.setFavoriteStatus(true, res.data.id)
     saveStore()
@@ -690,6 +748,35 @@ function previewImage(url: string) {
 .textarea { width: 100%; padding: 20rpx; border: 1rpx solid #fce7f3; border-radius: 16rpx; font-size: 28rpx; box-sizing: border-box; }
 .btnPrimary { width: 100%; background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; padding: 24rpx; border-radius: 16rpx; font-size: 30rpx; margin-top: 16rpx; }
 .branding { font-size: 22rpx; color: #ec4899; display: block; margin-top: 16rpx; text-align: center; }
+.model-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 12rpx 48rpx 12rpx 20rpx;
+  border: 2rpx solid #fce7f3;
+  border-radius: 16rpx;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ec4899' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 12rpx center;
+  background-size: 20rpx;
+  font-size: 26rpx;
+  color: #ec4899;
+  font-weight: 500;
+  min-width: 160rpx;
+  cursor: pointer;
+  outline: none;
+  height: auto;
+  line-height: 1.5;
+}
+.model-select:focus { border-color: #ec4899; }
+.model-select-app {
+  padding: 12rpx 20rpx;
+  border: 2rpx solid #fce7f3;
+  border-radius: 16rpx;
+  background: #fff;
+  font-size: 26rpx;
+  color: #ec4899;
+  font-weight: 500;
+  min-width: 120rpx;
+  text-align: center;
+}
 .modelPreview, .modelEmpty { padding: 16rpx; }
 .modelImg { width: 256rpx; height: 256rpx; border-radius: 16rpx; display: block; margin-bottom: 16rpx; }
 .uploadOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }

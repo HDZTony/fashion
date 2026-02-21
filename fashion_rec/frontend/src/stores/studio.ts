@@ -8,7 +8,7 @@ export const useStudioStore = defineStore('studio', () => {
   const backgroundImageUrl = ref<string | null>(null)
   const backgroundImagePreviewUrl = ref<string | null>(null)
   const backgroundActionPrompt = ref<string>('')
-  const modelImagePreviewUrl = ref<string | null>(null)
+  const activeModelId = ref<string | null>(null)
   const tryOnImageUrl = ref<string | null>(null)
   const agentOutfits = ref<AgentOutfit[]>([])
   const activeWardrobeIds = ref<string[]>([])
@@ -20,6 +20,7 @@ export const useStudioStore = defineStore('studio', () => {
   const favoriteSaved = ref(false)
   const currentFavoriteId = ref<string | null>(null)
   const backgroundTabValue = ref<string>('no-background')
+  const selectedModel = ref<'qwen' | 'grok'>('qwen')
 
   // Helper to convert role map entries to Map
   const getActiveWardrobeRoleMap = () => {
@@ -45,8 +46,8 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundActionPrompt.value = prompt
   }
 
-  const setModelImage = (url: string | null) => {
-    modelImagePreviewUrl.value = url
+  const setActiveModelId = (id: string | null) => {
+    activeModelId.value = id
   }
 
   const setTryOnImage = (url: string | null) => {
@@ -104,6 +105,10 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundTabValue.value = value
   }
 
+  const setSelectedModel = (value: 'qwen' | 'grok') => {
+    selectedModel.value = value
+  }
+
   // Stepper getters (for layout nav: try-on flow progress)
   const activeWardrobeItems = computed(() =>
     activeWardrobeIds.value
@@ -124,11 +129,11 @@ export const useStudioStore = defineStore('studio', () => {
     () => activeWardrobeItems.value.length > 0 || unmatchedOutfitDescriptions.value.length > 0,
   )
   const stepperStep = computed(() => {
-    if (!modelImagePreviewUrl.value) return 1
+    if (!activeModelId.value) return 1
     if (!hasTryOnInput.value) return 2
     return 3
   })
-  const step1Completed = computed(() => !!modelImagePreviewUrl.value)
+  const step1Completed = computed(() => !!activeModelId.value)
   const step2Completed = computed(() => hasTryOnInput.value)
   const step3Completed = computed(() => !!tryOnImageUrl.value)
 
@@ -137,7 +142,7 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundImageUrl.value = null
     backgroundImagePreviewUrl.value = null
     backgroundActionPrompt.value = ''
-    modelImagePreviewUrl.value = null
+    activeModelId.value = null
     tryOnImageUrl.value = null
     uploadedItems.value = []
     agentOutfits.value = []
@@ -148,6 +153,7 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved.value = false
     currentFavoriteId.value = null
     backgroundTabValue.value = 'no-background'
+    selectedModel.value = 'qwen'
   }
 
   return {
@@ -156,7 +162,7 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundImageUrl,
     backgroundImagePreviewUrl,
     backgroundActionPrompt,
-    modelImagePreviewUrl,
+    activeModelId,
     tryOnImageUrl,
     selectedItemIds,
     uploadedItems,
@@ -167,6 +173,7 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved,
     currentFavoriteId,
     backgroundTabValue,
+    selectedModel,
     // Stepper (for layout)
     stepperStep,
     step1Completed,
@@ -179,7 +186,7 @@ export const useStudioStore = defineStore('studio', () => {
     setCustomPrompt,
     setBackgroundImage,
     setBackgroundActionPrompt,
-    setModelImage,
+    setActiveModelId,
     setTryOnImage,
     setSelectedItemIds,
     addSelectedItemId,
@@ -192,6 +199,7 @@ export const useStudioStore = defineStore('studio', () => {
     setOriginalAppliedOutfit,
     setFavoriteStatus,
     setBackgroundTabValue,
+    setSelectedModel,
     clearState,
   }
 }, {

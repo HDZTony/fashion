@@ -8,6 +8,14 @@ from datetime import datetime, timedelta
 from supabase import Client
 from .supabase_client import create_supabase_client, create_authenticated_client
 
+
+def _is_valid_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
 # 表名
 TABLE_NAME = "user_images"
 
@@ -104,27 +112,66 @@ def list_user_images(user_id: str, user_token: str, image_type: Optional[str] = 
         return []
 
 
+def update_user_image_url(user_id: str, image_id: str, new_url: str, r2_filename: Optional[str], user_token: str) -> Optional[Dict[str, Any]]:
+    """
+    Replace an existing user image's URL (e.g. when user re-uploads a model photo).
+    Deletes the old R2 file, then updates the DB row in-place so the ID stays the same.
+    """
+    if not _is_valid_uuid(image_id):
+        print(f"[User Images] Skipping update: invalid UUID '{image_id}'")
+        return None
+    try:
+        client = create_authenticated_client(user_token)
+        table = client.table(TABLE_NAME)
+
+        existing = table.select("*").eq("id", image_id).eq("user_id", user_id).execute()
+        if not existing.data:
+            return None
+
+        old_record = existing.data[0]
+        old_url = old_record.get("image_url")
+        if old_url and old_url != new_url:
+            try:
+                from services.storage import delete_file_from_r2_by_url
+                delete_file_from_r2_by_url(old_url)
+            except Exception as e:
+                print(f"[User Images] Failed to delete old R2 file: {e}")
+
+        update_data: Dict[str, Any] = {"image_url": new_url}
+        if r2_filename is not None:
+            update_data["r2_filename"] = r2_filename
+
+        resp = table.update(update_data).eq("id", image_id).eq("user_id", user_id).execute()
+        if resp.data and len(resp.data) > 0:
+            print(f"[User Images] Updated image {image_id} URL for user {user_id}")
+            return resp.data[0]
+        return None
+    except Exception as e:
+        print(f"[User Images] Error updating image URL: {e}")
+        raise
+
+
 def delete_user_image(user_id: str, image_id: str, user_token: str) -> bool:
     """
     Delete a user image by ID.
     Also deletes the file from R2 if r2_filename is available.
     Returns True if deleted, False if not found or not owned by user.
-    user_token: JWT token for authenticated Supabase client (respects RLS policies)
     """
+    if not _is_valid_uuid(image_id):
+        print(f"[User Images] Skipping delete: invalid UUID '{image_id}'")
+        return False
+
     try:
-        # Create authenticated client with user token
         client = create_authenticated_client(user_token)
         table = client.table(TABLE_NAME)
-        
-        # First, get the image to check if it exists and get R2 filename
+
         response = table.select("*").eq("id", image_id).eq("user_id", user_id).execute()
-        
+
         if not response.data or len(response.data) == 0:
             return False
-        
+
         image_to_delete = response.data[0]
-        
-        # Delete from R2 if filename is available
+
         r2_filename = image_to_delete.get("r2_filename")
         if r2_filename:
             try:
@@ -134,9 +181,7 @@ def delete_user_image(user_id: str, image_id: str, user_token: str) -> bool:
                     delete_file_from_r2_by_url(image_url)
             except Exception as e:
                 print(f"[User Images] Failed to delete R2 file {r2_filename}: {e}")
-                # Continue with database deletion even if R2 deletion fails
-        
-        # Delete from database (RLS will ensure user can only delete their own records)
+
         delete_response = table.delete().eq("id", image_id).eq("user_id", user_id).execute()
         return len(delete_response.data) > 0 if delete_response.data else False
     except Exception as e:

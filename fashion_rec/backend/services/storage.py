@@ -22,62 +22,51 @@ R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
-R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL") # Optional, if different from endpoint
+R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL")
 
-def get_r2_client(verify_ssl: bool = True):
-    """
-    Create and return a boto3 S3 client configured for Cloudflare R2.
-    Uses URLLib3Session with socket options to avoid SSL EOF issues.
-    
-    Args:
-        verify_ssl: If False, disable SSL certificate verification (use only as fallback for SSL errors)
-    
-    Note: The configuration uses URLLib3Session with socket options (SO_KEEPALIVE, TCP_NODELAY)
-    which fixes SSL EOF issues. SSL verification is enabled by default for security.
-    """
-    # Configure boto3 with retry strategy and SSL handling
+# 将 R2 域名加入 NO_PROXY（部分环境会识别）
+if R2_ENDPOINT_URL:
+    from urllib.parse import urlparse
+    _r2_host = urlparse(R2_ENDPOINT_URL).hostname or ""
+    _no_proxy = os.environ.get("NO_PROXY", "")
+    if _r2_host and _r2_host not in _no_proxy:
+        separator = "," if _no_proxy else ""
+        new_val = f"{_no_proxy}{separator}{_r2_host}"
+        os.environ["NO_PROXY"] = new_val
+        os.environ["no_proxy"] = new_val
+        print(f"[R2] Added {_r2_host} to NO_PROXY to bypass local proxy")
+
+_PROXY_ENV_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+
+
+def get_r2_client():
+    """Create and return a boto3 S3 client configured for Cloudflare R2."""
     config = Config(
-        retries={
-            'max_attempts': 5,  # Increased retries for SSL issues
-            'mode': 'adaptive'  # Adaptive retry mode for better error handling
-        },
-        connect_timeout=60,
-        read_timeout=120  # Increased read timeout for large files
+        retries={'max_attempts': 3, 'mode': 'adaptive'},
+        connect_timeout=120,
+        read_timeout=600,
     )
-    
-    # 根本原因和解决方案：
-    # - boto3默认使用requests库，而requests在处理R2的SSL连接时会出现EOF错误
-    # - 使用URLLib3Session（基于urllib3）+ socket_options可以解决这个问题
-    # - 配置socket选项（SO_KEEPALIVE, TCP_NODELAY）保持连接稳定
-    
-    # 配置socket选项，修复SSL EOF问题
+
     socket_options = [
         (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
         (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1),
     ]
-    
-    # 使用URLLib3Session + socket_options
-    # verify_ssl参数允许在SSL错误时禁用验证（作为最后手段）
-    # 注意：如果使用VPN/代理，可能需要配置代理设置
-    # 但为了稳定性，我们优先尝试直连（不通过系统代理）
+
     http_client = URLLib3Session(
-        verify=verify_ssl,
+        verify=True,
         socket_options=socket_options,
         max_pool_connections=10,
-        proxies=None  # 明确设置为None，避免使用系统代理
     )
-    
-    # Create a custom session with the HTTP client
+
     session = Session()
     session.register_component('http_client', http_client)
-    
-    # Create boto3 client using the custom session
+
     return session.create_client(
         's3',
         endpoint_url=R2_ENDPOINT_URL,
         aws_access_key_id=R2_ACCESS_KEY_ID,
         aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-        config=config
+        config=config,
     )
 
 async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_in_days: int = None) -> str:
@@ -129,90 +118,38 @@ async def upload_file_to_r2(file_obj, filename: str, content_type: str, expires_
             metadata['expires_at'] = expiration_date.isoformat() + 'Z'
             metadata['expires_in_days'] = str(expires_in_days)
         
-        # Upload with retry logic
-        # Note: SSL errors should be resolved by socket_options configuration
-        # Retries are mainly for network issues, not SSL problems
-        max_retries = 5
+        max_retries = 3
         last_error = None
-        
-        ssl_verification_disabled = False
-        for attempt in range(max_retries):
-            try:
-                # Get a fresh client for each attempt to avoid connection reuse issues
-                # Use SSL verification disabled flag if set (from previous SSL error)
-                verify_ssl = not ssl_verification_disabled
-                s3 = get_r2_client(verify_ssl=verify_ssl)
-                if attempt > 0:
-                    print(f"[R2] Retry attempt {attempt + 1}/{max_retries} for {unique_filename} (SSL verify: {verify_ssl})")
-                else:
-                    print(f"[R2] Starting upload attempt {attempt + 1}/{max_retries} for {unique_filename} (SSL verify: {verify_ssl})")
-                
-                # Reset cached file object to beginning for each attempt
-                cached_file_obj.seek(0)
-                
-                # Use put_object instead of upload_fileobj (boto3 client method)
-                s3.put_object(
-                    Bucket=R2_BUCKET_NAME,
-                    Key=unique_filename,
-                    Body=cached_file_obj,
-                    ContentType=content_type,
-                    Metadata=metadata
-                )
-                # Success, break out of retry loop
-                print(f"[R2] Successfully uploaded {unique_filename} on attempt {attempt + 1}")
-                break
-            except Exception as e:
-                last_error = e
-                error_str = str(e).lower()
-                error_type = type(e).__name__
-                
-                # Enhanced SSL error detection
-                is_ssl_error = (
-                    "ssl" in error_str or 
-                    "unexpected_eof" in error_str or
-                    "ssl validation failed" in error_str or
-                    "certificate" in error_str or
-                    "tls" in error_str or
-                    "eof" in error_str or
-                    "ssl:" in error_str or
-                    "_ssl.c:" in error_str or
-                    "violation of protocol" in error_str
-                )
-                
-                # Log detailed error information
-                print(f"[R2] Upload error on attempt {attempt + 1}/{max_retries} (type: {error_type}): {str(e)[:300]}")
-                
-                # If it's an SSL error, disable SSL verification for next retry
-                if is_ssl_error:
-                    if not ssl_verification_disabled:
-                        # First time detecting SSL error, disable verification for next attempts
-                        ssl_verification_disabled = True
-                        print(f"[R2] Detected SSL-related error, will retry with SSL verification disabled")
-                    else:
-                        # SSL verification already disabled but still getting SSL error
-                        print(f"[R2] SSL error persists even with verification disabled. This may indicate a network or R2 service issue.")
-                    
-                    # If not the last attempt, wait and retry
+        # 上传期间临时去掉代理，确保直连 R2（NO_PROXY 在某些环境不生效）
+        saved_proxy = {k: os.environ.pop(k) for k in _PROXY_ENV_KEYS if k in os.environ}
+        try:
+            for attempt in range(max_retries):
+                try:
+                    s3 = get_r2_client()
+                    cached_file_obj.seek(0)
+                    print(f"[R2] Upload attempt {attempt + 1}/{max_retries} for {unique_filename}")
+
+                    s3.put_object(
+                        Bucket=R2_BUCKET_NAME,
+                        Key=unique_filename,
+                        Body=cached_file_obj,
+                        ContentType=content_type,
+                        Metadata=metadata,
+                    )
+                    print(f"[R2] Successfully uploaded {unique_filename} on attempt {attempt + 1}")
+                    break
+                except Exception as e:
+                    last_error = e
+                    print(f"[R2] Attempt {attempt + 1}/{max_retries} failed ({type(e).__name__}): {str(e)[:300]}")
                     if attempt < max_retries - 1:
-                        # Wait a bit before retry (exponential backoff)
                         import time
-                        wait_time = min(2 ** attempt, 10)  # Max 10 seconds
-                        print(f"[R2] Waiting {wait_time} seconds before retry...")
+                        wait_time = min(2 ** attempt * 2, 10)
+                        print(f"[R2] Waiting {wait_time}s before retry...")
                         time.sleep(wait_time)
-                        continue
                     else:
-                        # Last attempt failed, raise the error
-                        print(f"[R2] Failed after {max_retries} attempts with SSL error: {error_type}: {str(e)[:300]}")
-                        raise
-                else:
-                    # Not an SSL error
-                    if attempt == max_retries - 1:
-                        print(f"[R2] Failed after {max_retries} attempts. Final error: {error_type}: {str(e)[:300]}")
-                    raise
-        
-        # If we exhausted retries, raise the last error
-        if last_error:
-            raise Exception(f"Failed to upload to R2 after {max_retries} attempts: {str(last_error)}")
+                        raise Exception(f"Failed to upload to R2 after {max_retries} attempts: {last_error}")
+        finally:
+            os.environ.update(saved_proxy)
         
         # Construct Public URL
         if R2_PUBLIC_URL:

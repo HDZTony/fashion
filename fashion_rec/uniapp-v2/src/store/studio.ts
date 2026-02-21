@@ -43,7 +43,7 @@ export const useStudioStore = defineStore('studio', () => {
   const backgroundImageUrl = ref<string | null>(null)
   const backgroundImagePreviewUrl = ref<string | null>(null)
   const backgroundActionPrompt = ref('')
-  const modelImagePreviewUrl = ref<string | null>(null)
+  const activeModelId = ref<string | null>(null)
   const tryOnImageUrl = ref<string | null>(null)
   const agentOutfits = ref<AgentOutfit[]>([])
   const activeWardrobeIds = ref<string[]>([])
@@ -54,6 +54,7 @@ export const useStudioStore = defineStore('studio', () => {
   const favoriteSaved = ref(false)
   const currentFavoriteId = ref<string | null>(null)
   const backgroundTabValue = ref('no-background')
+  const selectedModel = ref<'qwen' | 'grok'>('qwen')
 
   const getActiveWardrobeRoleMap = () => new Map<string, string>(activeWardrobeRoleMapEntries.value)
   const setActiveWardrobeRoleMap = (map: Map<string, string>) => {
@@ -84,7 +85,7 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundImageUrl.value = null
     backgroundImagePreviewUrl.value = null
     backgroundActionPrompt.value = ''
-    modelImagePreviewUrl.value = null
+    activeModelId.value = null
     tryOnImageUrl.value = null
     uploadedItems.value = []
     agentOutfits.value = []
@@ -95,6 +96,7 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved.value = false
     currentFavoriteId.value = null
     backgroundTabValue.value = 'no-background'
+    selectedModel.value = 'qwen'
     uniStorage.removeItem(STORE_KEY)
   }
 
@@ -104,7 +106,7 @@ export const useStudioStore = defineStore('studio', () => {
       backgroundImageUrl: backgroundImageUrl.value,
       backgroundImagePreviewUrl: backgroundImagePreviewUrl.value,
       backgroundActionPrompt: backgroundActionPrompt.value,
-      modelImagePreviewUrl: modelImagePreviewUrl.value,
+      activeModelId: activeModelId.value,
       tryOnImageUrl: tryOnImageUrl.value,
       agentOutfits: agentOutfits.value,
       activeWardrobeIds: activeWardrobeIds.value,
@@ -115,6 +117,7 @@ export const useStudioStore = defineStore('studio', () => {
       favoriteSaved: favoriteSaved.value,
       currentFavoriteId: currentFavoriteId.value,
       backgroundTabValue: backgroundTabValue.value,
+      selectedModel: selectedModel.value,
     })
   }
 
@@ -125,7 +128,7 @@ export const useStudioStore = defineStore('studio', () => {
     if (s.backgroundImageUrl != null) backgroundImageUrl.value = s.backgroundImageUrl as string | null
     if (s.backgroundImagePreviewUrl != null) backgroundImagePreviewUrl.value = s.backgroundImagePreviewUrl as string | null
     if (s.backgroundActionPrompt != null) backgroundActionPrompt.value = s.backgroundActionPrompt as string
-    if (s.modelImagePreviewUrl != null) modelImagePreviewUrl.value = s.modelImagePreviewUrl as string | null
+    if (s.activeModelId != null) activeModelId.value = s.activeModelId as string | null
     if (s.tryOnImageUrl != null) tryOnImageUrl.value = s.tryOnImageUrl as string | null
     if (Array.isArray(s.agentOutfits)) agentOutfits.value = s.agentOutfits as AgentOutfit[]
     if (Array.isArray(s.activeWardrobeIds)) activeWardrobeIds.value = s.activeWardrobeIds as string[]
@@ -136,6 +139,7 @@ export const useStudioStore = defineStore('studio', () => {
     if (s.favoriteSaved != null) favoriteSaved.value = s.favoriteSaved as boolean
     if (s.currentFavoriteId != null) currentFavoriteId.value = s.currentFavoriteId as string | null
     if (s.backgroundTabValue != null) backgroundTabValue.value = s.backgroundTabValue as string
+    if (s.selectedModel != null) selectedModel.value = s.selectedModel as 'qwen' | 'grok'
   }
 
   const setFavoriteStatus = (saved: boolean, id: string | null = null) => {
@@ -148,7 +152,7 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundImageUrl,
     backgroundImagePreviewUrl,
     backgroundActionPrompt,
-    modelImagePreviewUrl,
+    activeModelId,
     tryOnImageUrl,
     agentOutfits,
     activeWardrobeIds,
@@ -159,6 +163,7 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved,
     currentFavoriteId,
     backgroundTabValue,
+    selectedModel,
     activeWardrobeItems,
     unmatchedOutfitDescriptions,
     hasTryOnInput,

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize Qwen-VL model
+# Initialize Qwen-VL model (default)
 # Using Singapore endpoint, so must use Singapore API key
 SINGAPORE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 api_key = os.getenv("DASHSCOPE_API_KEY_SG")
@@ -26,6 +26,38 @@ llm = ChatOpenAI(
     base_url=SINGAPORE_BASE_URL,  # Singapore endpoint
     temperature=0.1,
 )
+
+# xAI / Grok vision model (lazy-init, only created when selected)
+XAI_BASE_URL = "https://api.x.ai/v1"
+_grok_llm: ChatOpenAI | None = None
+
+
+def get_llm(model_name: str = "qwen") -> ChatOpenAI:
+    """Return the appropriate LLM based on model_name ('qwen' or 'grok')."""
+    global _grok_llm
+
+    if model_name == "grok":
+        if _grok_llm is not None:
+            return _grok_llm
+
+        xai_key = os.getenv("XAI_API_KEY")
+        if not xai_key:
+            raise RuntimeError(
+                "XAI_API_KEY must be set in environment variables to use Grok. "
+                "Get your API key from https://console.x.ai and set it: "
+                "fly secrets set XAI_API_KEY=your_xai_key_here"
+            )
+        _grok_llm = ChatOpenAI(
+            model="grok-2-vision-latest",
+            api_key=xai_key,
+            base_url=XAI_BASE_URL,
+            temperature=0.1,
+        )
+        print("[Grok] Initialized xAI Grok vision model")
+        return _grok_llm
+
+    # Default: Qwen
+    return llm
 
 SYSTEM_PROMPT = """
 You are a fashion expert AI. Your task is to analyze clothing images and extract structured data.

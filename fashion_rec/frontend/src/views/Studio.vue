@@ -3,7 +3,7 @@ defineOptions({ name: 'Studio' })
 import { ref, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Wand2, X, Clock, Upload, Heart, Trash2, Shirt, Image, RotateCw, Check } from 'lucide-vue-next'
+import { Wand2, X, Clock, Upload, Heart, Trash2, Shirt, Image, RotateCw, Check, User } from 'lucide-vue-next'
 import ImageViewer from '@/components/ImageViewer.vue'
 import type { Item, Recommendation, AgentOutfit } from '../types'
 import { supabase } from '../lib/supabase'
@@ -16,8 +16,11 @@ import {
   CarouselContent,
   CarouselItem,
 } from '@/components/ui/carousel'
-import { getThumbnailUrl, getSmallImageUrl, getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { getThumbnailUrl, getSmallImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { useSEO } from '@/composables/useSEO'
+import { useModelImages } from '@/composables/useModelImages'
 import { siteBaseUrl } from '@/config/seo'
 
 useSEO({
@@ -49,8 +52,17 @@ const selectedItemIds = computed({
   set: (value) => studioStore.setSelectedItemIds(value)
 })
 const recommendations = ref<Recommendation[]>([])
-const modelImageFile = ref<File | null>(null)
 const isGenerating = ref(false)
+
+// Model images are managed by the sidebar ModelSwitcher via composable
+const {
+  allModels: modelImages,
+  loadModels: loadModelImages,
+  activeModelUrl,
+  activeModelId,
+  selectModel,
+  findModelIdByUrl,
+} = useModelImages()
 const isTryingOn = ref(false)
 // 应用穿搭：当前正在应用的卡片索引；应用成功后短暂展示“已应用”的卡片索引
 const applyingOutfitIndex = ref<number | null>(null)
@@ -72,10 +84,7 @@ const backgroundImagePreviewUrl = computed({
   get: () => studioStore.backgroundImagePreviewUrl,
   set: (value) => studioStore.setBackgroundImage(studioStore.backgroundImageUrl, value)
 })
-const modelImagePreviewUrl = computed({
-  get: () => studioStore.modelImagePreviewUrl,
-  set: (value) => studioStore.setModelImage(value)
-})
+// activeModelUrl / activeModelId / selectModel come from useModelImages composable
 const tryOnImageUrl = computed({
   get: () => studioStore.tryOnImageUrl,
   set: (value) => studioStore.setTryOnImage(value)
@@ -128,19 +137,9 @@ interface HistoricalImage {
   created_at: string
 }
 const historicalBackgroundImages = ref<HistoricalImage[]>([])
-const historicalModelImages = ref<HistoricalImage[]>([])
 const showBackgroundImageHistory = ref(false)
-const showModelImageHistory = ref(false)
-const showExampleModelImages = ref(false)
 const showExampleBackgroundImages = ref(false)
-
-// Example model images (pre-uploaded sample photos)
-const exampleModelImages = ref<string[]>([
-  // These are placeholder URLs - replace with actual pre-uploaded image URLs
-  // You can upload these images to your storage (R2) and use the public URLs here
-  'https://r2.fashion-rec.com/example/IMG_9953.JPG',
-  'https://r2.fashion-rec.com/example/IMG_9954.JPG',
-])
+const showAppliedOutfitSheet = ref(false)
 
 // Example background images with prompts (pre-uploaded sample photos)
 interface ExampleBackgroundImage {
@@ -205,12 +204,11 @@ const backgroundTabValue = computed({
   set: (value) => studioStore.setBackgroundTabValue(value)
 })
 
-// Model image upload progress
-const modelImageUploadProgress = ref(0)
-const isUploadingModelImage = ref(false)
-
-// Model image error state
-const showModelImageError = ref(false)
+// VL model selection (persisted via store)
+const selectedModel = computed({
+  get: () => studioStore.selectedModel,
+  set: (value: 'qwen' | 'grok') => studioStore.setSelectedModel(value)
+})
 
 // Subscription info (logged-in only)
 const subscriptionInfo = ref<any>(null)
@@ -319,26 +317,19 @@ const loadHistoricalImages = async () => {
   if (!isAuthenticated.value) return
   try {
     console.log('[loadHistoricalImages] Starting to load historical images...')
-    const [backgroundResp, modelResp] = await Promise.all([
+    const [backgroundResp] = await Promise.all([
       apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=background'),
-      apiClient.get<{ images: HistoricalImage[] }>('/user-images?image_type=model'),
+      loadModelImages(),
     ])
     console.log('[loadHistoricalImages] Background response:', backgroundResp.data)
-    console.log('[loadHistoricalImages] Model response:', modelResp.data)
     
-    // Ensure we handle both response formats: { images: [...] } or direct array
     const backgroundImages = backgroundResp.data?.images || backgroundResp.data || []
-    const modelImages = modelResp.data?.images || modelResp.data || []
-    
     historicalBackgroundImages.value = Array.isArray(backgroundImages) ? backgroundImages : []
-    historicalModelImages.value = Array.isArray(modelImages) ? modelImages : []
     
     console.log('[loadHistoricalImages] Loaded background images:', historicalBackgroundImages.value.length)
-    console.log('[loadHistoricalImages] Loaded model images:', historicalModelImages.value.length)
+    console.log('[loadHistoricalImages] Loaded model images:', modelImages.value.length)
   } catch (error) {
     console.error('[loadHistoricalImages] Failed to load historical images:', error)
-    // Keep existing values on error, don't reset to empty
-    // This prevents button from disappearing if a subsequent request fails
   }
 }
 
@@ -511,7 +502,7 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
     console.log('[restoreTryOnHistory] Loading historical images...')
     await loadHistoricalImages()
     console.log('[restoreTryOnHistory] Historical images loaded:', {
-      model: historicalModelImages.value.length,
+      model: modelImages.value.length,
       background: historicalBackgroundImages.value.length
     })
     
@@ -546,51 +537,21 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
       await checkFavoriteStatus()
     }
     
-    // Restore model image - prefer saved model_image_url/model_image_id, fallback to time-based matching
-    if (restoreData.model_image_url) {
-      // Use saved model image URL directly
-      modelImagePreviewUrl.value = restoreData.model_image_url
-      modelImageFile.value = null
-      console.log('[restoreTryOnHistory] Restored model image from saved URL:', restoreData.model_image_url)
-    } else if (restoreData.model_image_id) {
-      // Find model image by ID
-      const modelImage = historicalModelImages.value.find(img => img.id === restoreData.model_image_id)
-      if (modelImage) {
-        modelImagePreviewUrl.value = modelImage.image_url
-        modelImageFile.value = null
-        console.log('[restoreTryOnHistory] Restored model image by ID:', modelImage.image_url)
-      } else {
-        console.log('[restoreTryOnHistory] Model image ID not found in history, trying time-based match...')
-        // Fallback to time-based matching
-        const tryOnDate = new Date(restoreData.created_at)
-        const modelImage = historicalModelImages.value
-          .filter(img => {
-            const imgDate = new Date(img.created_at)
-            const timeDiff = tryOnDate.getTime() - imgDate.getTime()
-            return timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000
-          })
-          .sort((a, b) => {
-            const aDiff = tryOnDate.getTime() - new Date(a.created_at).getTime()
-            const bDiff = tryOnDate.getTime() - new Date(b.created_at).getTime()
-            return aDiff - bDiff
-          })[0]
-        
-        if (modelImage) {
-          modelImagePreviewUrl.value = modelImage.image_url
-          modelImageFile.value = null
-          console.log('[restoreTryOnHistory] Restored model image by time match:', modelImage.image_url)
-        }
+    // Restore model — prefer saved ID, then URL lookup, fallback to time-based matching
+    if (restoreData.model_image_id) {
+      selectModel(restoreData.model_image_id)
+      console.log('[restoreTryOnHistory] Restored model by ID:', restoreData.model_image_id)
+    } else if (restoreData.model_image_url) {
+      const id = findModelIdByUrl(restoreData.model_image_url)
+      if (id) {
+        selectModel(id)
+        console.log('[restoreTryOnHistory] Restored model by URL lookup:', id)
       }
     } else {
-      // Fallback to time-based matching if no saved model image info
       const tryOnDate = new Date(restoreData.created_at)
-      console.log('[restoreTryOnHistory] Try-on date:', tryOnDate.toISOString())
-      console.log('[restoreTryOnHistory] Available model images:', historicalModelImages.value.length)
-      
-      const modelImage = historicalModelImages.value
+      const matched = modelImages.value
         .filter(img => {
-          const imgDate = new Date(img.created_at)
-          const timeDiff = tryOnDate.getTime() - imgDate.getTime()
+          const timeDiff = tryOnDate.getTime() - new Date(img.created_at).getTime()
           return timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000
         })
         .sort((a, b) => {
@@ -598,19 +559,15 @@ const restoreTryOnHistory = async (tryonHistoryId: string) => {
           const bDiff = tryOnDate.getTime() - new Date(b.created_at).getTime()
           return aDiff - bDiff
         })[0]
-      
-      if (modelImage) {
-        modelImagePreviewUrl.value = modelImage.image_url
-        modelImageFile.value = null
-        console.log('[restoreTryOnHistory] Restored model image by time match:', modelImage.image_url)
-      } else if (historicalModelImages.value.length > 0) {
-        const mostRecent = historicalModelImages.value
+
+      if (matched) {
+        selectModel(matched.id)
+        console.log('[restoreTryOnHistory] Restored model by time match:', matched.id)
+      } else if (modelImages.value.length > 0) {
+        const mostRecent = [...modelImages.value]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
-        modelImagePreviewUrl.value = mostRecent.image_url
-        modelImageFile.value = null
-        console.log('[restoreTryOnHistory] Using most recent model image as fallback:', mostRecent.image_url)
-      } else {
-        console.log('[restoreTryOnHistory] No model images available in history')
+        selectModel(mostRecent.id)
+        console.log('[restoreTryOnHistory] Using most recent model as fallback:', mostRecent.id)
       }
     }
     
@@ -843,11 +800,12 @@ const getRecommendations = async () => {
       prompt: enhancedPrompt,
       background_image_url: backgroundImageUrl.value || undefined,
       background_action_prompt: backgroundImageUrl.value && backgroundActionPrompt.value ? backgroundActionPrompt.value : undefined,
-      model_image_url: modelImagePreviewUrl.value || undefined,
+      model_image_url: activeModelUrl.value || undefined,
       selected_items_roles: selectedItemsRoles,
+      model: selectedModel.value,
     }
     
-    console.log('=== Generate Outfit Request (to qwen-vl) ===')
+    console.log(`=== Generate Outfit Request (to ${selectedModel.value}) ===`)
     console.log('Request payload:', JSON.stringify(requestPayload, null, 2))
     console.log('Missing roles to supplement:', missingRoles)
     console.log('Selected items roles:', selectedItemsRoles)
@@ -903,204 +861,6 @@ const selectedBaseItems = computed(() =>
     .map((id) => uploadedItems.value.find((it) => String(it.id) === id) || null)
     .filter((it): it is Item => it !== null),
 )
-
-const handleModelImageChange = async (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0] || null
-  if (!file) return
-
-  modelImageFile.value = file
-  showModelImageError.value = false // Reset error state when user uploads image
-  isUploadingModelImage.value = true
-  modelImageUploadProgress.value = 0
-
-  // Upload to backend and save to history
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    // Fallback progress simulation (in case onUploadProgress doesn't fire)
-    let hasRealProgress = false
-    const progressInterval = setInterval(() => {
-      if (!hasRealProgress && modelImageUploadProgress.value < 90) {
-        modelImageUploadProgress.value += 10
-      }
-    }, 200)
-    
-    const resp = await uploadApiClient.post<{ url: string }>('/model-image', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      onUploadProgress: (progressEvent) => {
-        hasRealProgress = true
-        if (progressEvent.total) {
-          modelImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-        } else if (progressEvent.loaded) {
-          // Estimate progress if total is unknown
-          modelImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / file.size) * 100))
-        }
-      },
-    })
-    
-    clearInterval(progressInterval)
-    modelImageUploadProgress.value = 100
-    
-    // Save the server-returned URL and clear the file
-    // This ensures that when calling /try-on, we use the URL instead of the file
-    // which allows the backend to save model_image_url to history
-    if (modelImagePreviewUrl.value) {
-      URL.revokeObjectURL(modelImagePreviewUrl.value)
-    }
-    modelImagePreviewUrl.value = resp.data.url
-    modelImageFile.value = null  // Clear file so /try-on uses URL instead
-    
-    // Reload historical images
-    await loadHistoricalImages()
-    
-    // Reset progress after a short delay
-    setTimeout(() => {
-      isUploadingModelImage.value = false
-      modelImageUploadProgress.value = 0
-    }, 500)
-  } catch (e: any) {
-    console.error('Model image upload failed:', e)
-    isUploadingModelImage.value = false
-    modelImageUploadProgress.value = 0
-    alert(`Model image upload failed: ${e?.response?.data?.detail || e.message || 'Unknown error'}`)
-    return
-  }
-
-  showModelImageHistory.value = false
-}
-
-const selectHistoricalModelImage = (image: HistoricalImage) => {
-  modelImageFile.value = null
-  showModelImageError.value = false // Reset error state when user selects historical image
-  if (modelImagePreviewUrl.value) {
-    URL.revokeObjectURL(modelImagePreviewUrl.value)
-  }
-  modelImagePreviewUrl.value = image.image_url
-  showModelImageHistory.value = false
-}
-
-const selectExampleModelImage = async (imageUrl: string) => {
-  modelImageFile.value = null
-  showModelImageError.value = false // Reset error state when user selects example image
-  
-  // Close the dialog immediately when clicking on an image
-  showExampleModelImages.value = false
-  
-  // If the example image is already on our server (R2), use it directly
-  // Otherwise, we need to upload it to save to history
-  if (imageUrl.startsWith('http') && (imageUrl.includes('r2.dev') || imageUrl.includes('cloudflare'))) {
-    // Already on our server, use directly (similar to historical images)
-    if (modelImagePreviewUrl.value) {
-      URL.revokeObjectURL(modelImagePreviewUrl.value)
-    }
-    modelImagePreviewUrl.value = imageUrl
-    return
-  }
-  
-  // For external URLs or local files, upload to backend to save to history
-  try {
-    // Fetch the image as a blob
-    const response = await fetch(imageUrl)
-    if (!response.ok) {
-      throw new Error('Failed to fetch example image')
-    }
-    const blob = await response.blob()
-    const file = new File([blob], 'example-model.jpg', { type: blob.type })
-    
-    // Upload to backend to save to history
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    isUploadingModelImage.value = true
-    modelImageUploadProgress.value = 0
-    
-    let hasRealProgress = false
-    const progressInterval = setInterval(() => {
-      if (!hasRealProgress && modelImageUploadProgress.value < 90) {
-        modelImageUploadProgress.value += 10
-      }
-    }, 200)
-    
-    const resp = await uploadApiClient.post<{ url: string }>('/model-image', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      onUploadProgress: (progressEvent) => {
-        hasRealProgress = true
-        if (progressEvent.total) {
-          modelImageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-        } else if (progressEvent.loaded) {
-          modelImageUploadProgress.value = Math.min(90, Math.round((progressEvent.loaded / blob.size) * 100))
-        }
-      },
-    })
-    
-    clearInterval(progressInterval)
-    modelImageUploadProgress.value = 100
-    
-    if (modelImagePreviewUrl.value) {
-      URL.revokeObjectURL(modelImagePreviewUrl.value)
-      modelImagePreviewUrl.value = null
-    }
-    modelImagePreviewUrl.value = resp.data.url
-    modelImageFile.value = null
-    
-    // Reload historical images
-    await loadHistoricalImages()
-    
-    // Reset progress
-    setTimeout(() => {
-      isUploadingModelImage.value = false
-      modelImageUploadProgress.value = 0
-    }, 500)
-  } catch (e: any) {
-    console.error('Failed to use example model image:', e)
-    // Fallback: use the URL directly without uploading
-    if (modelImagePreviewUrl.value) {
-      URL.revokeObjectURL(modelImagePreviewUrl.value)
-    }
-    modelImagePreviewUrl.value = imageUrl
-    isUploadingModelImage.value = false
-    modelImageUploadProgress.value = 0
-  }
-}
-
-const deleteHistoricalModelImage = async (image: HistoricalImage, event: Event) => {
-  event.stopPropagation() // Prevent selecting the image when clicking delete
-  
-  if (!confirm('Delete this model image? This action cannot be undone.')) {
-    return
-  }
-  
-  try {
-    await apiClient.delete(`/user-images/${image.id}`)
-    // Remove from local state
-    historicalModelImages.value = historicalModelImages.value.filter(img => img.id !== image.id)
-    
-    // If the deleted image was currently selected, clear the selection
-    if (modelImagePreviewUrl.value === image.image_url) {
-      if (modelImagePreviewUrl.value.startsWith('blob:')) {
-        URL.revokeObjectURL(modelImagePreviewUrl.value)
-      }
-      modelImagePreviewUrl.value = null
-    }
-  } catch (error: any) {
-    console.error('Failed to delete model image:', error)
-    alert(`Delete failed: ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
-  }
-}
-
-const removeModelImage = () => {
-  if (modelImagePreviewUrl.value) {
-    URL.revokeObjectURL(modelImagePreviewUrl.value)
-    modelImagePreviewUrl.value = null
-  }
-  modelImageFile.value = null
-}
 
 const handleBackgroundImageChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
@@ -1338,16 +1098,8 @@ const performTryOn = async () => {
     }
   }
 
-  if (!modelImageFile.value && !modelImagePreviewUrl.value) {
-    showModelImageError.value = true
+  if (!activeModelUrl.value) {
     alert(t('studio.modelPhoto.pleaseUploadFirst'))
-    // Scroll to model image uploader
-    setTimeout(() => {
-      const modelUploader = document.querySelector('[data-model-uploader]')
-      if (modelUploader) {
-        modelUploader.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
-    }, 100)
     return
   }
 
@@ -1374,7 +1126,7 @@ const performTryOn = async () => {
   studioStore.setFavoriteStatus(false, null)
 
   const tryOnRequestData = {
-    person_image: modelImageFile.value?.name || 'file',
+    person_image_url: activeModelUrl.value,
     garment_urls: garmentUrls,
     background_image_url: backgroundImageUrl.value || undefined,
   }
@@ -1387,12 +1139,8 @@ const performTryOn = async () => {
 
   try {
     const formData = new FormData()
-    // Use modelImageFile if available, otherwise use modelImagePreviewUrl (from historical images)
-    if (modelImageFile.value) {
-      formData.append('person_image', modelImageFile.value)
-    } else if (modelImagePreviewUrl.value) {
-      // If it's a URL (e.g., from history), send it directly to backend to avoid CORS issues
-      formData.append('person_image_url', modelImagePreviewUrl.value)
+    if (activeModelUrl.value) {
+      formData.append('person_image_url', activeModelUrl.value)
     }
     formData.append('garment_urls', JSON.stringify(garmentUrls))
     if (unmatched_descriptions.length > 0) {
@@ -1865,27 +1613,14 @@ const saveFavorite = async () => {
       .map((item) => item.url || item.features.path)
       .filter((u): u is string => !!u)
     
-    // Find model image ID if using historical image
-    let modelImageId: string | undefined = undefined
-    if (modelImagePreviewUrl.value && !modelImageFile.value) {
-      // If using historical image, find its ID
-      const modelImage = historicalModelImages.value.find(
-        img => img.image_url === modelImagePreviewUrl.value
-      )
-      if (modelImage) {
-        modelImageId = modelImage.id
-      }
-    }
-    
-    // The image is already uploaded to R2, so we can use the URL directly
     const response = await apiClient.post<{ id: string; image_url: string }>('/favorites', {
       image_url: tryOnImageUrl.value,
       title: originalAppliedOutfit.value?.title || 'Try-on result',
       garment_urls: garmentUrls.length > 0 ? garmentUrls : undefined,
       background_image_url: backgroundImageUrl.value || undefined,
       prompt: customPrompt.value || undefined,
-      model_image_url: modelImagePreviewUrl.value || undefined,
-      model_image_id: modelImageId,
+      model_image_url: activeModelUrl.value || undefined,
+      model_image_id: activeModelId.value || undefined,
     })
     
     studioStore.setFavoriteStatus(true, response.data.id)
@@ -1936,243 +1671,28 @@ const hasTryOnInput = computed(
   <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
     <div class="px-2.5">
       <main class="space-y-2.5 max-w-4xl mx-auto px-2.5">
-      <!-- Model photo uploader (moved to top) -->
-      <section class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-2.5">
-        <div>
-          <h2 class="text-2xl font-bold mb-2.5 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-            {{ $t('studio.modelPhoto.title') }}
-          </h2>
+      <!-- Active model indicator (managed in sidebar ModelSwitcher) -->
+      <section v-if="activeModelUrl" class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex items-center gap-3">
+        <div class="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex-shrink-0">
+          <img
+            :src="getThumbnailUrl(activeModelUrl)"
+            loading="lazy"
+            :alt="$t('studio.modelPhoto.modelPreview')"
+            class="w-full h-full object-cover"
+          />
         </div>
-
-        <!-- Model photo uploader with integrated empty state -->
-        <div
-          data-model-uploader
-          :class="[
-            'border rounded-xl bg-white transition-all focus-within:shadow-md overflow-hidden',
-            showModelImageError ? 'border-red-500 border-2 shadow-red-200' : 'border-gray-200 focus-within:border-gray-400',
-          ]"
-        >
-          <!-- Model photo preview or empty state -->
-          <div v-if="modelImagePreviewUrl || isUploadingModelImage" class="p-2.5">
-            <div class="flex items-center justify-between mb-2.5">
-              <div>
-                <p class="text-sm font-medium text-gray-700 mb-1">{{ $t('studio.modelPhoto.title') }}</p>
-                <p class="text-xs text-pink-500">
-                  {{ $t('studio.modelPhoto.description') }}
-                </p>
-              </div>
-              <button
-                v-if="modelImagePreviewUrl && !isUploadingModelImage"
-                @click="removeModelImage"
-                class="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md flex-shrink-0"
-                :title="$t('studio.modelPhoto.deleteModelPhoto')"
-              >
-                <X class="w-4 h-4" />
-              </button>
-            </div>
-            <div class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
-              <img
-                v-if="modelImagePreviewUrl"
-                :src="getMediumImageUrl(modelImagePreviewUrl)"
-                loading="lazy"
-                :alt="$t('studio.modelPhoto.modelPreview')"
-                class="w-full h-full object-cover"
-              />
-              <!-- Upload progress overlay -->
-              <div
-                v-if="isUploadingModelImage"
-                class="absolute inset-0 bg-gray-900/50 flex flex-col items-center justify-center"
-              >
-                <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
-                <span class="text-white text-xs">{{ modelImageUploadProgress }}%</span>
-              </div>
-              <!-- Progress bar -->
-              <div v-if="isUploadingModelImage" class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
-                <div
-                  class="h-full bg-blue-500 transition-all duration-300"
-                  :style="{ width: `${modelImageUploadProgress}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Empty state with upload button -->
-          <div v-else class="p-2.5">
-            <div class="text-center">
-              <Wand2 class="w-12 h-12 mx-auto mb-2.5 text-pink-600" />
-              <div class="flex flex-col items-center gap-2.5">
-                <div class="flex flex-wrap items-center justify-center gap-1">
-                  <label
-                    for="modelImageInput"
-                    class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                  >
-                    <Upload class="w-4 h-4" />
-                    <span>{{ $t('studio.modelPhoto.uploadNewPhoto') }}</span>
-                  </label>
-                  <input
-                    id="modelImageInput"
-                    type="file"
-                    accept="image/*"
-                    @change="handleModelImageChange"
-                    class="hidden"
-                  />
-                  <button
-                    v-if="historicalModelImages.length > 0"
-                    @click="showModelImageHistory = !showModelImageHistory"
-                    class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                  >
-                    <Clock class="w-4 h-4" />
-                    <span>{{ $t('studio.modelPhoto.history') }}</span>
-                  </button>
-                  <button
-                    @click="showExampleModelImages = !showExampleModelImages"
-                    class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors duration-200"
-                  >
-                    <Image class="w-4 h-4" />
-                    <span>{{ $t('studio.example') }}</span>
-                  </button>
-                </div>
-                <p class="text-xs text-pink-600">
-                  {{ $t('studio.modelPhoto.description') }}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Upload button when photo exists (for replacement) -->
-          <div v-if="modelImagePreviewUrl" class="px-2.5 pb-2.5 border-t border-gray-100 pt-2.5">
-            <div class="flex flex-wrap items-center gap-1">
-              <label
-                for="modelImageInputReplace"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-              >
-                <Upload class="w-4 h-4" />
-                <span>{{ t('studio.modelPhoto.replacePhoto') }}</span>
-              </label>
-              <input
-                id="modelImageInputReplace"
-                type="file"
-                accept="image/*"
-                @change="handleModelImageChange"
-                class="hidden"
-              />
-              <button
-                v-if="historicalModelImages.length > 0"
-                @click="showModelImageHistory = !showModelImageHistory"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-gray-50 cursor-pointer transition-colors"
-              >
-                <Clock class="w-4 h-4" />
-                <span>{{ $t('studio.modelPhoto.history') }}</span>
-              </button>
-              <button
-                @click="showExampleModelImages = !showExampleModelImages"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-pink-600 hover:text-gray-900 hover:bg-pink-50 cursor-pointer transition-colors"
-              >
-                <Image class="w-4 h-4" />
-                <span>{{ $t('studio.example') }}</span>
-              </button>
-            </div>
-          </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-700 truncate">{{ $t('studio.modelPhoto.title') }}</p>
+          <p class="text-xs text-muted-foreground">{{ $t('studio.modelPhoto.description') }}</p>
         </div>
-
-        <!-- Historical model images modal -->
-        <div
-          v-if="showModelImageHistory"
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          @click.self="showModelImageHistory = false"
-        >
-          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
-            <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">Choose a historical model image</h3>
-              <button
-                @click="showModelImageHistory = false"
-                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-              >
-                <X class="w-5 h-5 text-pink-500" />
-              </button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="historicalModelImages.length === 0" class="text-center py-12 text-pink-400">
-                <Clock class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                <p>No historical model images</p>
-              </div>
-              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <div
-                  v-for="image in historicalModelImages"
-                  :key="image.id"
-                  @click="selectHistoricalModelImage(image)"
-                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
-                >
-                  <img
-                    :src="getThumbnailUrl(image.image_url)"
-                    loading="lazy"
-                    :alt="`Model image ${image.id}`"
-                    class="w-full h-full object-cover"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
-                  <!-- Delete button -->
-                  <button
-                    @click.stop="deleteHistoricalModelImage(image, $event)"
-                    class="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-lg z-10"
-                    title="Delete this image"
-                  >
-                    <Trash2 class="w-4 h-4" />
-                  </button>
-                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm text-gray-700">
-                      {{ new Date(image.created_at).toLocaleDateString('en-US') }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      </section>
+      <section v-else class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex items-center gap-3">
+        <div class="w-12 h-12 rounded-lg border border-dashed border-pink-300 bg-pink-50 flex items-center justify-center flex-shrink-0">
+          <User class="w-5 h-5 text-pink-400" />
         </div>
-
-        <!-- Example model images modal -->
-        <div
-          v-if="showExampleModelImages"
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          @click.self="showExampleModelImages = false"
-        >
-          <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
-            <div class="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">{{ $t('studio.chooseExampleModel') }}</h3>
-              <button
-                @click="showExampleModelImages = false"
-                class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-              >
-                <X class="w-5 h-5 text-pink-500" />
-              </button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6">
-              <div v-if="exampleModelImages.length === 0" class="text-center py-12 text-pink-400">
-                <Image class="w-12 h-12 mx-auto mb-3 text-pink-300" />
-                <p>{{ $t('studio.noExampleModel') }}</p>
-              </div>
-              <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <div
-                  v-for="(imageUrl, index) in exampleModelImages"
-                  :key="index"
-                  @click="selectExampleModelImage(imageUrl)"
-                  class="group relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 cursor-pointer transition-all hover:shadow-xl"
-                >
-                  <img
-                    :src="getMediumImageUrl(imageUrl)"
-                    loading="lazy"
-                    :alt="`Example model ${index + 1}`"
-                    class="w-full h-full object-cover"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
-                  <div class="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div class="bg-white/90 backdrop-blur-sm rounded px-3 py-2 text-sm font-medium text-gray-700 text-center">
-                      {{ $t('studio.clickToUse') }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-700">{{ $t('studio.modelPhoto.title') }}</p>
+          <p class="text-xs text-pink-500">{{ $t('studio.modelPhoto.pleaseUploadFirst') }}</p>
         </div>
       </section>
 
@@ -2364,14 +1884,23 @@ const hasTryOnInput = computed(
             </div>
             
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <button 
-              @click="getRecommendations" 
-              :disabled="isGenerating"
-              class="bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 transition-colors shadow-lg shadow-pink-500/20 w-full justify-center sm:w-auto"
-            >
-              <Wand2 class="w-5 h-5" />
-              {{ isGenerating ? $t('studio.aiThinking') : $t('studio.generateOutfit') }}
-            </button>
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+              <button 
+                @click="getRecommendations" 
+                :disabled="isGenerating"
+                class="flex-1 sm:flex-initial bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 transition-colors shadow-lg shadow-pink-500/20 justify-center"
+              >
+                <Wand2 class="w-5 h-5" />
+                {{ isGenerating ? $t('studio.aiThinking') : $t('studio.generateOutfit') }}
+              </button>
+              <NativeSelect
+                v-model="selectedModel"
+                class="h-[46px] rounded-xl border-2 border-pink-200 text-pink-600 font-medium hover:border-pink-400 focus-visible:border-pink-500 focus-visible:ring-pink-200"
+              >
+                <NativeSelectOption value="qwen">Qwen</NativeSelectOption>
+                <NativeSelectOption value="grok">Grok</NativeSelectOption>
+              </NativeSelect>
+            </div>
             <p v-if="!isAuthenticated && guestQuota !== null" class="text-xs text-gray-500">
               {{ $t('studio.guestOutfitQuota', { remaining: guestQuota.outfit_remaining, limit: guestQuota.outfit_limit }) }}
             </p>
@@ -2379,7 +1908,7 @@ const hasTryOnInput = computed(
             <div class="flex items-center gap-2 text-xs text-pink-600">
               <span class="font-medium text-gray-700">fashion</span>
               <span class="text-pink-400">|</span>
-              <span>Powered by Qwen</span>
+              <span>Powered by {{ selectedModel === 'grok' ? 'Grok' : 'Qwen' }}</span>
               <span class="text-pink-400">|</span>
               <span class="text-pink-400">Independent service</span>
             </div>
@@ -2442,84 +1971,6 @@ const hasTryOnInput = computed(
              <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
              <p class="text-pink-600 animate-pulse mb-2">{{ $t('studio.consultingKnowledgeBase') }}</p>
              
-          </div>
-        </div>
-      </section>
-
-      <!-- Applied Outfit Items - Independent Section -->
-      <section class="bg-white p-2.5 rounded-2xl shadow-sm border border-pink-100 flex flex-col gap-2.5">
-        <div>
-          <h2 class="text-2xl font-bold mb-2.5 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('studio.appliedOutfitItems.title') }}</h2>
-          <p class="text-sm text-gray-700">
-            {{ $t('studio.appliedOutfitItems.description') }}
-          </p>
-        </div>
-        
-        <div class="p-2.5 border border-pink-100 rounded-xl bg-pink-50/50">
-          <div class="flex items-center justify-between mb-2.5">
-            <p class="text-sm font-medium text-gray-700">
-              {{ $t('studio.appliedOutfitItems.itemsCount', { count: activeWardrobeItems.length }) }}
-            </p>
-            <p v-if="getMissingRoles().length > 0" class="text-xs text-pink-600">
-              {{ $t('studio.appliedOutfitItems.rolesRemoved', { count: getMissingRoles().length }) }}
-            </p>
-          </div>
-          
-          <!-- Empty state -->
-          <div v-if="activeWardrobeItems.length === 0" class="py-2.5 text-center">
-            <Shirt class="w-12 h-12 mx-auto mb-2.5 text-pink-600" />
-            <p class="text-sm text-gray-700 mb-2.5">{{ $t('studio.appliedOutfitItems.noItemsSelected') }}</p>
-            <p class="text-xs text-pink-600 mb-2.5">{{ $t('studio.appliedOutfitItems.goToWardrobePrompt') }}</p>
-            <button
-              @click="$router.push('/wardrobe')"
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-pink-200 text-gray-700 hover:border-pink-600 hover:text-gray-900 transition-colors"
-            >
-              <Shirt class="w-4 h-4" />
-              {{ $t('studio.appliedOutfitItems.goToWardrobe') }}
-            </button>
-          </div>
-          
-          <!-- Items display -->
-          <div v-else class="flex flex-wrap gap-2.5 mb-2.5">
-            <div
-              v-for="(item, index) in activeWardrobeItems"
-              :key="item.id"
-              class="group relative"
-            >
-              <div class="relative">
-                <div
-                  @click="openImageViewer(index)"
-                  class="cursor-pointer"
-                >
-                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-pink-200 hover:border-pink-500 transition-all hover:shadow-lg bg-pink-100">
-                    <img
-                      v-if="item.url || item.features.path"
-                      :src="getSmallImageUrl((item.url || item.features.path) || '')"
-                      loading="lazy"
-                      class="w-full h-full object-cover"
-                      :alt="`${formatFeatureValue(item.features.color)} ${formatFeatureValue(item.features.type)}`"
-                    />
-                  </div>
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg pointer-events-none"></div>
-                </div>
-                <!-- Delete button - always visible -->
-                <button
-                  @click.stop="removeActiveItem(String(item.id))"
-                  class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md z-10"
-                  :title="$t('studio.appliedOutfitItems.deleteItem')"
-                >
-                  <X class="w-4 h-4" />
-                </button>
-              </div>
-              <div class="mt-2.5 text-center">
-                <p class="text-xs text-gray-700 truncate max-w-[80px]">
-                  {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
-                </p>
-                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-pink-600 truncate max-w-[80px]">
-                  {{ activeWardrobeRoleMap.get(String(item.id)) }}
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -2692,6 +2143,97 @@ const hasTryOnInput = computed(
       </p>
       </footer>
     </div>
+
+    <!-- 右下角悬浮按钮：已应用的穿搭物品 -->
+    <button
+      type="button"
+      @click="showAppliedOutfitSheet = true"
+      class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-500/30 hover:from-pink-700 hover:to-purple-700 hover:shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center"
+      :title="$t('studio.appliedOutfitItems.title')"
+    >
+      <Shirt class="w-6 h-6" />
+      <span v-if="activeWardrobeItems.length > 0" class="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-xs text-white flex items-center justify-center">
+        {{ activeWardrobeItems.length }}
+      </span>
+    </button>
+
+    <!-- 已应用的穿搭物品 Sheet -->
+    <Sheet :open="showAppliedOutfitSheet" @update:open="showAppliedOutfitSheet = $event">
+      <SheetContent side="right" class="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle class="text-xl bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+            {{ $t('studio.appliedOutfitItems.title') }}
+          </SheetTitle>
+        </SheetHeader>
+        <p class="text-sm text-gray-600 mt-1 mb-4">
+          {{ $t('studio.appliedOutfitItems.description') }}
+        </p>
+        <div class="p-3 border border-pink-100 rounded-xl bg-pink-50/50">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-medium text-gray-700">
+              {{ $t('studio.appliedOutfitItems.itemsCount', { count: activeWardrobeItems.length }) }}
+            </p>
+            <p v-if="getMissingRoles().length > 0" class="text-xs text-pink-600">
+              {{ $t('studio.appliedOutfitItems.rolesRemoved', { count: getMissingRoles().length }) }}
+            </p>
+          </div>
+          <!-- Empty state -->
+          <div v-if="activeWardrobeItems.length === 0" class="py-6 text-center">
+            <Shirt class="w-12 h-12 mx-auto mb-3 text-pink-600" />
+            <p class="text-sm text-gray-700 mb-2">{{ $t('studio.appliedOutfitItems.noItemsSelected') }}</p>
+            <p class="text-xs text-pink-600 mb-3">{{ $t('studio.appliedOutfitItems.goToWardrobePrompt') }}</p>
+            <button
+              @click="$router.push('/wardrobe'); showAppliedOutfitSheet = false"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-pink-200 text-gray-700 hover:border-pink-600 hover:text-gray-900 transition-colors"
+            >
+              <Shirt class="w-4 h-4" />
+              {{ $t('studio.appliedOutfitItems.goToWardrobe') }}
+            </button>
+          </div>
+          <!-- Items display -->
+          <div v-else class="flex flex-wrap gap-3">
+            <div
+              v-for="(item, index) in activeWardrobeItems"
+              :key="item.id"
+              class="group relative"
+            >
+              <div class="relative">
+                <div
+                  @click="openImageViewer(index)"
+                  class="cursor-pointer"
+                >
+                  <div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-pink-200 hover:border-pink-500 transition-all hover:shadow-lg bg-pink-100">
+                    <img
+                      v-if="item.url || item.features.path"
+                      :src="getSmallImageUrl((item.url || item.features.path) || '')"
+                      loading="lazy"
+                      class="w-full h-full object-cover"
+                      :alt="`${formatFeatureValue(item.features.color)} ${formatFeatureValue(item.features.type)}`"
+                    />
+                  </div>
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg pointer-events-none" />
+                </div>
+                <button
+                  @click.stop="removeActiveItem(String(item.id))"
+                  class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md z-10"
+                  :title="$t('studio.appliedOutfitItems.deleteItem')"
+                >
+                  <X class="w-4 h-4" />
+                </button>
+              </div>
+              <div class="mt-2 text-center">
+                <p class="text-xs text-gray-700 truncate max-w-[80px]">
+                  {{ formatFeatureValue(item.features.color) }} {{ formatFeatureValue(item.features.type) }}
+                </p>
+                <p v-if="activeWardrobeRoleMap.get(String(item.id))" class="text-xs text-pink-600 truncate max-w-[80px]">
+                  {{ activeWardrobeRoleMap.get(String(item.id)) }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
 
     <!-- Image Viewer (shared component) -->
     <ImageViewer

@@ -1,24 +1,25 @@
 <template>
   <Sidebar collapsible="offcanvas" class="border-r border-pink-200">
     <div class="flex h-full flex-col px-[10px]" @click="onSidebarNavClick">
-      <SidebarHeader class="p-4 border-b border-pink-100 justify-center text-center !px-0">
-        <router-link to="/" class="flex items-center justify-center gap-2">
-        <span class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent group-data-[state=collapsed]/sidebar-wrapper:hidden">
-          Fashion Rec
-        </span>
-        <span 
-          v-if="!isLoadingVersion && currentVersion" 
-          :class="[
-            'px-2 py-0.5 text-xs font-semibold rounded-full group-data-[state=collapsed]/sidebar-wrapper:hidden',
-            isV2 
-              ? 'bg-pink-100 text-pink-700 border border-pink-200' 
-              : 'bg-purple-50 text-purple-600 border border-purple-200'
-          ]"
-          :title="`Current version: ${currentVersion}`"
-        >
-          {{ isV2 ? 'V2' : 'Stable' }}
-        </span>
-      </router-link>
+      <SidebarHeader class="!flex-col !h-auto !items-stretch gap-1 border-b border-pink-100 !px-0 py-2">
+        <router-link to="/" class="flex items-center justify-center gap-2 px-2">
+          <span class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent group-data-[state=collapsed]/sidebar-wrapper:hidden">
+            Fashion Rec
+          </span>
+          <span 
+            v-if="!isLoadingVersion && currentVersion" 
+            :class="[
+              'px-2 py-0.5 text-xs font-semibold rounded-full group-data-[state=collapsed]/sidebar-wrapper:hidden',
+              isV2 
+                ? 'bg-pink-100 text-pink-700 border border-pink-200' 
+                : 'bg-purple-50 text-purple-600 border border-purple-200'
+            ]"
+            :title="`Current version: ${currentVersion}`"
+          >
+            {{ isV2 ? 'V2' : 'Stable' }}
+          </span>
+        </router-link>
+        <ModelSwitcher />
       </SidebarHeader>
       <SidebarContent class="flex-1 min-h-0 !px-0">
         <!-- Main: Studio, Wardrobe -->
@@ -113,6 +114,37 @@
                   </router-link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <!-- Settings -->
+        <SidebarGroup>
+          <SidebarGroupLabel class="group-data-[state=collapsed]/sidebar-wrapper:hidden">
+            {{ $t('nav.settings') }}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <Collapsible v-model:open="settingsMenuOpen" class="group/collapsible">
+                <SidebarMenuItem>
+                  <CollapsibleTrigger as-child>
+                    <SidebarMenuButton :is-active="isSettingsActive">
+                      <Settings class="size-4 shrink-0" />
+                      <span class="group-data-[state=collapsed]/sidebar-wrapper:hidden">{{ $t('nav.settings') }}</span>
+                      <ChevronRight class="ml-auto size-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[state=collapsed]/sidebar-wrapper:hidden" />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton as-child :is-active="isActiveRoute('/settings/model')">
+                          <router-link to="/settings/model">{{ $t('nav.settingsModel') }}</router-link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -215,8 +247,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Heart, Send, Palette, Shirt, History, ChevronRight, FileText } from 'lucide-vue-next'
+import { Heart, Send, Palette, Shirt, History, ChevronRight, FileText, Settings } from 'lucide-vue-next'
 import SidebarNavUser from '@/components/SidebarNavUser.vue'
+import ModelSwitcher from '@/components/ModelSwitcher.vue'
 import { useVersion } from '@/composables/useVersion'
 import { useStudioStore } from '@/stores/studio'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
@@ -281,6 +314,8 @@ const breadcrumbTitle = computed(() => {
   if (path.startsWith('/multiangle-history')) return t('nav.historyMultiAngle')
   if (path.startsWith('/favorites')) return t('nav.favorites')
   if (path.startsWith('/my-blog')) return t('nav.myBlog')
+  if (path.startsWith('/settings/model')) return t('nav.settingsModel')
+  if (path.startsWith('/settings')) return t('nav.settings')
   if (path.startsWith('/profile')) return t('nav.profile')
   return (route.meta?.title as string) ?? route.name?.toString() ?? route.path
 })
@@ -296,6 +331,7 @@ const studioStepperSteps = computed(() => [
 // Submenu states
 const studioMenuOpen = ref(true)
 const historyMenuOpen = ref(true)
+const settingsMenuOpen = ref(false)
 
 const isActiveRoute = (path: string) => {
   return computed(() => route.path === path || route.path.startsWith(path + '/')).value
@@ -311,6 +347,11 @@ const isStudioActive = computed(() => {
 const isHistoryActive = computed(() => {
   return route.path === '/tryon-history' || route.path === '/multiangle-history' ||
          route.path.startsWith('/tryon-history/') || route.path.startsWith('/multiangle-history/')
+})
+
+// Check if any settings route is active
+const isSettingsActive = computed(() => {
+  return route.path.startsWith('/settings')
 })
 
 // 移动端：点击侧栏内任意导航并发生路由/跳转后自动折叠侧栏；桌面端不折叠

@@ -41,7 +41,34 @@
     "language": "Language",
     "sidebarGroupMain": "Main",
     "sidebarGroupHistory": "History & Favorites",
-    "sidebarGroupAccount": "Account"
+    "sidebarGroupAccount": "Account",
+    "settings": "Settings",
+    "settingsModel": "Model"
+  },
+  "settings": {
+    "model": {
+      "title": "Model Settings",
+      "description": "Set model details for more accurate virtual try-on results.",
+      "nickname": "Nickname",
+      "nicknamePlaceholder": "Give your model a name",
+      "height": "Height",
+      "heightPlaceholder": "Enter height (cm)",
+      "weight": "Weight",
+      "weightPlaceholder": "Enter weight (kg)",
+      "birthYear": "Birth Year",
+      "birthYearPlaceholder": "Select birth year",
+      "photo": "Model Photo",
+      "photoDescription": "Upload a full-body photo for virtual try-on.",
+      "uploadPhoto": "Upload Photo",
+      "replacePhoto": "Replace Photo",
+      "replacePhotoHint": "Replaces the photo while keeping the model ID and settings",
+      "save": "Save",
+      "saving": "Saving...",
+      "saveSuccess": "Saved successfully",
+      "saveFailed": "Save failed",
+      "noModel": "No model selected",
+      "switchModel": "Switch Model"
+    }
   },
   "home": {
     "title": "Discover Your Perfect Style",

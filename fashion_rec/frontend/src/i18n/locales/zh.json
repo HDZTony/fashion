@@ -41,7 +41,33 @@
     "language": "语言",
     "sidebarGroupMain": "主功能",
     "sidebarGroupHistory": "历史与收藏",
-    "sidebarGroupAccount": "账户"
+    "sidebarGroupAccount": "账户",
+    "settings": "设置",
+    "settingsModel": "模特"
+  },
+  "settings": {
+    "model": {
+      "title": "模特设置",
+      "description": "设置模特的基本信息，用于更精准的虚拟试穿效果。",
+      "nickname": "昵称",
+      "nicknamePlaceholder": "给模特起个名字",
+      "height": "身高",
+      "heightPlaceholder": "请输入身高（cm）",
+      "weight": "体重",
+      "weightPlaceholder": "请输入体重（kg）",
+      "birthYear": "出生年份",
+      "birthYearPlaceholder": "请选择出生年份",
+      "photo": "模特照片",
+      "photoDescription": "上传一张全身照，用于虚拟试穿。",
+      "uploadPhoto": "上传照片",
+      "replacePhoto": "更换照片",
+      "save": "保存",
+      "saving": "保存中...",
+      "saveSuccess": "保存成功",
+      "saveFailed": "保存失败",
+      "noModel": "暂无模特",
+      "switchModel": "切换模特"
+    }
   },
   "home": {
     "title": "发现您的完美风格",

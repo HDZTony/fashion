@@ -28,6 +28,11 @@ id = "e335d5ff4f4948718434187ca14f94b7"
 binding = "BLOG_SERVICE"
 service = "fashion-rec-blog"
 
+# Service Binding: 内部调用 Subscription Worker，跳过公网 HTTP 栈
+[[services]]
+binding = "SUBSCRIPTION_SERVICE"
+service = "fashion-rec-subscription-service"
+
 # Routes configuration
 # Configure routes in Cloudflare Dashboard:
 # Workers & Pages → fashion-rec-router → Settings → Triggers → Routes

@@ -125,6 +125,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'my-blog',
         component: () => import('../views/MyBlog.vue'),
         meta: { requiresAuth: true }
+      },
+      {
+        path: 'settings/model',
+        name: 'settings-model',
+        component: () => import('../views/SettingsModel.vue'),
+        meta: { requiresAuth: true }
       }
     ]
   },
@@ -156,14 +162,23 @@ export const setupRouterGuards = (router: Router) => {
       return
     }
 
+    const authStore = useAuthStore()
+
+    // Handle OAuth code that landed on the wrong page (e.g. Supabase redirected to '/' instead of '/callback')
+    if (to.query.code && to.name !== 'callback') {
+      await authStore.loadSession()
+      if (authStore.isAuthenticated) {
+        next({ name: 'studio', replace: true })
+        return
+      }
+    }
+
     // Mark route navigation (not page refresh) for Studio page
     // This helps Studio.vue distinguish between route navigation and page refresh
     if (to.name === 'studio' && from.name) {
       // Only set marker if navigating from another route (not initial load)
       sessionStorage.setItem('studio-route-navigation', 'true')
     }
-
-    const authStore = useAuthStore()
 
     // Wait for initial session load if still loading
     if (authStore.isLoading) {

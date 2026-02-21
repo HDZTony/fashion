@@ -7,7 +7,7 @@ import httpx
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from services.vector_db import get_user_items, search_by_text
-from services.recognition import llm
+from services.recognition import get_llm
 
 # Ensure .env is loaded so WEATHER_API_KEY is available
 load_dotenv()
@@ -115,13 +115,14 @@ async def generate_outfit_suggestions(
     model_image_url: Optional[str] = None,
     client_ip: Optional[str] = None,
     selected_items_roles: Optional[Dict[str, str]] = None,
+    model: str = "qwen",
 ) -> Dict[str, Any]:
     """
     High-level agent:
     - fetch weather (IP-based)
     - get wardrobe items
     - build prompt with rules + user prompt
-    - ask Qwen for structured JSON outfits + long-form text
+    - ask VL model (Qwen or Grok) for structured JSON outfits + long-form text
     """
     # Only use IP (or auto:ip) to determine weather and location
     weather_raw = await fetch_weather_by_ip(client_ip)
@@ -281,8 +282,11 @@ Based on your analysis, tailor the outfit suggestions to match the background. T
     else:
         user_message_content = user_prompt_text
 
+    selected_llm = get_llm(model)
+    model_label = "Grok" if model == "grok" else "Qwen-VL"
+
     print("\n" + "="*80)
-    print("=== Qwen-VL Model Request (Generate Outfit) - Complete Prompt ===")
+    print(f"=== {model_label} Model Request (Generate Outfit) - Complete Prompt ===")
     print("="*80)
     print("\n[System Prompt] (full):")
     print("-"*40)
@@ -303,7 +307,7 @@ Based on your analysis, tailor the outfit suggestions to match the background. T
     print("-"*40)
     print("\n" + "="*80 + "\n")
 
-    response = await llm.ainvoke(
+    response = await selected_llm.ainvoke(
         [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_message_content),

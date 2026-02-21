@@ -28,6 +28,8 @@ interface Env {
   BLOG_SERVICE_URL: string
   /** Service Binding: 内部调用 Blog Worker，绕过 Cloudflare Access */
   BLOG_SERVICE: Fetcher
+  /** Service Binding: 内部调用 Subscription Worker，跳过公网 HTTP 栈 */
+  SUBSCRIPTION_SERVICE: Fetcher
   USER_VERSIONS: KVNamespace
 }
 
@@ -394,6 +396,9 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/favorites') ||
          path.startsWith('/model-image') ||
          path.startsWith('/user-images') ||
+         path.startsWith('/model-profile') ||
+         path === '/model-profiles' ||
+         path.startsWith('/proxy-image') ||
          path.startsWith('/background-image') ||
          path.startsWith('/tryon-history') ||
          path.startsWith('/multiangle-history') ||
@@ -796,6 +801,57 @@ export default {
       console.log(`[Router] Request ${request.method} ${path} - isApiRequest: ${isApi}, version: ${version}`)
       
       if (isApi) {
+        // 图片代理：Worker 直接拉取 R2 并返回，带 CORS，localhost 无跨域
+        if (path.startsWith('/proxy-image') && request.method === 'GET') {
+          const origin = request.headers.get('Origin')
+          const corsHeaders = getCorsHeaders(origin)
+          const proxyUrlParam = url.searchParams.get('url')
+          if (!proxyUrlParam) {
+            return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+          let parsed: URL
+          try {
+            parsed = new URL(proxyUrlParam)
+          } catch {
+            return new Response(JSON.stringify({ error: 'Invalid url' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+          if (parsed.protocol !== 'https:' || parsed.hostname !== 'r2.fashion-rec.com') {
+            return new Response(JSON.stringify({ error: 'Only r2.fashion-rec.com URLs allowed' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+          try {
+            const ac = new AbortController()
+            const timeoutId = setTimeout(() => ac.abort(), 15000)
+            const imgRes = await fetch(proxyUrlParam, { signal: ac.signal })
+            clearTimeout(timeoutId)
+            if (!imgRes.ok) {
+              return new Response(JSON.stringify({ error: 'Upstream image fetch failed' }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              })
+            }
+            const contentType = imgRes.headers.get('Content-Type') || 'image/jpeg'
+            const body = await imgRes.arrayBuffer()
+            return new Response(body, {
+              headers: { 'Content-Type': contentType, ...corsHeaders },
+            })
+          } catch (e) {
+            console.error('[Router] proxy-image fetch failed:', e)
+            return new Response(JSON.stringify({ error: 'Failed to fetch image' }), {
+              status: 502,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+        }
+
         // Check if this is a blog-service request
         const isBlogRequest = path.startsWith('/blog')
         
@@ -933,49 +989,110 @@ export default {
             headers: responseHeaders,
           })
         } else if (isSubscriptionRequest) {
-          // Webhook routing: test-webhook -> v2, webhook -> stable
-          // Other subscription requests route based on user version
+          // Service Binding 优先，跳过公网 HTTP 栈
+          const usesServiceBinding = !!env.SUBSCRIPTION_SERVICE
+
+          if (usesServiceBinding) {
+            const internalUrl = new URL(path + url.search, 'https://subscription-internal')
+            const headers = new Headers(request.headers)
+            headers.set('Host', 'subscription-internal')
+
+            const subRequest = new Request(internalUrl.toString(), {
+              method: request.method,
+              headers,
+              body: request.body,
+              redirect: request.redirect,
+            })
+
+            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} via Service Binding`)
+
+            const fetchStartTime = Date.now()
+            const timeoutMs = 25000
+            const abortController = new AbortController()
+            const timeoutId = setTimeout(() => { abortController.abort() }, timeoutMs)
+
+            let response: Response
+            try {
+              response = await env.SUBSCRIPTION_SERVICE.fetch(
+                new Request(subRequest, { signal: abortController.signal })
+              )
+              clearTimeout(timeoutId)
+              console.log(`[Router] Subscription service response: status ${response.status} ${response.statusText} for ${path}`)
+            } catch (fetchError: any) {
+              clearTimeout(timeoutId)
+              const errorDuration = Date.now() - fetchStartTime
+              console.error(`[Router] Subscription service fetch failed after ${errorDuration}ms:`, fetchError)
+
+              const origin = request.headers.get('Origin')
+              const corsHeaders = getCorsHeaders(origin)
+
+              let errorDetail = fetchError.message || 'Request timeout or connection error'
+              if (fetchError.name === 'AbortError') {
+                errorDetail = errorDuration < 1000
+                  ? 'Connection refused - Subscription service may not be running'
+                  : `Request timeout after ${errorDuration}ms`
+              }
+
+              return new Response(JSON.stringify({
+                error: 'Subscription service request failed',
+                detail: errorDetail,
+                path: path,
+                duration_ms: errorDuration,
+              }), {
+                status: 502,
+                statusText: 'Bad Gateway',
+                headers: { 'Content-Type': 'application/json', ...corsHeaders }
+              })
+            }
+
+            const fetchDuration = Date.now() - fetchStartTime
+            console.log(`[Router] Subscription service response received: status ${response.status} in ${fetchDuration}ms for ${path}`)
+
+            const origin = request.headers.get('Origin')
+            const corsHeaders = getCorsHeaders(origin)
+            const responseHeaders = new Headers(response.headers)
+            for (const [key, value] of Object.entries(corsHeaders)) {
+              responseHeaders.set(key, value)
+            }
+
+            return new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: responseHeaders,
+            })
+          }
+
+          // Fallback: 无 Service Binding 时走公网 HTTP fetch
           if (path === '/test-webhook') {
             backendUrl = env.V2_SUBSCRIPTION_SERVICE_URL
-            console.log(`[Router] Routing test-webhook to v2 subscription-service: ${backendUrl}`)
+            console.log(`[Router] Routing test-webhook to v2 subscription-service (HTTP fallback): ${backendUrl}`)
           } else if (path === '/webhook') {
             backendUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
-            console.log(`[Router] Routing webhook to stable subscription-service: ${backendUrl}`)
+            console.log(`[Router] Routing webhook to stable subscription-service (HTTP fallback): ${backendUrl}`)
           } else {
-            // Route subscription requests based on user version (stable/v2)
-            // Debug: Log environment variables
-            console.log(`[Router] 🔍 [${path}] Environment check - V2_SUBSCRIPTION_SERVICE_URL: ${env.V2_SUBSCRIPTION_SERVICE_URL}, STABLE_SUBSCRIPTION_SERVICE_URL: ${env.STABLE_SUBSCRIPTION_SERVICE_URL}, version: ${version}`)
-            
             backendUrl = version === 'v2'
               ? env.V2_SUBSCRIPTION_SERVICE_URL
               : env.STABLE_SUBSCRIPTION_SERVICE_URL
-            
-            // Fallback: if URL is undefined, return error instead of using localhost
-            // Cloudflare Workers cannot connect to localhost, so we should fail fast with clear error
+
             if (!backendUrl) {
-              console.error(`[Router] ❌ [${path}] ${version} subscription service URL is undefined`)
-              console.error(`[Router] Environment variables check: V2_SUBSCRIPTION_SERVICE_URL=${env.V2_SUBSCRIPTION_SERVICE_URL || 'NOT SET'}, STABLE_SUBSCRIPTION_SERVICE_URL=${env.STABLE_SUBSCRIPTION_SERVICE_URL || 'NOT SET'}`)
-              
+              console.error(`[Router] ❌ [${path}] ${version} subscription service URL is undefined (no Service Binding and no URL)`)
+
               const origin = request.headers.get('Origin')
               const corsHeaders = getCorsHeaders(origin)
-              
+
               return new Response(JSON.stringify({
                 error: 'Configuration error',
-                detail: `Subscription service URL is not configured for version '${version}'. Please set ${version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'} environment variable.\n\nFor local development:\n1. Ensure .dev.vars file exists in cloudflare-router directory\n2. Restart wrangler dev after adding environment variables\n3. Check that subscription service is running on the configured port`,
+                detail: `Subscription service is not configured. Please add a Service Binding (SUBSCRIPTION_SERVICE) in wrangler.toml or set ${version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'} environment variable.`,
                 path: path,
                 version: version,
-                missingEnvVar: version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'
               }), {
                 status: 500,
                 statusText: 'Internal Server Error',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...corsHeaders
-                }
+                headers: { 'Content-Type': 'application/json', ...corsHeaders }
               })
             }
-            
-            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} to: ${backendUrl} (version: ${version}, userId: ${userId || 'null'})`)
+
+            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} to: ${backendUrl} (HTTP fallback, version: ${version})`)
           }
         } else {
           backendUrl = version === 'v2' 
@@ -1001,19 +1118,21 @@ export default {
         }
         
         // Add timeout to backend fetch using AbortController
-        // generate-angles: 6 minutes (fal queue + poll + download + R2 + userinfo + Supabase; observed ~4.5 min)
-        // try-on, upload, outfit: 4 minutes (to be under frontend's 5min timeout)
-        // PUT/DELETE: 60 seconds; others: 25 seconds
+        // upload/model-image/background-image: 10 min (R2 直连慢，需要充足时间)
+        // generate-angles: 6 min; try-on/outfit: 4 min
+        // PUT/DELETE: 60s; others: 25s
         const isTryOnRequest = path === '/try-on'
-        const isUploadRequest = path === '/upload'
+        const isUploadRequest = path === '/upload' || path === '/model-image' || path === '/background-image'
         const isOutfitRequest = path === '/outfit'
         const isGenerateAnglesRequest = path === '/generate-angles'
         const isPutOrDeleteRequest = request.method === 'PUT' || request.method === 'DELETE'
-        const timeoutMs = isGenerateAnglesRequest
-          ? 360000
-          : (isTryOnRequest || isUploadRequest || isOutfitRequest)
-            ? 240000
-            : (isPutOrDeleteRequest ? 60000 : 25000)
+        const timeoutMs = isUploadRequest
+          ? 600000
+          : isGenerateAnglesRequest
+            ? 360000
+            : (isTryOnRequest || isOutfitRequest)
+              ? 240000
+              : (isPutOrDeleteRequest ? 60000 : 25000)
         
         const backendRequest = routeToBackend(request, backendUrl)
         console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)
@@ -1172,17 +1291,21 @@ Error reference: ${fetchError.message}`
                                         path === '/userinfo' ||
                                         path === '/webhook' || 
                                         path === '/test-webhook'
+          if (isSubscriptionRequest && env.SUBSCRIPTION_SERVICE) {
+            const internalUrl = new URL(path + url.search, 'https://subscription-internal')
+            const headers = new Headers(request.headers)
+            headers.set('Host', 'subscription-internal')
+            return env.SUBSCRIPTION_SERVICE.fetch(new Request(internalUrl.toString(), {
+              method: request.method,
+              headers,
+              body: request.body,
+              redirect: request.redirect,
+            }))
+          }
+
           let fallbackUrl: string
           if (isSubscriptionRequest) {
-            // Webhook routing: test-webhook -> v2, webhook -> stable
-            if (path === '/test-webhook') {
-              fallbackUrl = env.V2_SUBSCRIPTION_SERVICE_URL
-            } else if (path === '/webhook') {
-              fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
-            } else {
-              // Other subscription requests fallback to stable
-              fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
-            }
+            fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
           } else {
             fallbackUrl = env.STABLE_BACKEND_URL
           }

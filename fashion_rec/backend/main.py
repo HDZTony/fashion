@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
@@ -89,6 +90,7 @@ class OutfitAgentRequest(BaseModel):
     model_image_url: Optional[str] = None  # Model image URL (person) for personalized suggestions
     # Map of wardrobe_id to role for already selected items (to avoid regenerating them)
     selected_items_roles: Optional[Dict[str, str]] = None
+    model: Optional[str] = "qwen"  # "qwen" or "grok" — which VL model to use for outfit generation
 
 
 class OutfitItem(BaseModel):
@@ -151,6 +153,44 @@ async def health_check():
     # Fly.io health check just needs to know the app is listening
     # No need to check components on every health check (reduces overhead)
     return {"status": "ok"}
+
+
+# Allowed host for image proxy (avoid open proxy)
+_PROXY_IMAGE_ALLOWED_HOST = "r2.fashion-rec.com"
+
+
+@app.get("/proxy-image", response_class=Response)
+async def proxy_image(url: str = Query(..., description="Image URL (must be r2.fashion-rec.com)")):
+    """
+    开发环境下前端通过此接口代理 R2 图片，避免直连 R2 的 CORS 问题。
+    仅允许 r2.fashion-rec.com 域名。
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="Invalid url")
+        if parsed.scheme != "https" or parsed.netloc != _PROXY_IMAGE_ALLOWED_HOST:
+            raise HTTPException(status_code=400, detail="Only r2.fashion-rec.com URLs are allowed")
+
+        # 直连 R2，避免代理导致 SSL 问题
+        _proxy_keys = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+        _saved = {k: os.environ.pop(k, None) for k in _proxy_keys if k in os.environ}
+        try:
+            resp = requests.get(url, timeout=30, stream=True)
+            resp.raise_for_status()
+            content = resp.content
+            content_type = resp.headers.get("Content-Type") or "image/jpeg"
+        finally:
+            os.environ.update(_saved)
+
+        return Response(content=content, media_type=content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"[proxy-image] Failed to fetch {url[:80]}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch image")
 
 
 def _convert_unsupported_format(image_path: Path) -> Path:
@@ -1450,6 +1490,7 @@ async def generate_outfit(
             model_image_url=optimized_model_url,
             client_ip=get_guest_client_ip(http_request),
             selected_items_roles=request.selected_items_roles,
+            model=request.model or "qwen",
         )
         
         # #region agent log
@@ -2348,6 +2389,41 @@ async def upload_model_image(
         raise HTTPException(status_code=500, detail=f"Failed to upload model image: {e}")
 
 
+@app.put("/model-image/{model_id}")
+async def replace_model_image(
+    model_id: str,
+    file: UploadFile = File(...),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Replace an existing model's photo. Uploads new file to R2,
+    updates the existing user_images row so the model ID is preserved.
+    """
+    from services.storage import upload_file_to_r2
+    from services.user_images import update_user_image_url
+
+    user_id, user_token = auth
+    try:
+        public_url = await upload_file_to_r2(
+            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=None
+        )
+        import os
+        r2_public_url = os.getenv("R2_PUBLIC_URL", "")
+        if r2_public_url and public_url.startswith(r2_public_url):
+            r2_filename = public_url.replace(r2_public_url + '/', '')
+        else:
+            r2_filename = public_url.split('/')[-1]
+
+        updated = update_user_image_url(user_id, model_id, public_url, r2_filename, user_token)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Model not found or not owned by user")
+        return {"url": public_url, "model": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to replace model image: {e}")
+
+
 @app.get("/user-images")
 async def get_user_images(
     image_type: Optional[str] = None,
@@ -2390,6 +2466,72 @@ async def delete_user_image(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete user image: {e}")
+
+
+# ── Model profile (身高/体重/出生年份) ──
+
+
+class ModelProfileUpdate(BaseModel):
+    nickname: Optional[str] = None
+    height: Optional[float] = None
+    weight: Optional[float] = None
+    birth_year: Optional[int] = None
+
+
+@app.get("/model-profiles")
+async def list_model_profiles(
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Get all model profiles (nickname etc.) for the current user."""
+    from services.model_profiles import list_model_profiles as _list
+
+    user_id, user_token = auth
+    try:
+        profiles = _list(user_id, user_token)
+        return {"profiles": profiles}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list model profiles: {e}")
+
+
+@app.get("/model-profile/{model_id}")
+async def get_model_profile(
+    model_id: str,
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Get profile for a model."""
+    from services.model_profiles import get_model_profile as _get
+
+    user_id, user_token = auth
+    try:
+        profile = _get(user_id, model_id, user_token)
+        return {"profile": profile}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get model profile: {e}")
+
+
+@app.put("/model-profile/{model_id}")
+async def update_model_profile(
+    model_id: str,
+    body: ModelProfileUpdate,
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Create or update profile for a model."""
+    from services.model_profiles import upsert_model_profile
+
+    user_id, user_token = auth
+    try:
+        profile = upsert_model_profile(
+            user_id=user_id,
+            model_id=model_id,
+            user_token=user_token,
+            nickname=body.nickname,
+            height=body.height,
+            weight=body.weight,
+            birth_year=body.birth_year,
+        )
+        return {"profile": profile}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update model profile: {e}")
 
 
 @app.get("/looks")

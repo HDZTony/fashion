@@ -1,3 +1,5 @@
+import { API_URL } from '@/config/api'
+
 export type ImageSize = 'thumbnail' | 'small' | 'medium' | 'large' | 'original'
 
 interface ImageOptimizeOptions {
@@ -30,13 +32,19 @@ export function getOptimizedImageUrl(
 ): string {
   if (!originalUrl) return ''
 
-  // 已经是优化后的 URL（包含 /cdn-cgi/image/）
   if (originalUrl.includes('/cdn-cgi/image/')) {
     return originalUrl
   }
 
-  // 非 R2 域名，直接返回
   if (!originalUrl.includes('r2.fashion-rec.com')) {
+    return originalUrl
+  }
+
+  // In dev mode: 直连 R2 会 CORS，改为走后端代理
+  if (import.meta.env.DEV && originalUrl.includes('r2.fashion-rec.com')) {
+    return `${API_URL}/proxy-image?url=${encodeURIComponent(originalUrl)}`
+  }
+  if (import.meta.env.DEV) {
     return originalUrl
   }
 

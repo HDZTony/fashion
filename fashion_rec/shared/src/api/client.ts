@@ -8,6 +8,16 @@ export interface CreateApiClientOptions {
   getToken: GetTokenFn
   on401?: On401Fn
   timeout?: number
+  /** Max retries for 502/503/504 gateway errors (default: 2) */
+  gatewayRetries?: number
+}
+
+const RETRYABLE_STATUS_CODES = [502, 503, 504]
+const MAX_GATEWAY_RETRIES = 2
+const RETRY_BASE_DELAY_MS = 1000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
@@ -16,6 +26,7 @@ export interface CreateApiClientOptions {
  */
 export function createAuthenticatedApiClient(options: CreateApiClientOptions): AxiosInstance {
   const { baseURL, getToken, on401, timeout = 30000 } = options
+  const maxRetries = options.gatewayRetries ?? MAX_GATEWAY_RETRIES
 
   const client = axios.create({
     baseURL,
@@ -26,7 +37,6 @@ export function createAuthenticatedApiClient(options: CreateApiClientOptions): A
   })
 
   client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    // When sending FormData, remove Content-Type so browser/runtime sets multipart boundary
     if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
       delete config.headers['Content-Type']
     }
@@ -44,7 +54,25 @@ export function createAuthenticatedApiClient(options: CreateApiClientOptions): A
     (response) => response,
     async (error) => {
       const originalRequest = error.config
-      if (error.response?.status === 401 && !originalRequest._retry && on401) {
+      if (!originalRequest) return Promise.reject(error)
+
+      // Retry on 502/503/504 (gateway errors, typically backend temporarily unavailable)
+      const status = error.response?.status
+      if (status && RETRYABLE_STATUS_CODES.includes(status)) {
+        const retryCount: number = originalRequest._gatewayRetryCount ?? 0
+        if (retryCount < maxRetries) {
+          originalRequest._gatewayRetryCount = retryCount + 1
+          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, retryCount)
+          console.warn(
+            `[API Client] ${status} on ${originalRequest.method?.toUpperCase()} ${originalRequest.url}, retry ${retryCount + 1}/${maxRetries} in ${delay}ms`,
+          )
+          await sleep(delay)
+          return client(originalRequest)
+        }
+      }
+
+      // Refresh token on 401
+      if (status === 401 && !originalRequest._retry && on401) {
         originalRequest._retry = true
         try {
           await on401()
