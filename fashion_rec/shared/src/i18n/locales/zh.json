@@ -237,6 +237,7 @@
     "noBackgroundImage": "无背景图片",
     "withBackgroundImage": "有背景图片",
     "backgroundActionPromptPlaceholder": "描述模特在背景中要做的动作...",
+    "addPhotos": "添加图片或文件",
     "example": "示例",
     "chooseExampleModel": "选择示例模特图片",
     "noExampleModel": "没有可用的示例模特图片",

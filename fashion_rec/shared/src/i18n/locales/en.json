@@ -236,6 +236,7 @@
     "promptPlaceholder": "Describe your desired clothing style; artificial intelligence will create outfits based on your wardrobe.e.g.Minimalist commute vibe, avoid white shoes.",
     "noBackgroundImage": "No Background Image",
     "withBackgroundImage": "With Background Image",
+    "addPhotos": "Add photos or files",
     "backgroundActionPromptPlaceholder": "Describe the action the model should perform in the background...",
     "example": "Example",
     "chooseExampleModel": "Choose an example model image",

@@ -12,11 +12,40 @@ import { useStudioStore } from '../stores/studio'
 import { useAuthStore } from '../stores/auth'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-} from '@/components/ui/carousel'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from '@/components/ai-elements/conversation'
+import {
+  Message,
+  MessageBranch,
+  MessageBranchContent,
+  MessageBranchNext,
+  MessageBranchPage,
+  MessageBranchPrevious,
+  MessageBranchSelector,
+  MessageContent,
+  MessageToolbar,
+} from '@/components/ai-elements/message'
+import {
+  PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
+  PromptInputSpeechButton,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from '@/components/ai-elements/prompt-input'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { getThumbnailUrl, getSmallImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { useSEO } from '@/composables/useSEO'
@@ -831,6 +860,14 @@ const getRecommendations = async () => {
   } finally {
     isGenerating.value = false
   }
+}
+
+/** PromptInput 提交：更新 customPrompt 后调用 getRecommendations */
+const handlePromptSubmit = (message: { text: string }) => {
+  const text = (message.text || '').trim()
+  if (!text) return
+  customPrompt.value = text
+  getRecommendations()
 }
 
 const formatFeatureValue = (value: string | string[] | undefined): string => {
@@ -1808,24 +1845,133 @@ const hasTryOnInput = computed(
                 </div>
               </Transition>
               
-              <!-- Style prompt textarea (shown in both tabs) -->
-              <Transition
-                enter-active-class="transition-all duration-300 ease-out"
-                enter-from-class="opacity-0 translate-y-2"
-                enter-to-class="opacity-100 translate-y-0"
-                leave-active-class="transition-all duration-200 ease-in"
-                leave-from-class="opacity-100 translate-y-0"
-                leave-to-class="opacity-0 translate-y-2"
-              >
-                <div class="relative border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md">
-                  <textarea
-                    v-model="customPrompt"
-                    rows="3"
-                    class="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none border-0 placeholder:text-pink-600"
-                    :placeholder="$t('studio.promptPlaceholder')"
-                  ></textarea>
+              <!-- 用户输入提示词之后显示；固定高度 + flex h-full 让 Conversation 可滚动（与官方示例一致） -->
+              <div v-if="customPrompt.trim()" class="flex flex-col h-[480px] min-h-0">
+                <div class="flex-1 min-h-0 relative rounded-xl border border-pink-100 overflow-hidden bg-gray-50/50 flex flex-col h-full">
+                  <Conversation
+                    class="flex-1 min-h-0 h-full"
+                    aria-label="Outfit suggestions"
+                    initial="instant"
+                    resize="instant"
+                  >
+                    <ConversationContent>
+                      <Message v-if="customPrompt.trim()" from="user">
+                        <MessageContent>
+                          <p class="text-sm">{{ customPrompt }}</p>
+                        </MessageContent>
+                      </Message>
+                      <!-- 加载态：Shimmer -->
+                      <Message v-if="isGenerating" from="assistant">
+                        <MessageContent>
+                          <Shimmer class="text-pink-600 text-base" :duration="2">
+                            {{ $t('studio.consultingKnowledgeBase') }}
+                          </Shimmer>
+                        </MessageContent>
+                      </Message>
+                      <!-- 穿搭结果：多方案切换（MessageBranch = “x of 3”） -->
+                      <Message v-if="agentOutfits.length > 0" from="assistant">
+                        <MessageBranch :default-branch="0">
+                          <MessageBranchContent>
+                            <MessageContent
+                              v-for="(outfit, idx) in agentOutfits"
+                              :key="idx"
+                              class="max-w-full !overflow-visible"
+                            >
+                              <div class="flex flex-col gap-3">
+                                <div>
+                                  <h4 class="font-semibold text-sm mb-1.5 text-gray-900">{{ outfit.title }}</h4>
+                                  <p class="text-xs text-pink-500 mb-1.5">{{ outfit.reason }}</p>
+                                  <p class="text-xs text-pink-500 whitespace-pre-line mb-2">{{ outfit.long_text }}</p>
+                                  <ul class="text-xs text-gray-700 space-y-1">
+                                    <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
+                                      <div class="flex-1">
+                                        <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
+                                        <span> {{ it.description }}</span>
+                                        <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
+                                        <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
+                                      </div>
+                                    </li>
+                                  </ul>
+                                </div>
+                                <div class="flex justify-end">
+                                  <button
+                                    v-if="outfit.items && outfit.items.length > 0"
+                                    type="button"
+                                    :disabled="applyingOutfitIndex !== null"
+                                    @click.prevent="applyOutfit(outfit, idx)"
+                                    class="inline-flex items-center justify-center gap-1.5 min-w-[5rem] text-xs px-3 py-1.5 rounded-full border transition-all duration-200 select-none"
+                                    :class="applyingOutfitIndex === idx
+                                      ? 'border-blue-300 text-blue-500 cursor-wait'
+                                      : appliedOutfitIndex === idx
+                                        ? 'border-green-400 text-green-600 bg-green-50'
+                                        : 'border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 hover:scale-[1.02] active:scale-[0.98]'"
+                                  >
+                                    <span
+                                      v-if="applyingOutfitIndex === idx"
+                                      class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
+                                    />
+                                    <Check v-else-if="appliedOutfitIndex === idx" class="w-3.5 h-3.5 shrink-0" />
+                                    <span>{{ applyingOutfitIndex === idx ? $t('studio.outfitPlans.applying') : appliedOutfitIndex === idx ? $t('studio.outfitPlans.applied') : $t('studio.outfitPlans.applyOutfit') }}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </MessageContent>
+                          </MessageBranchContent>
+                          <MessageToolbar v-if="agentOutfits.length > 1">
+                            <MessageBranchSelector from="assistant">
+                              <MessageBranchPrevious />
+                              <MessageBranchPage />
+                              <MessageBranchNext />
+                            </MessageBranchSelector>
+                          </MessageToolbar>
+                        </MessageBranch>
+                      </Message>
+                    </ConversationContent>
+                    <ConversationScrollButton />
+                  </Conversation>
                 </div>
-              </Transition>
+              </div>
+              
+              <!-- Style prompt: AI Elements PromptInput -->
+              <PromptInput
+                :initial-input="customPrompt"
+                accept="image/*"
+                multiple
+                :max-files="4"
+                class="border border-pink-200 rounded-xl bg-white transition-all focus-within:border-pink-400 focus-within:shadow-md min-h-[120px] flex flex-col"
+                @submit="handlePromptSubmit"
+              >
+                  <PromptInputBody>
+                    <PromptInputTextarea
+                      :placeholder="$t('studio.promptPlaceholder')"
+                      class="min-h-[80px] px-4 py-3 text-sm placeholder:text-pink-600"
+                    />
+                  </PromptInputBody>
+                  <PromptInputFooter>
+                    <PromptInputTools>
+                      <PromptInputActionMenu>
+                        <PromptInputActionMenuTrigger />
+                        <PromptInputActionMenuContent>
+                          <PromptInputActionAddAttachments :label="$t('studio.addPhotos')" />
+                        </PromptInputActionMenuContent>
+                      </PromptInputActionMenu>
+                      <PromptInputSpeechButton />
+                      <PromptInputSelect v-model="selectedModel">
+                        <PromptInputSelectTrigger>
+                          <PromptInputSelectValue />
+                        </PromptInputSelectTrigger>
+                        <PromptInputSelectContent>
+                          <PromptInputSelectItem value="qwen">Qwen</PromptInputSelectItem>
+                          <PromptInputSelectItem value="grok">Grok</PromptInputSelectItem>
+                        </PromptInputSelectContent>
+                      </PromptInputSelect>
+                    </PromptInputTools>
+                    <PromptInputSubmit
+                      :disabled="isGenerating"
+                      :status="isGenerating ? 'submitted' : 'ready'"
+                    />
+                  </PromptInputFooter>
+                </PromptInput>
             </div>
           </div>
         
@@ -1883,25 +2029,8 @@ const hasTryOnInput = computed(
               </div>
             </div>
             
-            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div class="flex items-center gap-3 w-full sm:w-auto">
-              <button 
-                @click="getRecommendations" 
-                :disabled="isGenerating"
-                class="flex-1 sm:flex-initial bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-pink-700 hover:to-purple-700 disabled:opacity-50 transition-colors shadow-lg shadow-pink-500/20 justify-center"
-              >
-                <Wand2 class="w-5 h-5" />
-                {{ isGenerating ? $t('studio.aiThinking') : $t('studio.generateOutfit') }}
-              </button>
-              <NativeSelect
-                v-model="selectedModel"
-                class="h-[46px] rounded-xl border-2 border-pink-200 text-pink-600 font-medium hover:border-pink-400 focus-visible:border-pink-500 focus-visible:ring-pink-200"
-              >
-                <NativeSelectOption value="qwen">Qwen</NativeSelectOption>
-                <NativeSelectOption value="grok">Grok</NativeSelectOption>
-              </NativeSelect>
-            </div>
-            <p v-if="!isAuthenticated && guestQuota !== null" class="text-xs text-gray-500">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+            <p v-if="!isAuthenticated && guestQuota !== null" class="text-xs text-gray-500 order-first w-full sm:w-auto">
               {{ $t('studio.guestOutfitQuota', { remaining: guestQuota.outfit_remaining, limit: guestQuota.outfit_limit }) }}
             </p>
             <!-- AI branding and transparency note -->
@@ -1912,65 +2041,6 @@ const hasTryOnInput = computed(
               <span class="text-pink-400">|</span>
               <span class="text-pink-400">Independent service</span>
             </div>
-          </div>
-          
-          <!-- AI Outfit Plans：轮播布局，卡片内介绍在前、各部位选择在后 -->
-          <div v-if="agentOutfits.length && !isGenerating" class="mt-6 px-14">
-            <h3 class="text-lg font-semibold mb-3">{{ $t('studio.outfitPlans.title') }}</h3>
-            <Carousel class="w-full">
-              <CarouselContent>
-                <CarouselItem
-                  v-for="(outfit, idx) in agentOutfits"
-                  :key="idx"
-                >
-                  <div class="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col justify-between">
-                    <div>
-                      <h4 class="font-semibold text-sm mb-2">{{ outfit.title }}</h4>
-                      <p class="text-xs text-pink-500 mb-2">{{ outfit.reason }}</p>
-                      <p class="text-xs text-pink-500 whitespace-pre-line mb-3">{{ outfit.long_text }}</p>
-                      <ul class="text-xs text-gray-700 space-y-1">
-                        <li v-for="(it, i) in outfit.items" :key="i" class="flex items-start justify-between gap-2">
-                          <div class="flex-1">
-                            <span class="font-medium capitalize">{{ translateRole(it.role) }}:</span>
-                            <span> {{ it.description }}</span>
-                            <span v-if="findWardrobeItemById(it.wardrobe_id)" class="text-pink-600 ml-1">{{ $t('studio.outfitPlans.inWardrobe') }}</span>
-                            <span v-if="it.wardrobe_id && activeWardrobeIds.includes(String(it.wardrobe_id))" class="text-blue-600 ml-1">{{ $t('studio.outfitPlans.selected') }}</span>
-                          </div>
-                        </li>
-                      </ul>
-                    </div>
-                    <div class="mt-3 flex flex-col gap-2">
-                      <button
-                        v-if="outfit.items && outfit.items.length > 0"
-                        type="button"
-                        :disabled="applyingOutfitIndex !== null"
-                        @click.prevent="applyOutfit(outfit, idx)"
-                        class="inline-flex items-center justify-center gap-1.5 min-w-[5rem] text-xs px-3 py-1.5 rounded-full border transition-all duration-200 self-end select-none"
-                        :class="applyingOutfitIndex === idx
-                          ? 'border-blue-300 text-blue-500 cursor-wait'
-                          : appliedOutfitIndex === idx
-                            ? 'border-green-400 text-green-600 bg-green-50'
-                            : 'border-blue-400 text-blue-600 hover:border-blue-600 hover:text-blue-700 hover:scale-[1.02] active:scale-[0.98]'"
-                      >
-                        <span
-                          v-if="applyingOutfitIndex === idx"
-                          class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
-                        />
-                        <Check v-else-if="appliedOutfitIndex === idx" class="w-3.5 h-3.5 shrink-0" />
-                        <span>{{ applyingOutfitIndex === idx ? $t('studio.outfitPlans.applying') : appliedOutfitIndex === idx ? $t('studio.outfitPlans.applied') : $t('studio.outfitPlans.applyOutfit') }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </CarouselItem>
-              </CarouselContent>
-            </Carousel>
-          </div>
-          
-          <!-- Loading State (only show when actively generating) -->
-          <div v-else-if="isGenerating" class="mt-6 py-12 flex flex-col items-center justify-center">
-             <div class="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p class="text-pink-600 animate-pulse mb-2">{{ $t('studio.consultingKnowledgeBase') }}</p>
-             
           </div>
         </div>
       </section>
