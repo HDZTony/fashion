@@ -208,7 +208,7 @@
     "removeFavorite": "从收藏中移除",
     "viewHistory": "查看历史",
     "tellAIAboutDay": "生成穿搭建议",
-    "uploadBackgroundImage": "上传背景图片（可选）",
+    "uploadBackgroundImage": "上传背景图片",
     "pickFromBackgroundHistory": "从背景历史中选择",
     "chooseHistoricalBackground": "选择历史背景图片",
     "noHistoricalBackground": "没有历史背景图片",
@@ -320,7 +320,7 @@
     },
     "modelPhoto": {
       "title": "模特照片",
-      "description": "上传您的半身或全身照片。所有试穿将使用此模特照片。",
+      "description": "所有试穿将使用此模特照片。",
       "deleteModelPhoto": "删除模特照片",
       "uploadNewPhoto": "上传新照片",
       "replacePhoto": "替换照片",

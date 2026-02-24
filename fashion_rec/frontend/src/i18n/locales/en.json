@@ -208,7 +208,7 @@
     "removeFavorite": "Remove from Favorites",
     "viewHistory": "View History",
     "tellAIAboutDay": "Generate Outfit Suggestions",
-    "uploadBackgroundImage": "Upload background image (optional)",
+    "uploadBackgroundImage": "Upload background image",
     "pickFromBackgroundHistory": "Pick from background history",
     "chooseHistoricalBackground": "Choose a historical background image",
     "noHistoricalBackground": "No historical background images",
@@ -320,7 +320,7 @@
     },
     "modelPhoto": {
       "title": "Model photo",
-      "description": "Upload a half-body or full-body photo of you. All try-ons will use this model photo.",
+      "description": "All try-ons will use this model photo.",
       "deleteModelPhoto": "Delete model photo",
       "uploadNewPhoto": "Upload new photo",
       "replacePhoto": "Replace photo",
