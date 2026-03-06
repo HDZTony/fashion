@@ -198,6 +198,7 @@
   },
   "studio": {
     "title": "工作室",
+    "loginRequired": "请先登录后使用此功能",
     "uploadModel": "上传模特照片",
     "uploadGarment": "上传服装",
     "generateOutfit": "生成穿搭",

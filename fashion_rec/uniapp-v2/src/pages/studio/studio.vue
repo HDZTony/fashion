@@ -11,85 +11,185 @@
       <!-- Model photo section -->
       <view class="bg-white rounded-2xl p-6 mb-6 border border-pink-100">
         <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block mb-4">{{ t('studio.modelPhoto.title') }}</text>
-        <view v-if="activeModelUrl || isUploadingModel" class="modelPreview">
-          <image v-if="activeModelUrl" :src="getMediumImageUrl(activeModelUrl)" class="modelImg" mode="aspectFill" />
-          <view v-if="isUploadingModel" class="uploadOverlay">
-            <text class="uploadPercent">{{ modelUploadProgress }}%</text>
+        <!-- 有照片时：预览 + 操作按钮 -->
+        <view v-if="activeModelUrl || isUploadingModel" class="p-2.5">
+          <view class="flex items-center justify-between mb-2.5">
+            <view>
+              <text class="text-sm font-medium text-gray-700 block mb-1">{{ t('studio.modelPhoto.title') }}</text>
+              <text class="text-xs text-pink-500 block">{{ t('studio.modelPhoto.description') }}</text>
+            </view>
+            <view v-if="activeModelUrl && !isUploadingModel" class="modelDelBtn" @click="removeModelImage">
+              <text class="text-white text-xs">✕</text>
+            </view>
           </view>
-          <view class="modelActions">
-            <button size="mini" @click="chooseModelImage">↑ {{ t('studio.modelPhoto.replacePhoto') }}</button>
-            <button v-if="historicalModelImages.length" size="mini" @click="showModelHistory = true">🕐 {{ t('studio.modelPhoto.history') }}</button>
-            <button size="mini" @click="showExampleModel = true">{{ t('studio.example') }}</button>
-            <button size="mini" class="btnDel" @click="removeModelImage">✕</button>
+          <view class="w-32 h-32 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative">
+            <image v-if="activeModelUrl" :src="getMediumImageUrl(activeModelUrl)" class="w-full h-full" mode="aspectFill" />
+            <view v-if="isUploadingModel" class="uploadOverlay">
+              <text class="uploadPercent">{{ modelUploadProgress }}%</text>
+            </view>
+          </view>
+          <!-- 操作按钮行 -->
+          <view class="flex flex-wrap items-center gap-1 mt-2.5 pt-2.5 border-t border-gray-100">
+            <view class="actionBtn" @click="chooseModelImage">
+              <text class="actionBtnText">↑ {{ t('studio.modelPhoto.replacePhoto') }}</text>
+            </view>
+            <view v-if="historicalModelImages.length" class="actionBtn" @click="showModelHistory = !showModelHistory">
+              <text class="actionBtnText">{{ t('studio.modelPhoto.history') }}</text>
+            </view>
+            <view class="actionBtn" @click="showExampleModel = !showExampleModel">
+              <text class="actionBtnText">{{ t('studio.example') }}</text>
+            </view>
           </view>
         </view>
-        <view v-else class="modelEmpty">
-          <text class="emptyIcon">✨</text>
-          <view class="modelActions">
-            <button size="mini" @click="chooseModelImage">↑ {{ t('studio.modelPhoto.uploadNewPhoto') }}</button>
-            <button v-if="historicalModelImages.length" size="mini" @click="showModelHistory = true">🕐 {{ t('studio.modelPhoto.history') }}</button>
-            <button size="mini" @click="showExampleModel = true">{{ t('studio.example') }}</button>
+        <!-- 无照片时：空状态 + 上传按钮 -->
+        <view v-else class="p-2.5 text-center">
+          <text class="text-5xl block mb-2.5">✨</text>
+          <view class="flex flex-wrap items-center justify-center gap-1">
+            <view class="actionBtn" @click="chooseModelImage">
+              <text class="actionBtnText">↑ {{ t('studio.modelPhoto.uploadNewPhoto') }}</text>
+            </view>
+            <view v-if="historicalModelImages.length" class="actionBtn" @click="showModelHistory = !showModelHistory">
+              <text class="actionBtnText">{{ t('studio.modelPhoto.history') }}</text>
+            </view>
+            <view class="actionBtn" @click="showExampleModel = !showExampleModel">
+              <text class="actionBtnText">{{ t('studio.example') }}</text>
+            </view>
           </view>
-          <text class="emptyDesc">{{ t('studio.modelPhoto.description') }}</text>
+          <text class="text-xs text-pink-600 block mt-2.5">{{ t('studio.modelPhoto.description') }}</text>
         </view>
       </view>
 
       <!-- Generate outfit section -->
       <view class="bg-white rounded-2xl p-6 mb-6 border border-pink-100">
         <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block mb-4">{{ t('studio.tellAIAboutDay') }}</text>
-        <view class="flex gap-4 mb-4">
-          <view :class="['py-4 px-6 rounded-xl text-sm', store.backgroundTabValue === 'no-background' ? 'bg-pink-100 text-pink-600' : 'bg-gray-100']" @click="store.backgroundTabValue = 'no-background'">{{ t('studio.noBackgroundImage') }}</view>
-          <view :class="['py-4 px-6 rounded-xl text-sm', store.backgroundTabValue === 'with-background' ? 'bg-pink-100 text-pink-600' : 'bg-gray-100']" @click="store.backgroundTabValue = 'with-background'">{{ t('studio.withBackgroundImage') }}</view>
-        </view>
-        <view v-if="store.backgroundTabValue === 'with-background'" class="bgSection">
-          <textarea v-model="store.backgroundActionPrompt" :placeholder="t('studio.backgroundActionPromptPlaceholder')" class="textarea" rows="2" />
-          <view class="bgPreview" v-if="store.backgroundImagePreviewUrl || isUploadingBg">
-            <image v-if="store.backgroundImagePreviewUrl" :src="getSmallImageUrl(store.backgroundImagePreviewUrl)" class="bgThumb" mode="aspectFill" />
-            <button size="mini" class="btnDel" v-if="store.backgroundImagePreviewUrl && !isUploadingBg" @click="removeBackgroundImage">✕</button>
-          </view>
-          <view class="row">
-            <button size="mini" @click="chooseBackgroundImage">↑ {{ t('studio.uploadBackgroundImage') }}</button>
-            <button size="mini" @click="showBgHistory = true">🕐 {{ t('studio.viewHistory') }}</button>
-            <button size="mini" @click="showExampleBg = true">{{ t('studio.example') }}</button>
-          </view>
-        </view>
-        <textarea v-model="store.customPrompt" :placeholder="t('studio.promptPlaceholder')" class="w-full p-5 border border-pink-100 rounded-2xl text-sm box-border mt-4" rows="3" />
-        <view class="flex gap-3 mt-4 items-center">
-          <button class="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white py-6 rounded-2xl text-base disabled:opacity-50" :disabled="isGenerating" @click="getRecommendations">
-            {{ isGenerating ? t('studio.aiThinking') : t('studio.generateOutfit') }} ✨
-          </button>
-          <!-- #ifdef H5 -->
-          <select v-model="store.selectedModel" class="model-select">
-            <option value="qwen">Qwen</option>
-            <option value="grok">Grok</option>
-          </select>
-          <!-- #endif -->
-          <!-- #ifndef H5 -->
-          <picker :range="modelOptions" :range-key="'label'" :value="modelPickerIndex" @change="onModelPickerChange">
-            <view class="model-select-app">{{ modelDisplayLabel }}</view>
-          </picker>
-          <!-- #endif -->
-        </view>
-        <text class="branding">fashion | Powered by {{ store.selectedModel === 'grok' ? 'Grok' : 'Qwen' }} | Independent service</text>
+        <!-- 背景选项 Tab：使用 wd-tabs 让切换更醒目 -->
+        <wd-tabs
+          :model-value="store.backgroundTabValue"
+          @change="({ name }: { name: string }) => { store.backgroundTabValue = name }"
+          animated
+          shrink
+          class="genTabs"
+        >
+          <wd-tab :title="t('studio.noBackgroundImage')" name="no-background" />
+          <wd-tab :title="t('studio.withBackgroundImage')" name="with-background" />
+        </wd-tabs>
 
-        <!-- AI Outfit plans carousel -->
+        <!-- 带背景图面板 -->
+        <view v-if="store.backgroundTabValue === 'with-background'" class="bgPanel">
+          <view class="bgInputBox">
+            <textarea
+              v-model="store.backgroundActionPrompt"
+              :placeholder="t('studio.backgroundActionPromptPlaceholder')"
+              class="bgTextarea"
+              rows="2"
+            />
+            <!-- 背景图预览 + 操作按钮行 -->
+            <view class="flex flex-wrap items-center gap-2 pt-2.5 border-t border-pink-100">
+              <view v-if="store.backgroundImagePreviewUrl || isUploadingBg" class="flex items-center gap-2">
+                <view class="bgThumbSmall relative">
+                  <image v-if="store.backgroundImagePreviewUrl" :src="getSmallImageUrl(store.backgroundImagePreviewUrl)" class="w-full h-full" mode="aspectFill" />
+                  <view v-if="isUploadingBg" class="uploadOverlay rounded-lg">
+                    <wd-loading color="#fff" size="32rpx" />
+                  </view>
+                </view>
+                <view v-if="store.backgroundImagePreviewUrl && !isUploadingBg" class="modelDelBtn" @click="removeBackgroundImage">
+                  <text class="text-white text-xs">✕</text>
+                </view>
+              </view>
+              <view class="actionBtn" @click="chooseBackgroundImage">
+                <text class="actionBtnText">↑ {{ t('studio.uploadBackgroundImage') }}</text>
+              </view>
+              <view class="actionBtn" @click="showBgHistory = !showBgHistory">
+                <text class="actionBtnText">{{ t('studio.viewHistory') }}</text>
+              </view>
+              <view class="actionBtn" @click="showExampleBg = !showExampleBg">
+                <text class="actionBtnText">{{ t('studio.example') }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 风格提示词输入框 -->
+        <view class="promptInputBox mt-4">
+          <textarea
+            v-model="store.customPrompt"
+            :placeholder="t('studio.promptPlaceholder')"
+            class="promptTextarea"
+            rows="3"
+          />
+        </view>
+
+        <!-- 生成按钮：使用 wd-button，loading 态自带动画 -->
+        <wd-button
+          type="primary"
+          block
+          round
+          :loading="isGenerating"
+          :disabled="isGenerating"
+          custom-class="genBtn"
+          @click="getRecommendations"
+        >
+          {{ isGenerating ? t('studio.aiThinking') : t('studio.generateOutfit') }} ✨
+        </wd-button>
+
+        <!-- branding -->
+        <view class="flex items-center justify-center gap-2 mt-3">
+          <text class="text-xs font-medium text-gray-700">fashion</text>
+          <text class="text-xs text-pink-400">|</text>
+          <text class="text-xs text-pink-600">Powered by Qwen</text>
+          <text class="text-xs text-pink-400">|</text>
+          <text class="text-xs text-pink-400">Independent service</text>
+        </view>
+
+        <!-- 加载中状态：使用 wd-loading -->
+        <view v-if="isGenerating" class="genLoadingBlock">
+          <wd-loading color="#ec4899" size="48rpx" />
+          <text class="text-pink-600 text-sm mt-3 block">{{ t('studio.consultingKnowledgeBase') }}</text>
+        </view>
+
+        <wd-divider v-if="store.agentOutfits.length && !isGenerating" custom-class="my-4" />
+
+        <!-- AI 搭配方案轮播 -->
         <view v-if="store.agentOutfits.length && !isGenerating" class="outfitPlans">
           <text class="planTitle">{{ t('studio.outfitPlans.title') }}</text>
-          <scroll-view scroll-x class="outfitScroll">
-            <view v-for="(outfit, idx) in store.agentOutfits" :key="idx" class="outfitCard">
-              <text class="outfitTitle">{{ outfit.title }}</text>
-              <text class="outfitReason">{{ outfit.reason }}</text>
-              <view v-for="(it, i) in outfit.items" :key="i" class="outfitItem">
-                <text class="role">{{ translateRole(it.role) }}: {{ it.description }}</text>
+          <scroll-view scroll-x class="outfitScroll" :show-scrollbar="false">
+            <view class="outfitScrollInner">
+              <view v-for="(outfit, idx) in store.agentOutfits" :key="idx" class="outfitCard">
+                <text class="outfitCardTitle">{{ outfit.title }}</text>
+                <text class="outfitCardReason">{{ outfit.reason }}</text>
+                <wd-divider custom-class="my-2" />
+                <view v-for="(it, i) in outfit.items" :key="i" class="outfitCardItem">
+                  <wd-tag type="primary" plain size="small" custom-class="outfitRoleTag">{{ translateRole(it.role) }}</wd-tag>
+                  <text class="outfitCardDesc">{{ it.description }}</text>
+                </view>
+                <wd-button
+                  v-if="appliedIdx === idx"
+                  type="success"
+                  size="small"
+                  block
+                  round
+                  custom-class="mt-3"
+                  disabled
+                >
+                  {{ t('studio.outfitPlans.applied') }} ✓
+                </wd-button>
+                <wd-button
+                  v-else
+                  type="primary"
+                  size="small"
+                  block
+                  round
+                  plain
+                  :loading="applyingIdx === idx"
+                  :disabled="applyingIdx !== null"
+                  custom-class="mt-3"
+                  @click="applyOutfit(outfit, idx)"
+                >
+                  {{ applyingIdx === idx ? t('studio.outfitPlans.applying') : t('studio.outfitPlans.applyOutfit') }}
+                </wd-button>
               </view>
-              <button size="mini" :class="appliedIdx === idx ? 'applied' : ''" :disabled="applyingIdx !== null" @click="applyOutfit(outfit, idx)">
-                {{ applyingIdx === idx ? t('studio.outfitPlans.applying') : appliedIdx === idx ? t('studio.outfitPlans.applied') : t('studio.outfitPlans.applyOutfit') }}
-              </button>
             </view>
           </scroll-view>
-        </view>
-        <view v-if="isGenerating" class="loadingBlock">
-          <text class="loadingText">{{ t('studio.consultingKnowledgeBase') }}</text>
         </view>
       </view>
 
@@ -97,7 +197,7 @@
       <view class="bg-white rounded-2xl p-6 mb-6 border border-pink-100">
         <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block mb-4">{{ t('studio.appliedOutfitItems.title') }}</text>
         <text class="text-sm text-gray-500 block mb-4">{{ t('studio.appliedOutfitItems.description') }}</text>
-        <view class="appliedCount">{{ t('studio.appliedOutfitItems.itemsCount', { count: store.activeWardrobeItems.length }) }}</view>
+        <view class="appliedCount">{{ t('studio.appliedOutfitItems.title') }}（{{ store.activeWardrobeItems.length }}）</view>
         <view v-if="store.activeWardrobeItems.length === 0" class="emptyApplied">
           <text class="emptyIcon">👕</text>
           <text>{{ t('studio.appliedOutfitItems.noItemsSelected') }}</text>
@@ -113,8 +213,8 @@
         </view>
       </view>
 
-      <!-- Try-on section -->
-      <view class="bg-white rounded-2xl p-6 mb-6 border border-pink-100">
+      <!-- Try-on section：仅在有可试穿的输入或已有试穿结果时显示 -->
+      <view v-if="store.tryOnImageUrl" class="bg-white rounded-2xl p-6 mb-6 border border-pink-100">
         <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent block mb-4">{{ t('studio.reviewOutfits') }}</text>
         <view v-if="store.hasTryOnInput" class="tryOnCtrl">
           <text class="hint">{{ t('studio.readyToTryOn') }}</text>
@@ -137,71 +237,100 @@
       </view>
     </view>
 
-    <!-- Modals -->
-    <view v-if="showModelHistory" class="modal" @click.self="showModelHistory = false">
-      <view class="modalContent">
-        <view class="modalHeader">
-          <text>{{ t('studio.chooseHistoricalModel') }}</text>
-          <button size="mini" @click="showModelHistory = false">✕</button>
-        </view>
-        <scroll-view scroll-y class="modalBody">
-          <view v-if="historicalModelImages.length === 0" class="emptyModal">{{ t('studio.noHistoricalModel') }}</view>
-          <view v-else class="imgGrid">
-            <image v-for="img in historicalModelImages" :key="img.id" :src="getThumbnailUrl(img.image_url)" class="gridImg" mode="aspectFill" @click="selectHistoricalModel(img)" />
+    <!-- Modals：居中弹窗，避开导航栏和 TabBar -->
+    <!-- 历史模特图片弹窗 -->
+    <view v-if="showModelHistory" class="modalOverlay" :style="modalSafeStyle" @click.self="showModelHistory = false">
+      <view class="modalBox">
+        <view class="modalBoxHeader">
+          <text class="text-lg font-semibold text-gray-900">{{ t('studio.chooseHistoricalModel') }}</text>
+          <view class="modalCloseCircle" @click="showModelHistory = false">
+            <text class="text-pink-500 text-base">✕</text>
           </view>
-        </scroll-view>
-      </view>
-    </view>
-    <view v-if="showExampleModel" class="modal" @click.self="showExampleModel = false">
-      <view class="modalContent">
-        <view class="modalHeader">
-          <text>{{ t('studio.chooseExampleModel') }}</text>
-          <button size="mini" @click="showExampleModel = false">✕</button>
         </view>
-        <scroll-view scroll-y class="modalBody">
-          <view class="imgGrid">
-            <image v-for="(url, i) in exampleModelImages" :key="i" :src="getMediumImageUrl(url)" class="gridImg" mode="aspectFill" @click="selectExampleModel(url)" />
-          </view>
-        </scroll-view>
-      </view>
-    </view>
-    <view v-if="showBgHistory" class="modal" @click.self="showBgHistory = false">
-      <view class="modalContent">
-        <view class="modalHeader">
-          <text>{{ t('studio.chooseHistoricalBackground') }}</text>
-          <button size="mini" @click="showBgHistory = false">✕</button>
+        <view v-if="historicalModelImages.length === 0" class="py-12 text-center">
+          <text class="text-pink-400 block">{{ t('studio.noHistoricalModel') }}</text>
         </view>
-        <scroll-view scroll-y class="modalBody">
-          <view v-if="historicalBgImages.length === 0" class="emptyModal">{{ t('studio.noHistoricalBackground') }}</view>
-          <view v-else class="imgGrid">
-            <image v-for="img in historicalBgImages" :key="img.id" :src="getThumbnailUrl(img.image_url)" class="gridImg" mode="aspectFill" @click="selectHistoricalBg(img)" />
-          </view>
-        </scroll-view>
-      </view>
-    </view>
-    <view v-if="showExampleBg" class="modal" @click.self="showExampleBg = false">
-      <view class="modalContent modalExampleBg">
-        <view class="modalHeader">
-          <text>{{ t('studio.chooseExampleBackground') }}</text>
-          <view class="modalCloseBtn" @click="showExampleBg = false">✕</view>
-        </view>
-        <scroll-view scroll-y class="modalBody modalExampleBgBody">
-          <view v-if="exampleBgImages.length === 0" class="emptyModal">{{ t('studio.noExampleBackground') }}</view>
-          <view v-else class="exampleBgGrid">
-            <view
-              v-for="(ex, i) in exampleBgImages"
-              :key="i"
-              class="exampleBgItem"
-              @click="selectExampleBg(ex)"
-            >
-              <image :src="getSmallImageUrl(ex.url)" class="exampleBgImg" mode="aspectFill" />
-              <view class="exampleBgOverlay">
-                <text class="exampleBgHint">{{ t('studio.clickToUse') }}</text>
+        <scroll-view v-else scroll-x class="modalScrollX" :show-scrollbar="false">
+          <view class="scrollXInner">
+            <view v-for="img in historicalModelImages" :key="img.id" class="scrollCard scrollCardPortrait" @click="selectHistoricalModel(img)">
+              <image :src="getThumbnailUrl(img.image_url)" class="scrollCardImg" mode="aspectFill" />
+              <view class="scrollCardLabel">
+                <text class="text-sm text-gray-700">{{ new Date(img.created_at).toLocaleDateString() }}</text>
               </view>
             </view>
           </view>
         </scroll-view>
-        
+      </view>
+    </view>
+    <!-- 示例模特图片弹窗 -->
+    <view v-if="showExampleModel" class="modalOverlay" :style="modalSafeStyle" @click.self="showExampleModel = false">
+      <view class="modalBox">
+        <view class="modalBoxHeader">
+          <text class="text-lg font-semibold text-gray-900">{{ t('studio.chooseExampleModel') }}</text>
+          <view class="modalCloseCircle" @click="showExampleModel = false">
+            <text class="text-pink-500 text-base">✕</text>
+          </view>
+        </view>
+        <scroll-view scroll-x class="modalScrollX" :show-scrollbar="false">
+          <view class="scrollXInner">
+            <view v-for="(url, i) in exampleModelImages" :key="i" class="scrollCard scrollCardPortrait" @click="selectExampleModel(url)">
+              <image :src="getMediumImageUrl(url)" class="scrollCardImg" mode="aspectFill" />
+              <view class="scrollCardLabel">
+                <text class="text-sm font-medium text-gray-700">{{ t('studio.clickToUse') }}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+    <!-- 历史背景图片弹窗 -->
+    <view v-if="showBgHistory" class="modalOverlay" :style="modalSafeStyle" @click.self="showBgHistory = false">
+      <view class="modalBox">
+        <view class="modalBoxHeader">
+          <text class="text-lg font-semibold text-gray-900">{{ t('studio.chooseHistoricalBackground') }}</text>
+          <view class="modalCloseCircle" @click="showBgHistory = false">
+            <text class="text-pink-500 text-base">✕</text>
+          </view>
+        </view>
+        <view v-if="historicalBgImages.length === 0" class="py-12 text-center">
+          <text class="text-pink-400 block">{{ t('studio.noHistoricalBackground') }}</text>
+        </view>
+        <scroll-view v-else scroll-x class="modalScrollX" :show-scrollbar="false">
+          <view class="scrollXInner">
+            <view v-for="img in historicalBgImages" :key="img.id" class="scrollCard scrollCardLandscape" @click="selectHistoricalBg(img)">
+              <image :src="getThumbnailUrl(img.image_url)" class="scrollCardImg" mode="aspectFill" />
+              <view class="scrollCardLabel">
+                <text class="text-sm text-gray-700">{{ new Date(img.created_at).toLocaleDateString() }}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+    <!-- 示例背景图片弹窗 -->
+    <view v-if="showExampleBg" class="modalOverlay" :style="modalSafeStyle" @click.self="showExampleBg = false">
+      <view class="modalBox">
+        <view class="modalBoxHeader">
+          <text class="text-lg font-semibold text-gray-900">{{ t('studio.chooseExampleBackground') }}</text>
+          <view class="modalCloseCircle" @click="showExampleBg = false">
+            <text class="text-pink-500 text-base">✕</text>
+          </view>
+        </view>
+        <scroll-view scroll-x class="modalScrollX" :show-scrollbar="false">
+          <view class="scrollXInner">
+            <view
+              v-for="(ex, i) in exampleBgImages"
+              :key="i"
+              class="scrollCard scrollCardLandscape"
+              @click="selectExampleBg(ex)"
+            >
+              <image :src="getSmallImageUrl(ex.url)" class="scrollCardImg" mode="aspectFill" />
+              <view class="scrollCardLabel">
+                <text class="text-sm font-medium text-gray-700">{{ t('studio.clickToUse') }}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
       </view>
     </view>
   </scroll-view>
@@ -220,6 +349,20 @@ const props = defineProps<{ embedded?: boolean }>()
 const { t } = useI18n()
 // 延迟获取 store，避免 App 端 Pinia 未初始化导致白屏（unibest 文档建议）
 const store = computed(() => useStudioStore())
+
+// 弹窗安全区域：避开导航栏和 TabBar，距离各留 20rpx（≈10px）
+const modalSafeStyle = computed(() => {
+  const sys = uni.getSystemInfoSync()
+  const statusBarH = sys.statusBarHeight ?? 0
+  const navbarH = statusBarH + 44
+  const safeBottom = (sys as { safeAreaInsets?: { bottom?: number } }).safeAreaInsets?.bottom ?? 0
+  const tabBarH = 50 + safeBottom
+  const gap = 10
+  return {
+    top: `${navbarH + gap}px`,
+    bottom: `${tabBarH + gap}px`,
+  }
+})
 
 const exampleModelImages = ['https://r2.fashion-rec.com/example/IMG_9953.JPG', 'https://r2.fashion-rec.com/example/IMG_9954.JPG']
 const exampleBgImages = [
@@ -327,6 +470,14 @@ const step3Done = computed(() => !!store.value.tryOnImageUrl)
 const BASE_URL = (uploadApiClient.defaults.baseURL || '').replace(/\/$/, '')
 const token = () => uni.getStorageSync('auth_token')
 
+/** 检查是否已登录，未登录则提示并跳转登录页，返回 true 表示需要登录（调用方应 return） */
+function requireLogin(): boolean {
+  if (token()) return false
+  uni.showToast({ title: t('studio.loginRequired'), icon: 'none' })
+  uni.navigateTo({ url: '/pages/login/login?redirect=' + encodeURIComponent('/pages/studio/studio') })
+  return true
+}
+
 function formatFeature(v: string | string[] | undefined) {
   if (!v) return 'Unknown'
   return Array.isArray(v) ? v.join(', ') : v
@@ -357,18 +508,16 @@ watch(() => store.value.activeWardrobeRoleMapEntries, saveStore, { deep: true })
 watch(() => store.value.originalAppliedOutfit, saveStore, { deep: true })
 
 function initStudio() {
-  if (!token()) return
   store.value.hydrate()
   syncFromWardrobe()
-  loadHistoricalImages()
-  restoreFromTryonHistory()
+  // 已登录时才拉取历史图片和恢复试穿记录（需要鉴权的接口）
+  if (token()) {
+    loadHistoricalImages()
+    restoreFromTryonHistory()
+  }
 }
 onShow(() => {
   if (props.embedded) return
-  if (!token()) {
-    uni.navigateTo({ url: '/pages/login/login?redirect=' + encodeURIComponent('/pages/studio/studio') })
-    return
-  }
   initStudio()
 })
 onMounted(() => {
@@ -697,6 +846,7 @@ async function performTryOn() {
 
 async function saveFavorite() {
   if (!store.value.tryOnImageUrl) return
+  if (requireLogin()) return
   if (store.value.favoriteSaved && store.value.currentFavoriteId) {
     try {
       await apiClient.delete(`/favorites/${store.value.currentFavoriteId}`)
@@ -734,104 +884,237 @@ function previewImage(url: string) {
 </script>
 
 <style scoped>
-.page { height: 100vh; background: linear-gradient(180deg, #fdf2f8 0%, #fff 50%, #faf5ff 100%); }
-.container { padding: 24rpx; padding-bottom: 120rpx; }
-.stepper { display: flex; gap: 24rpx; margin-bottom: 24rpx; font-size: 24rpx; }
-.step { color: #999; }
-.step.active { color: #ec4899; font-weight: bold; }
-.card { background: #fff; border-radius: 24rpx; padding: 24rpx; margin-bottom: 24rpx; border: 1rpx solid #fce7f3; }
-.cardTitle { font-size: 36rpx; font-weight: bold; background: linear-gradient(90deg, #ec4899, #a855f7); -webkit-background-clip: text; color: transparent; display: block; margin-bottom: 16rpx; }
-.cardDesc { font-size: 26rpx; color: #666; display: block; margin-bottom: 16rpx; }
-.tabs { display: flex; gap: 16rpx; margin-bottom: 16rpx; }
-.tab { padding: 16rpx 24rpx; border-radius: 12rpx; background: #f3f4f6; font-size: 26rpx; }
-.tab.active { background: #fce7f3; color: #ec4899; }
-.textarea { width: 100%; padding: 20rpx; border: 1rpx solid #fce7f3; border-radius: 16rpx; font-size: 28rpx; box-sizing: border-box; }
-.btnPrimary { width: 100%; background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; padding: 24rpx; border-radius: 16rpx; font-size: 30rpx; margin-top: 16rpx; }
-.branding { font-size: 22rpx; color: #ec4899; display: block; margin-top: 16rpx; text-align: center; }
-.model-select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 12rpx 48rpx 12rpx 20rpx;
-  border: 2rpx solid #fce7f3;
-  border-radius: 16rpx;
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ec4899' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 12rpx center;
-  background-size: 20rpx;
-  font-size: 26rpx;
-  color: #ec4899;
-  font-weight: 500;
-  min-width: 160rpx;
-  cursor: pointer;
-  outline: none;
-  height: auto;
-  line-height: 1.5;
+/* ===== 生成穿搭 - Tab 栏 ===== */
+:deep(.genTabs .wd-tabs__nav) {
+  background: transparent !important;
 }
-.model-select:focus { border-color: #ec4899; }
-.model-select-app {
-  padding: 12rpx 20rpx;
+:deep(.genTabs .wd-tabs__line) {
+  background: linear-gradient(90deg, #ec4899, #a855f7) !important;
+}
+
+/* ===== 生成穿搭 - 背景面板 ===== */
+.bgPanel { margin-top: 20rpx; }
+.bgInputBox {
   border: 2rpx solid #fce7f3;
-  border-radius: 16rpx;
+  border-radius: 24rpx;
+  padding: 20rpx;
   background: #fff;
-  font-size: 26rpx;
-  color: #ec4899;
-  font-weight: 500;
-  min-width: 120rpx;
-  text-align: center;
+  transition: border-color 0.2s;
 }
-.modelPreview, .modelEmpty { padding: 16rpx; }
-.modelImg { width: 256rpx; height: 256rpx; border-radius: 16rpx; display: block; margin-bottom: 16rpx; }
-.uploadOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+.bgTextarea {
+  width: 100%;
+  font-size: 28rpx;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  box-sizing: border-box;
+  color: #374151;
+}
+.bgThumbSmall {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  border: 2rpx solid #e5e7eb;
+  background: #f9fafb;
+  flex-shrink: 0;
+}
+
+/* ===== 生成穿搭 - 风格提示输入 ===== */
+.promptInputBox {
+  border: 2rpx solid #fce7f3;
+  border-radius: 24rpx;
+  padding: 4rpx;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.promptTextarea {
+  width: 100%;
+  padding: 20rpx;
+  font-size: 28rpx;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  box-sizing: border-box;
+  color: #374151;
+}
+
+/* ===== 生成按钮 ===== */
+:deep(.genBtn) {
+  margin-top: 24rpx !important;
+  height: 96rpx !important;
+  font-size: 32rpx !important;
+  background: linear-gradient(90deg, #ec4899, #a855f7) !important;
+  border: none !important;
+}
+
+/* ===== 加载状态 ===== */
+.genLoadingBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48rpx 0;
+  border: 2rpx solid #fce7f3;
+  border-radius: 24rpx;
+  background: linear-gradient(180deg, #fdf2f8, #fff);
+  margin-top: 24rpx;
+}
+
+/* ===== 上传覆盖层 ===== */
+.uploadOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 16rpx; }
 .uploadPercent { color: #fff; font-size: 32rpx; }
-.modelActions, .row { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
+
+/* ===== 删除按钮（圆形红色） ===== */
+.modelDelBtn { width: 48rpx; height: 48rpx; background: #ef4444; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* ===== 操作按钮（对齐前端 inline-flex 样式） ===== */
+.actionBtn { display: inline-flex; align-items: center; gap: 8rpx; padding: 12rpx 20rpx; border-radius: 16rpx; background: transparent; }
+.actionBtnText { font-size: 24rpx; color: #ec4899; }
+
+/* ===== 背景图区域 ===== */
 .bgSection { margin-top: 16rpx; }
 .bgPreview { position: relative; display: block; width: 100%; margin-top: 16rpx; }
 .bgThumb { width: 100%; height: 240rpx; border-radius: 16rpx; display: block; }
-.emptyIcon { font-size: 64rpx; display: block; text-align: center; margin-bottom: 16rpx; }
-.emptyDesc { font-size: 24rpx; color: #ec4899; display: block; margin-top: 16rpx; }
+
+/* ===== 提示文本 ===== */
+.hint { font-size: 24rpx; color: #ec4899; }
+
+/* ===== 已应用衣物网格 ===== */
 .appliedCount { font-size: 26rpx; margin-bottom: 16rpx; }
 .emptyApplied { text-align: center; padding: 48rpx; }
 .emptyApplied text { display: block; margin-bottom: 8rpx; }
-.hint { font-size: 24rpx; color: #ec4899; }
 .appliedGrid { display: flex; flex-wrap: wrap; gap: 24rpx; }
 .appliedItem { position: relative; width: 160rpx; text-align: center; }
 .itemThumb { width: 160rpx; height: 160rpx; border-radius: 16rpx; background: #fce7f3; }
-.delBtn, .btnDel { position: absolute; top: -8rpx; right: -8rpx; width: 48rpx; height: 48rpx; padding: 0; line-height: 48rpx; background: #ef4444; color: #fff; border-radius: 50%; font-size: 24rpx; }
+.delBtn { position: absolute; top: -8rpx; right: -8rpx; width: 48rpx; height: 48rpx; padding: 0; line-height: 48rpx; background: #ef4444; color: #fff; border-radius: 50%; font-size: 24rpx; }
 .itemLabel { font-size: 22rpx; display: block; margin-top: 8rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.outfitPlans { margin-top: 24rpx; }
+
+/* ===== AI 搭配方案轮播 ===== */
+.outfitPlans { margin-top: 8rpx; }
 .planTitle { font-size: 30rpx; font-weight: 600; display: block; margin-bottom: 16rpx; }
 .outfitScroll { white-space: nowrap; padding-bottom: 16rpx; }
-.outfitCard { display: inline-block; width: 560rpx; margin-right: 24rpx; padding: 24rpx; background: #f9fafb; border-radius: 16rpx; border: 1rpx solid #e5e7eb; vertical-align: top; }
-.outfitTitle { font-weight: 600; display: block; margin-bottom: 8rpx; }
-.outfitReason { font-size: 24rpx; color: #ec4899; display: block; margin-bottom: 16rpx; }
-.outfitItem { font-size: 24rpx; margin-bottom: 8rpx; }
-.outfitItem .role { color: #666; }
-.outfitCard button.applied { background: #10b981; color: #fff; }
-.loadingBlock { padding: 48rpx; text-align: center; }
-.loadingText { color: #ec4899; font-size: 28rpx; }
+.outfitScrollInner { display: inline-flex; gap: 24rpx; padding: 0 4rpx; }
+.outfitCard {
+  display: inline-block;
+  width: 560rpx;
+  padding: 28rpx;
+  background: linear-gradient(135deg, #fdf2f8, #faf5ff);
+  border-radius: 24rpx;
+  border: 2rpx solid #fce7f3;
+  vertical-align: top;
+  white-space: normal;
+  box-shadow: 0 4rpx 16rpx rgba(236, 72, 153, 0.08);
+}
+.outfitCardTitle { font-weight: 700; font-size: 30rpx; display: block; margin-bottom: 8rpx; color: #1f2937; }
+.outfitCardReason { font-size: 24rpx; color: #ec4899; display: block; margin-bottom: 8rpx; line-height: 1.5; }
+.outfitCardItem { display: flex; align-items: flex-start; gap: 12rpx; margin-bottom: 12rpx; }
+:deep(.outfitRoleTag) { flex-shrink: 0; }
+.outfitCardDesc { font-size: 24rpx; color: #4b5563; line-height: 1.5; }
+
+/* ===== 试穿区域 ===== */
 .tryOnCtrl { padding: 24rpx; background: #f9fafb; border-radius: 16rpx; }
 .btnTryOn { padding: 20rpx 32rpx; border: 2rpx solid #ec4899; color: #ec4899; border-radius: 16rpx; font-size: 28rpx; }
 .tryOnResult { margin-top: 24rpx; padding-top: 24rpx; border-top: 1rpx solid #fce7f3; }
 .resultHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16rpx; }
 .resultTitle { font-size: 30rpx; font-weight: 600; }
 .resultImg { width: 100%; border-radius: 16rpx; }
-.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 48rpx; }
-.modalContent { background: #fff; border-radius: 24rpx; max-height: 80vh; width: 100%; overflow: hidden; }
-.modalHeader { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #eee; }
-.modalBody { max-height: 60vh; }
-.imgGrid { display: flex; flex-wrap: wrap; gap: 24rpx; }
-.gridImg { width: 200rpx; height: 280rpx; border-radius: 12rpx; }
-.emptyModal { text-align: center; padding: 48rpx; color: #ec4899; }
 
-/* Example background modal - 完全复刻前端 */
-.modalExampleBg { display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 25rpx 50rpx rgba(0,0,0,0.15); }
-.modalCloseBtn { padding: 8rpx 16rpx; background: transparent; color: #ec4899; font-size: 28rpx; display: flex; align-items: center; justify-content: center; min-width: 64rpx; min-height: 64rpx; }
-.modalExampleBgBody { flex: 1; overflow-y: auto; max-height: 55vh; }
-.exampleBgGrid { display: flex; flex-direction: column; gap: 24rpx; width: 100%; box-sizing: border-box; }
-.exampleBgItem { position: relative; width: calc(100% - 48rpx); height: 360rpx; margin: 0 24rpx; border-radius: 16rpx; overflow: hidden; border: none; box-sizing: border-box; }
-.exampleBgImg { width: 100%; height: 100%; display: block; }
-.exampleBgOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2); display: flex; align-items: flex-end; justify-content: center; padding: 16rpx; }
-.exampleBgHint { font-size: 24rpx; background: rgba(255,255,255,0.9); color: #374151; padding: 8rpx 24rpx; border-radius: 8rpx; font-weight: 500; border: none; }
-.modalFooter { display: flex; gap: 24rpx; padding: 24rpx; border-top: 1rpx solid #fce7f3; }
-.exampleBgBtn { flex: 1; text-align: center; padding: 24rpx; border-radius: 16rpx; font-size: 28rpx; font-weight: 500; border: none; }
-.exampleBgBtnNo { background: #f3f4f6; color: #6b7280; }
-.exampleBgBtnYes { background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; }
+/* ===== 弹窗：居中显示，top/bottom 由 JS 动态设置避开导航栏和 TabBar ===== */
+.modalOverlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* top / bottom 由 :style="modalSafeStyle" 动态注入 */
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 20rpx;
+}
+.modalBox {
+  background: #fff;
+  border-radius: 32rpx;
+  box-shadow: 0 10rpx 60rpx rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modalBoxHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx 40rpx;
+  border-bottom: 1rpx solid #e5e7eb;
+  flex-shrink: 0;
+}
+.modalCloseCircle {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== 弹窗内横向滚动区域 ===== */
+.modalScrollX {
+  flex: 1;
+  white-space: nowrap;
+  padding: 32rpx 0 48rpx;
+}
+.scrollXInner {
+  display: inline-flex;
+  gap: 24rpx;
+  padding: 0 32rpx;
+}
+
+/* 单张滚动卡片：尽量大，占 75vw 宽度 */
+.scrollCard {
+  position: relative;
+  display: inline-block;
+  width: 75vw;
+  flex-shrink: 0;
+  border-radius: 24rpx;
+  overflow: hidden;
+  border: 4rpx solid #e5e7eb;
+  background: #f9fafb;
+  box-sizing: border-box;
+  vertical-align: top;
+  white-space: normal;
+}
+/* 竖图（模特）：高度更高 */
+.scrollCardPortrait {
+  height: 80vw;
+}
+/* 横图（背景）：4:3 比例 */
+.scrollCardLandscape {
+  height: 56vw;
+}
+.scrollCardImg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.scrollCardLabel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 20rpx;
+  display: flex;
+  justify-content: center;
+  background: linear-gradient(transparent, rgba(0,0,0,0.15));
+}
+.scrollCardLabel text {
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10rpx 28rpx;
+  border-radius: 12rpx;
+}
 </style>

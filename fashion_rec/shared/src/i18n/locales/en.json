@@ -198,6 +198,7 @@
   },
   "studio": {
     "title": "Studio",
+    "loginRequired": "Please log in to use this feature",
     "uploadModel": "Upload Model Photo",
     "uploadGarment": "Upload Garment",
     "generateOutfit": "Generate Outfit",
