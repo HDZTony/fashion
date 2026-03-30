@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   (e: 'update:open', v: boolean): void
+  (e: 'picked', payload: { url: string; promptKey: string }): void
 }>()
 
 const { t } = useI18n()
@@ -31,6 +32,7 @@ function setOpen(v: boolean) {
 function selectBackground(url: string, promptKey: string) {
   studioStore.setBackgroundImage(url, url)
   studioStore.setBackgroundActionPrompt(t(promptKey))
+  emit('picked', { url, promptKey })
   setOpen(false)
 }
 </script>

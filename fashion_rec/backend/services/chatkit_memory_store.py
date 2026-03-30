@@ -13,6 +13,21 @@ from chatkit.store import NotFoundError, Store
 from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 
 
+def filter_threads_for_context(
+    threads: list[ThreadMetadata],
+    context: dict,
+) -> list[ThreadMetadata]:
+    """
+    Logged-in: only threads whose metadata.user_id matches context user_id.
+    Anonymous: threads without user_id in metadata (guest-created).
+    """
+    want_uid = context.get("user_id")
+    if want_uid is not None:
+        ws = str(want_uid)
+        return [t for t in threads if str(t.metadata.get("user_id", "")) == ws]
+    return [t for t in threads if not t.metadata.get("user_id")]
+
+
 class MemoryStore(Store[dict]):
     def __init__(self) -> None:
         self.threads: dict[str, ThreadMetadata] = {}
@@ -31,7 +46,7 @@ class MemoryStore(Store[dict]):
     async def load_threads(
         self, limit: int, after: str | None, order: str, context: dict
     ) -> Page[ThreadMetadata]:
-        threads = list(self.threads.values())
+        threads = filter_threads_for_context(list(self.threads.values()), context)
         return self._paginate(
             threads,
             after,

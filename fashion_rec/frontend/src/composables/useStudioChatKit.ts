@@ -19,8 +19,14 @@ import {
 } from '@/lib/outfit-chat-context'
 import type { AttachmentFile } from '@/components/ai-elements/prompt-input/types'
 import { extractStudioResultImageUrl } from '@/lib/studio-chat-result-image'
-import { resolveSceneBackgroundForChat } from '@/lib/studio-example-background-match'
+import { isPersistableSceneImageUrl } from '@/lib/studio-example-background-match'
+import {
+  buildStudioChatSceneContextEntries,
+  effectiveTryOnSceneFromContextEntries,
+} from '@/lib/studio-chat-scene-context'
 import { API_URL } from '@/config/api'
+import { apiClient } from '@/lib/api-client'
+import { threadItemsJsonToStudioMessages } from '@/lib/chatkit-thread-to-messages'
 
 export type StudioChatMessage = {
   id: string
@@ -29,6 +35,9 @@ export type StudioChatMessage = {
   imageUrls: string[]
   /** R2 / CDN try-on output URL parsed from assistant text; shown inline with copy button */
   resultImageUrl?: string
+  /** Scene background for this user turn (GET /chatkit/sessions/.../items metadata or set after send) */
+  sceneBackgroundUrl?: string
+  sceneBackgroundActionPrompt?: string
 }
 
 async function attachmentFileToFile(part: AttachmentFile): Promise<File | null> {
@@ -180,6 +189,9 @@ function isAgentMaxTurnsMessage(raw: string | null | undefined): boolean {
 export function useStudioChatKit(
   getOutfitPayload: () => OutfitChatContextPayload,
   getExcludedSceneBackgroundUrls?: () => string[],
+  getThreadCreateMetadata?: () => Record<string, unknown>,
+  /** 弹窗/上传的当前示例背景；与 messages + excluded 一起决定侧栏与生成用的「最后一张」场景图 */
+  getChatPickedSceneBackground?: () => { url: string; actionPrompt: string } | null,
 ) {
   const authStore = useAuthStore()
   const { t } = useI18n()
@@ -203,32 +215,105 @@ export function useStudioChatKit(
   const intentCropFailed = ref<Record<string, boolean>>({})
 
   let abort: AbortController | null = null
+  /** Aborts in-flight intent-crop hydration after restoreThread / fetchServerThread */
+  let hydrateAbort: AbortController | null = null
+
+  async function requestIntentGarmentCrops(
+    imageUrls: string[],
+    intentText: string,
+    signal: AbortSignal,
+  ): Promise<string[]> {
+    const cropHeaders = new Headers()
+    cropHeaders.set('Content-Type', 'application/json')
+    if (authStore.accessToken)
+      cropHeaders.set('Authorization', `Bearer ${authStore.accessToken}`)
+    const cropBase = API_URL.replace(/\/$/, '')
+    const res = await fetch(`${cropBase}/studio/intent-garment-crops`, {
+      method: 'POST',
+      headers: cropHeaders,
+      body: JSON.stringify({
+        image_urls: imageUrls,
+        intent_text: intentText,
+      }),
+      signal,
+    })
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '')
+      throw new Error(txt || `HTTP ${res.status}`)
+    }
+    const data = (await res.json()) as { crops?: { url: string }[] }
+    return (data.crops ?? []).map(c => c.url).filter(Boolean)
+  }
+
+  async function hydrateIntentCropsForRestoredMessages(signal: AbortSignal) {
+    const users = messages.value.filter(
+      (m) => m.role === 'user' && userMessageHasHttpImage(m),
+    )
+    await Promise.all(users.map((m) => hydrateOneRestoredUserMessage(m, signal)))
+  }
+
+  async function hydrateOneRestoredUserMessage(m: StudioChatMessage, signal: AbortSignal) {
+    const uid = m.id
+    const https = m.imageUrls
+      .map((u) => (u || '').trim())
+      .filter((u) => /^https?:\/\//i.test(u))
+    try {
+      if (https.length === 0) {
+        if (!signal.aborted) {
+          intentCropUrlsByMessageId.value = {
+            ...intentCropUrlsByMessageId.value,
+            [uid]: [],
+          }
+        }
+        return
+      }
+      const intentForApi =
+        m.text.trim()
+        || 'Identify clothing pieces in the image for virtual try-on (tops, bottoms, dress).'
+      const urls = await requestIntentGarmentCrops(https, intentForApi, signal)
+      if (!signal.aborted) {
+        intentCropUrlsByMessageId.value = {
+          ...intentCropUrlsByMessageId.value,
+          [uid]: urls,
+        }
+      }
+    }
+    catch {
+      if (!signal.aborted)
+        intentCropFailed.value = { ...intentCropFailed.value, [uid]: true }
+    }
+    finally {
+      if (!signal.aborted) {
+        const next = { ...intentCropLoading.value }
+        delete next[uid]
+        intentCropLoading.value = next
+      }
+    }
+  }
+
+  /** 与侧栏「本对话上下文」场景条一致：取列表最后一项作为 ChatKit / 试穿有效背景 */
+  function resolveTryOnSceneFromContext() {
+    const excluded = getExcludedSceneBackgroundUrls?.() ?? []
+    const picked = getChatPickedSceneBackground?.() ?? null
+    const entries = buildStudioChatSceneContextEntries(messages.value, excluded, picked)
+    return effectiveTryOnSceneFromContextEntries(entries)
+  }
 
   function buildFetchHeaders(): Headers {
     const h = new Headers()
     h.set('Content-Type', 'application/json')
     const base = getOutfitPayload()
-    let lastUserText = ''
-    for (let i = messages.value.length - 1; i >= 0; i--) {
-      if (messages.value[i]!.role === 'user') {
-        lastUserText = messages.value[i]!.text.trim()
-        break
-      }
-    }
-    const excludedBg = getExcludedSceneBackgroundUrls?.() ?? []
-    const resolvedBg = resolveSceneBackgroundForChat(
-      lastUserText,
-      {
-        url: base.background_image_url,
-        actionPrompt: base.background_action_prompt,
-      },
-      excludedBg,
-    )
+    const resolvedBg = resolveTryOnSceneFromContext()
     const mergedBase: OutfitChatContextPayload = {
       ...base,
-      background_image_url: resolvedBg?.url ?? undefined,
+      background_image_url:
+        resolvedBg?.url?.trim() && isPersistableSceneImageUrl(resolvedBg.url)
+          ? resolvedBg.url.trim()
+          : undefined,
       background_action_prompt:
-        resolvedBg?.url && resolvedBg.actionPrompt.trim()
+        resolvedBg?.url?.trim()
+        && isPersistableSceneImageUrl(resolvedBg.url)
+        && resolvedBg.actionPrompt.trim()
           ? resolvedBg.actionPrompt.trim()
           : undefined,
     }
@@ -249,6 +334,21 @@ export function useStudioChatKit(
     return h
   }
 
+  /** Same as outfit header; persisted on thread for restore */
+  function buildTurnRequestMetadata(): Record<string, unknown> {
+    const base = { ...(getThreadCreateMetadata?.() ?? {}) }
+    const resolvedBg = resolveTryOnSceneFromContext()
+    if (!resolvedBg?.url?.trim() || !isPersistableSceneImageUrl(resolvedBg.url))
+      return base
+    const out: Record<string, unknown> = {
+      ...base,
+      background_image_url: resolvedBg.url.trim(),
+    }
+    if (resolvedBg.actionPrompt.trim())
+      out.background_action_prompt = resolvedBg.actionPrompt.trim()
+    return out
+  }
+
   function buildUploadHeaders(): Headers {
     const h = new Headers()
     const token = authStore.accessToken
@@ -259,6 +359,8 @@ export function useStudioChatKit(
   function newConversation() {
     abort?.abort()
     abort = null
+    hydrateAbort?.abort()
+    hydrateAbort = null
     messages.value = []
     serverThreadId.value = null
     streamingText.value = ''
@@ -267,6 +369,52 @@ export function useStudioChatKit(
     intentCropUrlsByMessageId.value = {}
     intentCropLoading.value = {}
     intentCropFailed.value = {}
+  }
+
+  /**
+   * Restore UI messages; set nextServerThreadId to continue ChatKit/Agents/Grok on the same thread,
+   * or null to start a new thread on next send.
+   */
+  function restoreThread(msgs: StudioChatMessage[], nextServerThreadId: string | null) {
+    abort?.abort()
+    abort = null
+    hydrateAbort?.abort()
+    hydrateAbort = new AbortController()
+    const hydrateSignal = hydrateAbort.signal
+
+    messages.value = msgs.map(m => ({
+      ...m,
+      imageUrls: [...m.imageUrls],
+    }))
+    serverThreadId.value = nextServerThreadId
+    streamingText.value = ''
+    streamError.value = null
+    isStreaming.value = false
+    intentCropUrlsByMessageId.value = {}
+    intentCropFailed.value = {}
+
+    const nextLoading: Record<string, boolean> = {}
+    for (const m of messages.value) {
+      if (m.role === 'user' && userMessageHasHttpImage(m))
+        nextLoading[m.id] = true
+    }
+    intentCropLoading.value = nextLoading
+
+    void hydrateIntentCropsForRestoredMessages(hydrateSignal)
+  }
+
+  /** Local-only snapshot: next message will use threads.create. */
+  function restoreLocalSession(msgs: StudioChatMessage[]) {
+    restoreThread(msgs, null)
+  }
+
+  /** Hydrate from GET /chatkit/sessions/{id}/items; next send uses threads.add_user_message. */
+  async function fetchServerThread(threadId: string) {
+    const { data } = await apiClient.get<{ items?: unknown[] }>(
+      `/chatkit/sessions/${encodeURIComponent(threadId)}/items`,
+    )
+    const msgs = threadItemsJsonToStudioMessages(data.items ?? []) as StudioChatMessage[]
+    restoreThread(msgs, threadId)
   }
 
   async function sendUserMessage(text: string, attachmentParts: AttachmentFile[]) {
@@ -324,27 +472,8 @@ export function useStudioChatKit(
         const intentForApi =
           trimmed
           || 'Identify clothing pieces in the image for virtual try-on (tops, bottoms, dress).'
-        const cropHeaders = new Headers()
-        cropHeaders.set('Content-Type', 'application/json')
-        if (authStore.accessToken)
-          cropHeaders.set('Authorization', `Bearer ${authStore.accessToken}`)
-        const cropBase = API_URL.replace(/\/$/, '')
         try {
-          const res = await fetch(`${cropBase}/studio/intent-garment-crops`, {
-            method: 'POST',
-            headers: cropHeaders,
-            body: JSON.stringify({
-              image_urls: uploadedPreviewUrls,
-              intent_text: intentForApi,
-            }),
-            signal,
-          })
-          if (!res.ok) {
-            const txt = await res.text().catch(() => '')
-            throw new Error(txt || `HTTP ${res.status}`)
-          }
-          const data = (await res.json()) as { crops?: { url: string }[] }
-          const urls = (data.crops ?? []).map(c => c.url).filter(Boolean)
+          const urls = await requestIntentGarmentCrops(uploadedPreviewUrls, intentForApi, signal)
           intentCropUrlsByMessageId.value = {
             ...intentCropUrlsByMessageId.value,
             [uid]: urls,
@@ -362,10 +491,11 @@ export function useStudioChatKit(
 
       const input = buildUserMessageInput(trimmed || ' ', attachmentIds)
       const apiUrl = getChatKitApiUrl()
+      const meta = buildTurnRequestMetadata()
       const body =
         serverThreadId.value === null
-          ? buildThreadsCreateBody(input)
-          : buildThreadsAddUserMessageBody(serverThreadId.value, input)
+          ? buildThreadsCreateBody(input, meta)
+          : buildThreadsAddUserMessageBody(serverThreadId.value, input, meta)
 
       await postChatKitStream(
         apiUrl,
@@ -383,6 +513,20 @@ export function useStudioChatKit(
           },
         },
       )
+
+      const sceneAfterSend = resolveTryOnSceneFromContext()
+      for (let i = messages.value.length - 1; i >= 0; i--) {
+        const m = messages.value[i]!
+        if (m.role !== 'user')
+          continue
+        if (sceneAfterSend?.url?.trim() && isPersistableSceneImageUrl(sceneAfterSend.url)) {
+          m.sceneBackgroundUrl = sceneAfterSend.url.trim()
+          m.sceneBackgroundActionPrompt = sceneAfterSend.actionPrompt.trim()
+            ? sceneAfterSend.actionPrompt.trim()
+            : undefined
+        }
+        break
+      }
 
       accumulatedAssistant = streamingText.value
     } catch (e) {
@@ -441,6 +585,9 @@ export function useStudioChatKit(
     intentCropLoading,
     intentCropFailed,
     newConversation,
+    restoreThread,
+    restoreLocalSession,
+    fetchServerThread,
     sendUserMessage,
     resendUserMessage,
     stopGeneration,

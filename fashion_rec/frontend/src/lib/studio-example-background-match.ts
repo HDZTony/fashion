@@ -126,6 +126,19 @@ export function normSceneBackgroundUrl(u: string): string {
   return (u || '').trim().replace(/\/$/, '')
 }
 
+/** English Qwen action line for a known example image URL (persisted turns may omit prompt text). */
+export function englishActionPromptForExampleImageUrl(url: string): string {
+  const n = normSceneBackgroundUrl(url)
+  if (!n)
+    return ''
+  for (const ex of EXAMPLE_BACKGROUND_IMAGES) {
+    if (normSceneBackgroundUrl(ex.url) !== n)
+      continue
+    return englishActionPrompt(promptKeyFromEntry(ex.prompt))
+  }
+  return ''
+}
+
 /**
  * Only http(s) URLs are valid after reload. Blob URLs are session-only; Pinia persist can
  * restore a blob string that no longer resolves, which would show an empty rail thumbnail.
@@ -138,30 +151,38 @@ export function isPersistableSceneImageUrl(url: string): boolean {
 }
 
 /**
- * Effective scene for rail + ChatKit: auto match from last user message wins, else studio store;
- * returns null if the URL is in `excludedUrls` (session “remove”).
+ * Effective scene for rail + ChatKit:
+ * 1) Explicit pick from **this chat** only (`explicitChat`, e.g. 示例背景弹窗) — **优先**，避免恢复历史后
+ *    旧消息里的场景关键词仍自动匹配、覆盖用户刚选的示例图。
+ * 2) Else `pickExampleBackgroundFromUserText(lastUserText)`（文案自动匹配）
+ * Does **not** inherit 工作室 Outfit Generator global `studioStore` background.
+ * Returns null if the chosen URL is in `excludedUrls` (session “remove”).
  */
 export function resolveSceneBackgroundForChat(
   lastUserText: string,
-  store: { url?: string | null; actionPrompt?: string | null },
+  explicitChat: { url?: string | null; actionPrompt?: string | null } | null,
   excludedUrls: string[],
 ): { url: string; actionPrompt: string } | null {
   const excluded = new Set(excludedUrls.map(normSceneBackgroundUrl))
+
+  const su = explicitChat?.url?.trim()
+  if (su && isPersistableSceneImageUrl(su)) {
+    const n = normSceneBackgroundUrl(su)
+    if (!excluded.has(n)) {
+      return {
+        url: su,
+        actionPrompt: explicitChat?.actionPrompt?.trim() ?? '',
+      }
+    }
+  }
+
   const auto = pickExampleBackgroundFromUserText(lastUserText)
-  let url: string
-  let actionPrompt: string
   if (auto) {
-    url = auto.url
-    actionPrompt = auto.actionPrompt
-  }
-  else {
-    const su = store.url?.trim()
-    if (!su || !isPersistableSceneImageUrl(su))
+    const n = normSceneBackgroundUrl(auto.url)
+    if (excluded.has(n))
       return null
-    url = su
-    actionPrompt = store.actionPrompt?.trim() ?? ''
+    return { url: auto.url, actionPrompt: auto.actionPrompt }
   }
-  if (excluded.has(normSceneBackgroundUrl(url)))
-    return null
-  return { url, actionPrompt }
+
+  return null
 }

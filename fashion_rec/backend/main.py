@@ -46,6 +46,11 @@ from chatkit.store import default_generate_id as chatkit_default_generate_id
 from chatkit.types import FileAttachment, ImageAttachment
 from services.chatkit_fashion_server import fashion_chatkit_server
 from services.chatkit_outfit_context import parse_outfit_context_from_request
+from services.chatkit_session_api import (
+    filter_visible_items,
+    first_user_message_preview,
+    thread_owned_by_user,
+)
 from services.chatkit_tools import garment_url_kind_for_tryon_log
 
 app = FastAPI(title="Fashion Recommendation API")
@@ -1618,6 +1623,68 @@ async def chatkit_attachment_preview(attachment_id: str):
     if not blob:
         raise HTTPException(status_code=404, detail="Empty attachment")
     return Response(content=blob, media_type=meta.mime_type)
+
+
+@app.get("/chatkit/sessions")
+async def chatkit_sessions_list(
+    limit: int = Query(20, ge=1, le=100),
+    after: str | None = None,
+    user_id: str = Depends(get_current_user),
+):
+    """List ChatKit threads for the current user (metadata.user_id), for Studio history UI."""
+    store = fashion_chatkit_server.store
+    ctx: Dict[str, Any] = {"user_id": user_id}
+    page = await store.load_threads(limit=limit, after=after, order="desc", context=ctx)
+    threads_out: list[Dict[str, Any]] = []
+    for t in page.data:
+        title = t.title
+        if not title:
+            title = await first_user_message_preview(store, t.id, context=ctx)
+        threads_out.append(
+            {
+                "thread_id": t.id,
+                "created_at": t.created_at.isoformat(),
+                "title": title or "—",
+            }
+        )
+    return {"threads": threads_out, "has_more": page.has_more, "after": page.after}
+
+
+@app.get("/chatkit/sessions/{thread_id}/items")
+async def chatkit_session_items(
+    thread_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Thread items for hydrating the UI; same store as Agents/Grok multi-turn context."""
+    store = fashion_chatkit_server.store
+    ctx: Dict[str, Any] = {"user_id": user_id}
+    try:
+        meta = await store.load_thread(thread_id, ctx)
+    except ChatKitNotFoundError:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    if not thread_owned_by_user(meta, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    page = await store.load_thread_items(thread_id, None, 500, "asc", ctx)
+    visible = filter_visible_items(list(page.data))
+    bg_map = (meta.metadata or {}).get("fashion_rec_message_backgrounds") or {}
+    items_out: list[Dict[str, Any]] = []
+    for i in visible:
+        d = i.model_dump(mode="json")
+        if d.get("type") == "user_message" and isinstance(bg_map, dict):
+            extra = bg_map.get(str(d.get("id")))
+            if isinstance(extra, dict):
+                bu = (extra.get("background_image_url") or "").strip()
+                if bu:
+                    bp = (extra.get("background_action_prompt") or "").strip()
+                    d["metadata"] = {
+                        "background_image_url": bu,
+                        "background_action_prompt": bp,
+                    }
+        items_out.append(d)
+    return {
+        "thread_id": thread_id,
+        "items": items_out,
+    }
 
 
 @app.post("/outfit")

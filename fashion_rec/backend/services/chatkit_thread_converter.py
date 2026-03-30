@@ -15,11 +15,11 @@ from chatkit.agents import ThreadItemConverter
 from chatkit.types import Attachment, FileAttachment, ImageAttachment
 from openai.types.responses import ResponseInputContentParam, ResponseInputImageParam, ResponseInputTextParam
 
-from services.chatkit_memory_store import MemoryStore
+from chatkit.store import Store
 
 
 class FashionThreadItemConverter(ThreadItemConverter):
-    def __init__(self, store: MemoryStore) -> None:
+    def __init__(self, store: Store[dict]) -> None:
         self._store = store
 
     async def attachment_to_message_content(self, attachment: Attachment) -> ResponseInputContentParam:

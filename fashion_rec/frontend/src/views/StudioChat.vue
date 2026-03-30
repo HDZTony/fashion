@@ -5,11 +5,11 @@
  */
 defineOptions({ name: 'StudioChat' })
 
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { Item } from '@/types'
-import { useClipboard } from '@vueuse/core'
+import { useClipboard, useDebounceFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
-import { Image, Shirt } from 'lucide-vue-next'
+import { History, Image, Shirt, Trash2 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useStudioStore } from '@/stores/studio'
 import { useModelImages } from '@/composables/useModelImages'
@@ -17,6 +17,7 @@ import { useStudioChatKit, type StudioChatMessage } from '@/composables/useStudi
 import type { OutfitChatContextPayload } from '@/lib/outfit-chat-context'
 import type { AttachmentFile, PromptInputMessage } from '@/components/ai-elements/prompt-input/types'
 import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import {
   Dialog,
   DialogContent,
@@ -56,23 +57,90 @@ import StudioChatBackgroundDialog from './StudioChatBackgroundDialog.vue'
 import StudioChatContextRail from './StudioChatContextRail.vue'
 import StudioChatPromptChips from './StudioChatPromptChips.vue'
 import { stripStudioResultImageFromMarkdown } from '@/lib/studio-chat-result-image'
-import { resolveSceneBackgroundForChat } from '@/lib/studio-example-background-match'
+import {
+  isPersistableSceneImageUrl,
+  pickExampleBackgroundFromUserText,
+} from '@/lib/studio-example-background-match'
+import {
+  buildStudioChatSceneContextEntries,
+  effectiveTryOnSceneFromContextEntries,
+} from '@/lib/studio-chat-scene-context'
 import { apiClient, uploadApiClient } from '@/lib/api-client'
+
+type ServerChatSessionRow = {
+  thread_id: string
+  title: string
+  created_at: string
+}
+import {
+  cloneMessages,
+  deleteHistoryEntry,
+  deriveChatTitle,
+  loadHistoryList,
+  newChatSessionId,
+  type StudioChatHistoryEntry,
+  upsertHistoryEntry,
+} from '@/lib/studio-chat-history'
 
 const COMPOSER_MAX_ATTACHMENTS = 5
 const COMPOSER_MAX_FILE_BYTES = 15 * 1024 * 1024
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const studioStore = useStudioStore()
 const { modelImageUrlForChatContext, loadModels } = useModelImages()
 
 const excludedTryOnGarmentUrls = ref<string[]>([])
 const excludedSceneBackgroundUrls = ref<string[]>([])
+/** 仅在本页「示例背景」弹窗点选；不向工作室 Outfit 全局背景回退 */
+const chatPickedSceneBackground = ref<{ url: string; actionPrompt: string } | null>(null)
 /** Full-screen preview for try-on result (click thumbnail). */
 const tryOnLightboxUrl = ref<string | null>(null)
 const railActionFeedback = ref<string | null>(null)
 let railFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Remount PromptInputProvider so composer clears on「新对话」/恢复历史 */
+const composerResetKey = ref(0)
+const historySheetOpen = ref(false)
+const historyEntries = ref<StudioChatHistoryEntry[]>([])
+const serverSessions = ref<ServerChatSessionRow[]>([])
+const currentSessionId = ref(newChatSessionId())
+
+const chatHistoryUserKey = computed(() => authStore.user?.id ?? 'anon')
+
+async function refreshHistoryList() {
+  if (authStore.isAuthenticated) {
+    try {
+      const { data } = await apiClient.get<{ threads?: ServerChatSessionRow[] }>(
+        '/chatkit/sessions',
+      )
+      serverSessions.value = data.threads ?? []
+    } catch {
+      serverSessions.value = []
+    }
+  }
+  else {
+    serverSessions.value = []
+  }
+  historyEntries.value = loadHistoryList(chatHistoryUserKey.value)
+}
+
+function formatHistoryTime(ts: number): string {
+  return new Date(ts).toLocaleString(
+    locale.value === 'zh' ? 'zh-CN' : undefined,
+    { dateStyle: 'short', timeStyle: 'short' },
+  )
+}
+
+function formatServerSessionTime(iso: string): string {
+  const t = Date.parse(iso)
+  if (Number.isNaN(t))
+    return iso
+  return new Date(t).toLocaleString(
+    locale.value === 'zh' ? 'zh-CN' : undefined,
+    { dateStyle: 'short', timeStyle: 'short' },
+  )
+}
 
 function showRailFeedback(msg: string) {
   railActionFeedback.value = msg
@@ -137,15 +205,10 @@ function buildCurrentOutfitChatContext(): OutfitChatContextPayload {
     }
   }
 
-  const bg = studioStore.backgroundImageUrl?.trim()
-  const bap = studioStore.backgroundActionPrompt?.trim()
-
   return {
     model: studioStore.selectedModel,
     base_item_ids: baseItemIds,
     selected_items_roles: selectedItemsRoles,
-    background_image_url: bg || undefined,
-    background_action_prompt: bg && bap ? bap : undefined,
     model_image_url: modelImageUrlForChatContext.value.trim(),
     excluded_try_on_garment_urls: ex.length > 0 ? ex : undefined,
   }
@@ -160,13 +223,70 @@ const {
   intentCropLoading,
   intentCropFailed,
   newConversation,
+  restoreLocalSession,
+  fetchServerThread,
   sendUserMessage,
   resendUserMessage,
   stopGeneration,
 } = useStudioChatKit(
   () => buildCurrentOutfitChatContext(),
   () => excludedSceneBackgroundUrls.value,
+  () => ({ client: 'fashion-rec' }),
+  () => chatPickedSceneBackground.value,
 )
+
+function persistCurrentSession() {
+  if (authStore.isAuthenticated)
+    return
+  if (messages.value.length === 0)
+    return
+  upsertHistoryEntry(chatHistoryUserKey.value, {
+    id: currentSessionId.value,
+    updatedAt: Date.now(),
+    title: deriveChatTitle(messages.value),
+    messages: cloneMessages(messages.value),
+  })
+  refreshHistoryList()
+}
+
+const debouncedPersist = useDebounceFn(() => {
+  if (isStreaming.value)
+    return
+  if (authStore.isAuthenticated)
+    return
+  persistCurrentSession()
+}, 700)
+
+watch(
+  () => messages.value,
+  () => {
+    debouncedPersist()
+  },
+  { deep: true },
+)
+
+/** 新发的用户话里若命中示例场景关键词，则放弃弹窗/上传的「固定背景」，让对话里的场景参与上下文末尾（与侧栏一致） */
+watch(
+  () => messages.value.length,
+  (len, prevLen) => {
+    if (prevLen === undefined || len <= prevLen)
+      return
+    const last = messages.value[len - 1]
+    if (last?.role !== 'user')
+      return
+    if (pickExampleBackgroundFromUserText(last.text.trim()))
+      chatPickedSceneBackground.value = null
+  },
+)
+
+watch(isStreaming, (streaming) => {
+  if (!streaming)
+    debouncedPersist()
+})
+
+watch(chatHistoryUserKey, () => {
+  void refreshHistoryList()
+})
 
 /** Thumbnails for base items sent in X-Fashion-Rec-Outfit-Context (same logic as buildCurrentOutfitChatContext). */
 const contextGarmentThumbs = computed(() => {
@@ -194,29 +314,49 @@ const contextGarmentThumbs = computed(() => {
   return out
 })
 
-/** Scene background for left rail — same as useStudioChatKit / resolveSceneBackgroundForChat. */
-/** 与基准单品一致：无对话消息时不展示场景缩略图；发消息后按文案/工作室设置解析 */
-const contextSceneBackgroundUrl = computed(() => {
+/** 与 useStudioChatKit 里 resolveTryOnSceneFromContext 同源（侧栏展示 = 生成用的上下文序列） */
+const studioChatSceneContextEntries = computed(() => {
   if (messages.value.length === 0)
-    return null
-  let lastUserText = ''
-  for (let i = messages.value.length - 1; i >= 0; i--) {
-    if (messages.value[i]!.role === 'user') {
-      lastUserText = messages.value[i]!.text.trim()
-      break
-    }
-  }
-  return (
-    resolveSceneBackgroundForChat(
-      lastUserText,
-      {
-        url: studioStore.backgroundImageUrl,
-        actionPrompt: studioStore.backgroundActionPrompt,
-      },
-      excludedSceneBackgroundUrls.value,
-    )?.url ?? null
+    return []
+  return buildStudioChatSceneContextEntries(
+    messages.value,
+    excludedSceneBackgroundUrls.value,
+    chatPickedSceneBackground.value,
   )
 })
+
+/** 只展示当前有效场景缩略图，避免历史室内图与本轮大海同时出现 */
+const contextSceneBackgroundUrls = computed(() => {
+  const eff = effectiveTryOnSceneFromContextEntries(studioChatSceneContextEntries.value)
+  return eff ? [eff.url] : []
+})
+
+/** 与 buildTurnRequestMetadata 一致：最后一条用户话的持久化场景 → 弹窗状态，便于恢复后继续对话 */
+function syncChatPickedSceneFromLastUserMessage() {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]!
+    if (m.role !== 'user')
+      continue
+    if (m.sceneBackgroundUrl && isPersistableSceneImageUrl(m.sceneBackgroundUrl)) {
+      chatPickedSceneBackground.value = {
+        url: m.sceneBackgroundUrl.trim(),
+        actionPrompt: (m.sceneBackgroundActionPrompt ?? '').trim(),
+      }
+    }
+    else {
+      chatPickedSceneBackground.value = null
+    }
+    return
+  }
+  chatPickedSceneBackground.value = null
+}
+
+function onChatBackgroundPicked(payload: { url: string; promptKey: string }) {
+  chatPickedSceneBackground.value = {
+    url: payload.url,
+    actionPrompt: t(payload.promptKey),
+  }
+}
 
 /** Last user message in thread — pause/stop sits beside its resend button while assistant streams. */
 const lastUserMessageId = computed(() => {
@@ -262,6 +402,7 @@ async function copyTryOnResultLink(messageId: string, url: string) {
 }
 
 onMounted(() => {
+  void refreshHistoryList()
   const bg = studioStore.backgroundImageUrl
   if (bg?.startsWith('blob:')) {
     studioStore.setBackgroundImage(null, null)
@@ -301,13 +442,85 @@ function onTryOnLightboxOpen(open: boolean) {
 }
 
 function onNewChat() {
+  if (isStreaming.value)
+    stopGeneration()
+  if (!authStore.isAuthenticated)
+    persistCurrentSession()
   newConversation()
+  currentSessionId.value = newChatSessionId()
+  composerResetKey.value += 1
   promptFileError.value = null
   lastCopiedMessageId.value = null
   excludedTryOnGarmentUrls.value = []
   excludedSceneBackgroundUrls.value = []
+  chatPickedSceneBackground.value = null
   railActionFeedback.value = null
   tryOnLightboxUrl.value = null
+}
+
+function openHistorySheet() {
+  void refreshHistoryList()
+  historySheetOpen.value = true
+}
+
+async function onSelectServerSession(row: ServerChatSessionRow) {
+  if (isStreaming.value)
+    stopGeneration()
+  if (!authStore.isAuthenticated)
+    return
+  try {
+    await fetchServerThread(row.thread_id)
+    currentSessionId.value = row.thread_id
+    composerResetKey.value += 1
+    historySheetOpen.value = false
+    promptFileError.value = null
+    lastCopiedMessageId.value = null
+    excludedTryOnGarmentUrls.value = []
+    excludedSceneBackgroundUrls.value = []
+    syncChatPickedSceneFromLastUserMessage()
+    railActionFeedback.value = null
+    tryOnLightboxUrl.value = null
+  } catch (e: unknown) {
+    const msg = e && typeof e === 'object' && 'response' in e
+      ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? '')
+      : ''
+    streamError.value = msg || t('studio.chat.errors.generic')
+  }
+}
+
+function onSelectHistoryEntry(entry: StudioChatHistoryEntry) {
+  if (isStreaming.value)
+    stopGeneration()
+  if (!authStore.isAuthenticated)
+    persistCurrentSession()
+  restoreLocalSession(cloneMessages(entry.messages))
+  currentSessionId.value = entry.id
+  composerResetKey.value += 1
+  historySheetOpen.value = false
+  promptFileError.value = null
+  lastCopiedMessageId.value = null
+  excludedTryOnGarmentUrls.value = []
+  excludedSceneBackgroundUrls.value = []
+  syncChatPickedSceneFromLastUserMessage()
+  railActionFeedback.value = null
+  tryOnLightboxUrl.value = null
+}
+
+function onDeleteHistoryEntry(id: string) {
+  deleteHistoryEntry(chatHistoryUserKey.value, id)
+  refreshHistoryList()
+  if (id === currentSessionId.value) {
+    newConversation()
+    currentSessionId.value = newChatSessionId()
+    composerResetKey.value += 1
+    promptFileError.value = null
+    lastCopiedMessageId.value = null
+    excludedTryOnGarmentUrls.value = []
+    excludedSceneBackgroundUrls.value = []
+    chatPickedSceneBackground.value = null
+    railActionFeedback.value = null
+    tryOnLightboxUrl.value = null
+  }
 }
 
 function normGarmentUrlForExclusion(u: string): string {
@@ -394,6 +607,7 @@ async function onRailAddToWardrobe(url: string) {
 <template>
   <div class="relative min-h-0 flex-1 px-2 pb-3 pt-2 md:px-4">
     <PromptInputProvider
+      :key="composerResetKey"
       :max-files="COMPOSER_MAX_ATTACHMENTS"
       :max-file-size="COMPOSER_MAX_FILE_BYTES"
       accept="image/*"
@@ -416,22 +630,33 @@ async function onRailAddToWardrobe(url: string) {
           <h2 class="text-sm font-semibold text-pink-950 md:text-base">
             {{ t('studio.chat.title') }}
           </h2>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            class="border-pink-200 text-pink-900 hover:bg-pink-50"
-            :disabled="isStreaming"
-            @click="onNewChat"
-          >
-            {{ t('studio.chat.newChat') }}
-          </Button>
+          <div class="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="border-pink-200 text-pink-900 hover:bg-pink-50"
+              @click="openHistorySheet"
+            >
+              <History class="mr-1 size-3.5 md:mr-1.5 md:size-4" />
+              {{ t('studio.chat.chatHistory') }}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="border-pink-200 text-pink-900 hover:bg-pink-50"
+              @click="onNewChat"
+            >
+              {{ t('studio.chat.newChat') }}
+            </Button>
+          </div>
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
           <StudioChatContextRail
             :studio-thumbs="contextGarmentThumbs"
-            :scene-background-url="contextSceneBackgroundUrl"
+            :scene-background-urls="contextSceneBackgroundUrls"
             :messages="messages"
             :intent-crop-urls-by-message-id="intentCropUrlsByMessageId"
             :intent-crop-loading="intentCropLoading"
@@ -655,7 +880,108 @@ async function onRailAddToWardrobe(url: string) {
       <StudioChatBackgroundDialog
         :open="backgroundPanelOpen"
         @update:open="backgroundPanelOpen = $event"
+        @picked="onChatBackgroundPicked"
       />
+
+      <Sheet
+        :open="historySheetOpen"
+        @update:open="historySheetOpen = $event"
+      >
+        <SheetContent
+          side="right"
+          class="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md"
+        >
+          <SheetHeader class="border-b border-pink-100 pb-4 text-left">
+            <SheetTitle class="text-base text-pink-950">
+              {{ t('studio.chat.chatHistoryTitle') }}
+            </SheetTitle>
+            <p class="text-xs text-muted-foreground">
+              {{ t('studio.chat.chatHistoryHint') }}
+            </p>
+          </SheetHeader>
+          <div class="min-h-0 flex-1 space-y-6 py-3">
+            <div v-if="authStore.isAuthenticated">
+              <p class="mb-2 px-1 text-xs font-medium text-muted-foreground">
+                {{ t('studio.chat.chatHistoryServer') }}
+              </p>
+              <ul
+                v-if="serverSessions.length > 0"
+                class="space-y-2"
+              >
+                <li
+                  v-for="s in serverSessions"
+                  :key="s.thread_id"
+                >
+                  <button
+                    type="button"
+                    class="group flex w-full items-start gap-2 rounded-lg border border-pink-100/90 bg-pink-50/40 px-3 py-2.5 text-left text-sm transition hover:bg-pink-50"
+                    @click="onSelectServerSession(s)"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <p class="line-clamp-2 font-medium text-pink-950">
+                        {{ s.title }}
+                      </p>
+                      <p class="mt-0.5 text-xs text-muted-foreground">
+                        {{ formatServerSessionTime(s.created_at) }}
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              </ul>
+              <p
+                v-else-if="historyEntries.length > 0"
+                class="px-1 text-sm text-muted-foreground"
+              >
+                {{ t('studio.chat.chatHistoryServerEmpty') }}
+              </p>
+            </div>
+
+            <div v-if="historyEntries.length > 0">
+              <p class="mb-2 px-1 text-xs font-medium text-muted-foreground">
+                {{ t('studio.chat.chatHistoryLocal') }}
+              </p>
+              <ul class="space-y-2">
+                <li
+                  v-for="h in historyEntries"
+                  :key="h.id"
+                >
+                  <button
+                    type="button"
+                    class="group flex w-full items-start gap-2 rounded-lg border border-pink-100/90 bg-pink-50/40 px-3 py-2.5 text-left text-sm transition hover:bg-pink-50"
+                    @click="onSelectHistoryEntry(h)"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <p class="line-clamp-2 font-medium text-pink-950">
+                        {{ h.title }}
+                      </p>
+                      <p class="mt-0.5 text-xs text-muted-foreground">
+                        {{ formatHistoryTime(h.updatedAt) }}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      class="shrink-0 h-8 w-8 text-muted-foreground hover:bg-pink-100 hover:text-pink-900"
+                      :title="t('studio.chat.chatHistoryDelete')"
+                      @click.stop="onDeleteHistoryEntry(h.id)"
+                    >
+                      <Trash2 class="size-4" />
+                    </Button>
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <p
+              v-if="(!authStore.isAuthenticated && historyEntries.length === 0) || (authStore.isAuthenticated && serverSessions.length === 0 && historyEntries.length === 0)"
+              class="px-1 text-sm text-muted-foreground"
+            >
+              {{ t('studio.chat.chatHistoryEmpty') }}
+            </p>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog
         :open="tryOnLightboxUrl !== null"

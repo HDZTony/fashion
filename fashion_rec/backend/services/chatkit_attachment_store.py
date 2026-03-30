@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from chatkit.store import AttachmentStore
 
-from services.chatkit_memory_store import MemoryStore
+from typing import Any
 
 
 class MemoryAttachmentStore(AttachmentStore[dict]):
-    def __init__(self, store: MemoryStore) -> None:
+    """Works with MemoryStore or SqliteChatKitStore (put/get/drop attachment blob)."""
+
+    def __init__(self, store: Any) -> None:
         self._store = store
 
     async def delete_attachment(self, attachment_id: str, context: dict) -> None:

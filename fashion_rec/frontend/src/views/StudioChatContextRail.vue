@@ -19,8 +19,8 @@ export type StudioContextThumb = {
 
 const props = defineProps<{
   studioThumbs: StudioContextThumb[]
-  /** Effective try-on scene (Qwen image 3), same as ChatKit header resolution */
-  sceneBackgroundUrl?: string | null
+  /** Example scene backgrounds for try-on (Qwen), deduped — multiple turns / keywords */
+  sceneBackgroundUrls?: string[]
   messages: StudioChatMessage[]
   intentCropUrlsByMessageId: Record<string, string[]>
   intentCropLoading: Record<string, boolean>
@@ -43,18 +43,31 @@ function normUrl(u: string): string {
 
 const excludedSet = computed(() => new Set(props.excludedTryOnGarmentUrls.map(normUrl)))
 
-/** Hide scene thumb after load error (e.g. 404, blocked), avoids empty bordered box */
-const sceneBackgroundLoadFailed = ref(false)
+/** Per-URL: hide scene thumb after load error (e.g. 404, blocked) */
+const sceneBackgroundLoadFailed = ref<Record<string, boolean>>({})
 watch(
-  () => props.sceneBackgroundUrl,
+  () => props.sceneBackgroundUrls,
   () => {
-    sceneBackgroundLoadFailed.value = false
+    sceneBackgroundLoadFailed.value = {}
   },
+  { deep: true },
 )
 
-function onSceneBackgroundImgError() {
-  sceneBackgroundLoadFailed.value = true
+function onSceneBackgroundImgError(url: string) {
+  const n = normUrl(url)
+  if (!n)
+    return
+  sceneBackgroundLoadFailed.value = { ...sceneBackgroundLoadFailed.value, [n]: true }
 }
+
+const visibleSceneBackgroundUrls = computed(() => {
+  const list = props.sceneBackgroundUrls ?? []
+  const failed = sceneBackgroundLoadFailed.value
+  return list.filter((u) => {
+    const n = normUrl(u)
+    return n && !failed[n]
+  })
+})
 
 function messageHasServerImage(m: StudioChatMessage): boolean {
   return m.imageUrls.some((u) => /^https?:\/\//i.test((u || '').trim()))
@@ -71,9 +84,17 @@ const leftRailEntries = computed((): RailEntry[] => {
   const out: RailEntry[] = []
   const ex = excludedSet.value
 
-  const scene = (props.sceneBackgroundUrl ?? '').trim()
-  if (scene && !sceneBackgroundLoadFailed.value)
-    out.push({ kind: 'background', key: 'ctx-scene-bg', url: scene })
+  let bgIdx = 0
+  for (const url of visibleSceneBackgroundUrls.value) {
+    const u = (url || '').trim()
+    if (!u)
+      continue
+    out.push({
+      kind: 'background',
+      key: `ctx-scene-bg-${bgIdx++}-${normUrl(u).slice(-40)}`,
+      url: u,
+    })
+  }
 
   for (const g of props.studioThumbs) {
     if (ex.has(normUrl(g.url)))
@@ -115,7 +136,8 @@ const leftRailEntries = computed((): RailEntry[] => {
       }
       continue
     }
-    out.push({ kind: 'loading', key: `ld-${uid}` })
+    /* Should not happen: restore/send always hydrates intent crops or sets failed */
+    out.push({ kind: 'empty', key: `e-${uid}-nocrop` })
   }
   return out
 })
@@ -167,18 +189,11 @@ function showAddForStudio(e: RailEntry): boolean {
             loading="lazy"
             decoding="async"
             :title="t('studio.chat.contextGarmentsRail.sceneBackgroundHint')"
-            @error="onSceneBackgroundImgError"
+            @error="onSceneBackgroundImgError(e.url)"
           >
           <div
             class="absolute inset-0 flex flex-col items-stretch justify-center gap-0.5 rounded-lg bg-black/55 p-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-          >
-            <button
-              type="button"
-              class="rounded bg-white/95 px-0.5 py-px text-[8px] font-medium leading-tight text-pink-950 shadow hover:bg-pink-50"
-              @click.stop="onAddToWardrobe(e.url)"
             >
-              {{ t('studio.chat.contextGarmentsRail.addToWardrobe') }}
-            </button>
             <button
               type="button"
               class="rounded bg-white/95 px-0.5 py-px text-[8px] font-medium leading-tight text-red-900 shadow hover:bg-red-50"
@@ -267,18 +282,11 @@ function showAddForStudio(e: RailEntry): boolean {
             loading="lazy"
             decoding="async"
             :title="t('studio.chat.contextGarmentsRail.sceneBackgroundHint')"
-            @error="onSceneBackgroundImgError"
+            @error="onSceneBackgroundImgError(e.url)"
           >
           <div
             class="absolute inset-0 flex flex-col items-stretch justify-center gap-0.5 rounded-lg bg-black/55 p-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           >
-            <button
-              type="button"
-              class="rounded bg-white/95 px-0.5 py-0.5 text-[8px] font-medium leading-tight text-pink-950 shadow hover:bg-pink-50"
-              @click.stop="onAddToWardrobe(e.url)"
-            >
-              {{ t('studio.chat.contextGarmentsRail.addToWardrobe') }}
-            </button>
             <button
               type="button"
               class="rounded bg-white/95 px-0.5 py-0.5 text-[8px] font-medium leading-tight text-red-900 shadow hover:bg-red-50"
