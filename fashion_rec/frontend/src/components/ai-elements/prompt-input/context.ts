@@ -121,6 +121,8 @@ export function usePromptInputProvider(props: {
   const submitForm = async () => {
     if (!props.onSubmit)
       return
+    if (!textInput.value.trim() && files.value.length === 0)
+      return
 
     // Process files (convert blobs to base64 if needed for AI SDK)
     const processedFiles = await Promise.all(

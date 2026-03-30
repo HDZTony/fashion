@@ -1,6 +1,7 @@
 import { createMemoryHistory, createRouter, createWebHistory, type Router, type RouteRecordRaw } from 'vue-router'
 import Home from '../views/Home.vue'
 import Studio from '../views/Studio.vue'
+import StudioChat from '../views/StudioChat.vue'
 import Login from '../views/Login.vue'
 import Callback from '../views/Callback.vue'
 import ResetPassword from '../views/ResetPassword.vue'
@@ -60,9 +61,14 @@ export const routes: RouteRecordRaw[] = [
     component: AppLayout,
     children: [
       {
+        path: 'studio/chat',
+        name: 'studio-chat',
+        component: StudioChat,
+      },
+      {
         path: 'studio',
         name: 'studio',
-        component: Studio
+        component: Studio,
       },
       {
         path: 'wardrobe',

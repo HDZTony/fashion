@@ -20,6 +20,11 @@ Usage (CLI - Multi-Image Fusion):
 
 Make sure the `DASHSCOPE_API_KEY` environment variable is set to your DashScope API key
 before running the CLI or using the client programmatically.
+
+Env (optional):
+  QWEN_IMAGE_EDIT_TIMEOUT_SECONDS   read timeout for API + downloads (default 600; 2K / multi-image often needs minutes)
+  QWEN_IMAGE_EDIT_CONNECT_TIMEOUT_SECONDS  connect timeout (default 90)
+  QWEN_IMAGE_EDIT_TRUST_ENV         false to ignore HTTP(S)_PROXY for this client (DashScope direct; avoids proxy read timeouts)
 """
 
 from __future__ import annotations
@@ -46,8 +51,22 @@ BEIJING_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimod
 SINGAPORE_ENDPOINT = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
 DEFAULT_ENV_PREFIX = "QWEN_IMAGE_EDIT_"
-DEFAULT_MODEL = "qwen-image-edit-plus-2025-12-15"
+DEFAULT_MODEL = "qwen-image-2.0-pro"
 DEFAULT_REGION = "singapore"  # Default to Singapore region
+
+# DashScope 图像编辑 API 支持的 model 示例（CLI 校验用；程序内可通过 QWEN_IMAGE_EDIT_MODEL 传入任意字符串）
+CLI_MODEL_CHOICES = (
+    "qwen-image-2.0-pro",
+    "qwen-image-2.0-pro-2026-03-03",
+    "qwen-image-2.0",
+    "qwen-image-2.0-2026-03-03",
+    "qwen-image-edit-plus",
+    "qwen-image-edit-plus-2025-12-15",
+    "qwen-image-edit-plus-2025-10-30",
+    "qwen-image-edit-max",
+    "qwen-image-edit-max-2026-01-16",
+    "qwen-image-edit",
+)
 
 
 class QwenImageEditError(RuntimeError):
@@ -140,13 +159,13 @@ async def _prepare_payload(
     Args:
         prompt: Text instructions describing the desired edit.
         image_inputs: List of image paths (local files or URLs).
-        model: Model name (default: qwen-image-edit-plus).
+        model: Model name (default: qwen-image-2.0-pro).
         n: Number of images to generate (default: 1).
         negative_prompt: Negative prompt to avoid certain elements.
         prompt_extend: Whether to extend the prompt automatically.
         watermark: Whether to add watermark.
         garment_collage_index: Optional index of the garment collage image (will be set to expire in 7 days).
-        size: Optional output image size (e.g., "2048x2048" for 2K resolution).
+        size: Optional output image size (e.g. "2048*2048" per DashScope docs).
     """
     # Prepare content array with images and text
     content: List[Dict[str, str]] = []
@@ -191,12 +210,20 @@ async def _prepare_payload(
 
 @dataclass
 class QwenImageEditClient:
-    """Minimal client wrapper around the Qwen Image Edit API."""
+    """Minimal client for DashScope multimodal image generation/editing (e.g. Qwen Image 2.0)."""
 
     api_key: str
     endpoint: str = SINGAPORE_ENDPOINT  # Default to Singapore endpoint
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = 600.0
+    connect_timeout_seconds: float = 90.0
+    trust_env: bool = True
     model: str = DEFAULT_MODEL
+
+    def _httpx_timeout(self) -> httpx.Timeout:
+        read = self.timeout_seconds
+        conn = self.connect_timeout_seconds
+        write_cap = min(300.0, max(60.0, read))
+        return httpx.Timeout(connect=conn, read=read, write=write_cap, pool=conn)
 
     async def edit_image(
         self,
@@ -225,7 +252,7 @@ class QwenImageEditClient:
             output_path: Optional explicit path where the edited image(s) should be saved.
                          If n > 1, this will be used as a prefix with index suffix.
             debug: Whether to print debug information.
-            size: Optional output image size (e.g., "2048x2048" for 2K resolution).
+            size: Optional output image size (e.g. "2048*2048" per DashScope docs).
 
         Returns:
             Path to the saved edited image, or list of paths if n > 1.
@@ -279,7 +306,7 @@ class QwenImageEditClient:
                                     pass
 
         print("\n" + "="*80)
-        print("=== Qwen-Image-Edit Model Request (Try-On) ===")
+        print("=== Qwen Image (try-on / multimodal generation) ===")
         print("="*80)
         print(f"\n[Model]: {self.model}")
         print(f"\n[Prompt]: {prompt}")
@@ -302,7 +329,10 @@ class QwenImageEditClient:
         if debug:
             print(f"[QwenImageEdit] Request payload: {payload}")
 
-        with httpx.Client(timeout=self.timeout_seconds) as client:
+        with httpx.Client(
+            timeout=self._httpx_timeout(),
+            trust_env=self.trust_env,
+        ) as client:
             try:
                 # Validate payload before sending (all images should be URLs now)
                 import json as json_module
@@ -331,8 +361,14 @@ class QwenImageEditClient:
                 
                 response = client.post(self.endpoint, headers=headers, json=payload)
             except httpx.HTTPError as exc:
+                hint = ""
+                if isinstance(exc, httpx.ReadTimeout):
+                    hint = (
+                        " [Read timeout: try QWEN_IMAGE_EDIT_TIMEOUT_SECONDS=900; "
+                        "if you use a system HTTP proxy, try QWEN_IMAGE_EDIT_TRUST_ENV=false for direct DashScope.]"
+                    )
                 raise QwenImageEditError(
-                    f"Failed to reach Qwen Image Edit API: {exc}"
+                    f"Failed to reach DashScope Qwen Image API: {exc}{hint}"
                 ) from exc
 
             if response.status_code >= 400:
@@ -341,7 +377,7 @@ class QwenImageEditClient:
                     error_json = response.json()
                     error_text = str(error_json)
                     # Print detailed error info
-                    print(f"\n[Qwen Image Edit API Error]")
+                    print(f"\n[DashScope Qwen Image API Error]")
                     print(f"Status Code: {response.status_code}")
                     print(f"Error Response: {error_json}")
                     if isinstance(error_json, dict):
@@ -351,14 +387,14 @@ class QwenImageEditClient:
                 except ValueError:
                     pass
                 raise QwenImageEditError(
-                    f"Qwen Image Edit API responded with {response.status_code}: {error_text}"
+                    f"DashScope Qwen Image API responded with {response.status_code}: {error_text}"
                 )
 
             try:
                 result = response.json()
             except ValueError as exc:
                 raise QwenImageEditError(
-                    "Qwen Image Edit API returned invalid JSON."
+                    "DashScope Qwen Image API returned invalid JSON."
                 ) from exc
 
             if debug:
@@ -369,7 +405,7 @@ class QwenImageEditClient:
             choices = output.get("choices", [])
             if not choices:
                 raise QwenImageEditError(
-                    "Qwen Image Edit API response missing 'output.choices'."
+                    "DashScope Qwen Image API response missing 'output.choices'."
                 )
 
             message = choices[0].get("message", {})
@@ -382,7 +418,7 @@ class QwenImageEditClient:
 
             if not image_urls:
                 raise QwenImageEditError(
-                    "Qwen Image Edit API response missing image URLs."
+                    "DashScope Qwen Image API response missing image URLs."
                 )
 
             # Determine base path for output naming (before loop)
@@ -404,10 +440,13 @@ class QwenImageEditClient:
             saved_paths: List[Path] = []
             for idx, image_url in enumerate(image_urls):
                 try:
-                    download_response = client.get(image_url, timeout=self.timeout_seconds)
+                    download_response = client.get(image_url)
                 except httpx.HTTPError as exc:
+                    hint = ""
+                    if isinstance(exc, httpx.ReadTimeout):
+                        hint = " [Increase QWEN_IMAGE_EDIT_TIMEOUT_SECONDS or set TRUST_ENV=false if proxy stalls downloads.]"
                     raise QwenImageEditError(
-                        f"Failed to download edited image {idx + 1}: {exc}"
+                        f"Failed to download edited image {idx + 1}: {exc}{hint}"
                     ) from exc
 
                 if download_response.status_code >= 400:
@@ -472,8 +511,8 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        choices=["qwen-image-edit-plus", "qwen-image-edit-plus-2025-12-15", "qwen-image-edit"],
-        help="Model name to use (default: qwen-image-edit-plus).",
+        choices=list(CLI_MODEL_CHOICES),
+        help=f"Model name (default: {DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--n",
@@ -527,9 +566,9 @@ def _load_env_config() -> dict[str, Any]:
             )
         config["api_key"] = api_key
         if os.getenv("DASHSCOPE_API_KEY_SG"):
-            print("[Qwen-Image-Edit] Using Singapore endpoint with Singapore API key")
+            print("[Qwen Image] Using Singapore endpoint with Singapore API key")
         else:
-            print("[Qwen-Image-Edit] Using Singapore endpoint with custom API key")
+            print("[Qwen Image] Using Singapore endpoint with custom API key")
     else:
         config["endpoint"] = BEIJING_ENDPOINT
         # For Beijing endpoint, must use Beijing API key (not Singapore key)
@@ -541,7 +580,7 @@ def _load_env_config() -> dict[str, Any]:
                 "fly secrets set DASHSCOPE_API_KEY=your_beijing_key_here"
             )
         config["api_key"] = api_key
-        print("[Qwen-Image-Edit] Using Beijing endpoint with Beijing API key")
+        print("[Qwen Image] Using Beijing endpoint with Beijing API key")
 
     model = os.getenv(f"{DEFAULT_ENV_PREFIX}MODEL")
     if model:
@@ -550,11 +589,26 @@ def _load_env_config() -> dict[str, Any]:
     timeout = os.getenv(f"{DEFAULT_ENV_PREFIX}TIMEOUT_SECONDS")
     if timeout:
         try:
-            config["timeout_seconds"] = float(timeout)
+            config["timeout_seconds"] = float(timeout.strip())
         except ValueError as exc:
             raise QwenImageEditError(
                 f"Invalid {DEFAULT_ENV_PREFIX}TIMEOUT_SECONDS value: {timeout}"
             ) from exc
+
+    ct = os.getenv(f"{DEFAULT_ENV_PREFIX}CONNECT_TIMEOUT_SECONDS") or os.getenv(
+        f"{DEFAULT_ENV_PREFIX}CONNECT_TIMEOUT"
+    )
+    if ct:
+        try:
+            config["connect_timeout_seconds"] = float(ct.strip())
+        except ValueError as exc:
+            raise QwenImageEditError(
+                f"Invalid {DEFAULT_ENV_PREFIX}CONNECT_TIMEOUT_SECONDS value: {ct}"
+            ) from exc
+
+    trust_raw = os.getenv(f"{DEFAULT_ENV_PREFIX}TRUST_ENV")
+    if trust_raw is not None:
+        config["trust_env"] = trust_raw.strip().lower() in ("1", "true", "yes", "on")
 
     return config
 

@@ -4,10 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 import httpx
-from langchain_core.messages import SystemMessage, HumanMessage
 
+from services.dashscope_openai_client import dashscope_chat_completions_text
+from services.recognition import OUTFIT_GROK_MODEL, get_llm
 from services.vector_db import get_user_items, search_by_text
-from services.recognition import get_llm
+from services.xai_responses import xai_responses_output_text
 
 # Ensure .env is loaded so WEATHER_API_KEY is available
 load_dotenv()
@@ -126,9 +127,6 @@ async def generate_outfit_suggestions(
     """
     # Only use IP (or auto:ip) to determine weather and location
     weather_raw = await fetch_weather_by_ip(client_ip)
-    # Extract location from weather response for use in prompt
-    location_info = weather_raw.get("location", {})
-    final_location = location_info.get("name", "Unknown location")
 
     weather_summary = summarize_weather(weather_raw)
 
@@ -282,8 +280,8 @@ Based on your analysis, tailor the outfit suggestions to match the background. T
     else:
         user_message_content = user_prompt_text
 
-    selected_llm = get_llm(model)
-    model_label = "Grok" if model == "grok" else "Qwen-VL"
+    backend = get_llm(model)
+    model_label = "Grok" if backend == "grok" else "Qwen-VL"
 
     print("\n" + "="*80)
     print(f"=== {model_label} Model Request (Generate Outfit) - Complete Prompt ===")
@@ -307,14 +305,35 @@ Based on your analysis, tailor the outfit suggestions to match the background. T
     print("-"*40)
     print("\n" + "="*80 + "\n")
 
-    response = await selected_llm.ainvoke(
-        [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_message_content),
-        ]
-    )
+    if backend == "grok":
+        if isinstance(user_message_content, list):
+            grok_parts = user_message_content
+        else:
+            grok_parts = [{"type": "text", "text": str(user_message_content)}]
+        content = await xai_responses_output_text(
+            model=OUTFIT_GROK_MODEL,
+            instructions=system_prompt,
+            user_content_parts=grok_parts,
+            temperature=0.1,
+        )
+    else:
+        if isinstance(user_message_content, list):
+            qwen_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message_content},
+            ]
+        else:
+            qwen_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": str(user_message_content)},
+            ]
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=qwen_messages,
+            temperature=0.1,
+        )
 
-    content = response.content.strip()
+    content = content.strip()
 
     # 防御性处理：如果模型误加了 ```json 包裹，先去掉
     if content.startswith("```json"):

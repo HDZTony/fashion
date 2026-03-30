@@ -1,11 +1,19 @@
-import { defineConfig } from 'vite'
+import path from 'path'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
-import path from 'path'
 import { includedRoutes as ssgIncludedRoutes } from './src/ssg-routes'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, path.resolve(__dirname), '')
+  // Must match fashion_rec/backend/run.py (uvicorn port, default 8001)
+  const chatkitApiBase =
+    (env.CHATKIT_API_BASE && env.CHATKIT_API_BASE.trim()) ||
+    (process.env.CHATKIT_API_BASE && process.env.CHATKIT_API_BASE.trim()) ||
+    'http://127.0.0.1:8001'
+
+  return {
   plugins: [vue(), tailwindcss()],
   ssgOptions: {
     includedRoutes: () => ssgIncludedRoutes,
@@ -24,6 +32,12 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/chatkit': {
+        target: chatkitApiBase,
+        changeOrigin: true,
+      },
+    },
   },
   // Core Web Vitals optimizations
   build: {
@@ -48,4 +62,5 @@ export default defineConfig({
     // Optimize chunk size
     chunkSizeWarningLimit: 600,
   },
+  }
 })

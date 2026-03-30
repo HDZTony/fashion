@@ -13,12 +13,15 @@ interface Props extends /* @vue-ignore */ PromptInputTextareaProps {
 
 const props = defineProps<Props>()
 
-const { textInput, setTextInput, submitForm, addFiles, files, removeFile } = usePromptInput()
+const { textInput, setTextInput, submitForm, addFiles, files, removeFile, isLoading } = usePromptInput()
 const isComposing = ref(false)
 
 function handleKeyDown(e: KeyboardEvent) {
   if (e.key === 'Enter') {
-    if (isComposing.value || e.shiftKey)
+    // IME：避免拼音选词回车误触发发送；提交进行中允许默认换行以便继续输入
+    if (isComposing.value || e.isComposing || e.shiftKey)
+      return
+    if (isLoading.value)
       return
     e.preventDefault()
     submitForm()

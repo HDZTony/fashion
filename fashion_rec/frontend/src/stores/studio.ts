@@ -179,6 +179,7 @@ export const useStudioStore = defineStore('studio', () => {
     step1Completed,
     step2Completed,
     step3Completed,
+    activeWardrobeItems,
     // Helpers
     getActiveWardrobeRoleMap,
     setActiveWardrobeRoleMap,

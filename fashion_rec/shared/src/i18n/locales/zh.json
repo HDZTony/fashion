@@ -26,6 +26,7 @@
     "home": "首页",
     "studio": "工作室",
     "studioOutfit": "推荐穿搭",
+    "studioChat": "AI 对话工作室",
     "studioMultiAngle": "多角度切换",
     "historyTryOn": "试穿历史",
     "historyMultiAngle": "多角度历史",
@@ -197,6 +198,85 @@
     "selectedForOutfit": "已选择用于穿搭"
   },
   "studio": {
+    "chat": {
+      "title": "AI 对话工作室",
+      "newChat": "新对话",
+      "emptyTitle": "暂无消息",
+      "thinking": "思考中…",
+      "pauseGeneration": "暂停生成",
+      "streamingReply": "正在输出…",
+      "inputPlaceholder": "聊聊穿搭、试穿或衣橱…",
+      "dismissError": "关闭",
+      "resend": "重发",
+      "errors": {
+        "generic": "对话请求失败，请稍后重试。",
+        "agentMaxTurns": "智能体对话轮次已达上限（多轮工具调用后易触发）。请新建对话或更直接地说明需求后重试；也可在后端 .env 提高 CHATKIT_MAX_TURNS（默认 100，最高 200）。",
+        "llmUnreachable": "无法连接 AI 服务。若必须用代理：在后端 .env 设置 CHATKIT_XAI_LOCAL_PROXY_PORT=10808（对应 v2rayN mixed 端口）或 CHATKIT_XAI_PROXY=http://127.0.0.1:10808；Windows 下勿仅依赖「系统代理」。全局代理时请将 127.0.0.1 加入直连/绕过。"
+      },
+      "tryOnInline": {
+        "caption": "试穿图",
+        "imageAlt": "试穿效果图",
+        "openEnlarged": "点击查看大图",
+        "openInNewTab": "在新标签页打开高清图",
+        "lightboxTitle": "试穿预览",
+        "copyLink": "复制链接",
+        "linkCopied": "链接已复制",
+        "copyFailed": "复制失败，请手动复制链接"
+      },
+      "contextGarmentsRail": {
+        "title": "本对话上下文",
+        "hint": "含：场景参考图（与本轮试穿 Image 3 一致）；橱窗基准单品；以及根据用户消息意图由服务端裁剪后的单品缩略图（非整图原片，也不含输入框未发送草稿）。",
+        "sceneBackgroundHint": "本轮试穿场景参考图（Qwen Image 3）",
+        "cropBadge": "裁剪",
+        "noCropHint": "未识别到对应区域或服务不可用",
+        "addToWardrobe": "入库",
+        "removeFromChat": "删除",
+        "feedbackAddedToWardrobe": "已加入衣橱",
+        "feedbackAddFailed": "加入衣橱失败，请稍后重试",
+        "feedbackLoginRequired": "请先登录后再入库",
+        "feedbackRemovedFromTryOn": "已从本轮试穿上下文移除",
+        "feedbackRemovedSceneBackground": "已移除本轮对话的场景参考图",
+        "feedbackRemovedBaseline": "已从本轮对话基准单品中移除"
+      },
+      "hint": "像日常聊天一样说明需求即可，无需离开本页去工作室。若在应用里选过模特/背景/衣橱，会随消息一并发送；未选模特时会用默认模特图完成试穿等。点击输入区左侧「+」：本地上传或衣橱橱窗。",
+      "loadingUi": "正在加载对话界面…",
+      "loadFailedTitle": "无法加载对话",
+      "loadFailedNetwork": "加载对话时出现网络错误，请重试。",
+      "loadFailedTimeout": "对话加载超时，请刷新页面。",
+      "outfitContext": {
+        "title": "可选上下文",
+        "description": "若在工作室里设置了模特、背景或基准单品，每次发消息会附带这些状态，供工具在调用时使用。是否生成穿搭仍由对话中的大模型根据你的输入决定。",
+        "modelPhoto": "模特照",
+        "background": "背景图",
+        "baseItems": "基准单品数",
+        "vlModel": "穿搭视觉模型",
+        "set": "已设置",
+        "notSet": "未设置",
+        "none": "无",
+        "openFullStudio": "在工作室管理模特、背景与衣橱"
+      },
+      "attachPanel": {
+        "title": "添加图片",
+        "description": "点击输入栏内的「添加图片」打开此面板：上方可上传本机图片；下方橱窗可多选衣橱单品后点「加入输入框」。",
+        "uploadLocal": "上传本地图片",
+        "wardrobeHeading": "橱窗 · 衣橱单品",
+        "toolLabel": "添加图片",
+        "addBackground": "示例背景",
+        "exampleBackgroundsTitle": "示例背景",
+        "exampleBackgroundsHint": "在消息里描述场景（如雪地、船上、枫叶、沙发等），系统会自动匹配一张示例图作为试穿时的场景参考（Qwen Image 3）。也可点选缩略图作为未匹配到关键词时的默认背景（与工作室背景设置一致）。",
+        "clearBackground": "清除背景",
+        "fileTooLarge": "单张图片不能超过 15MB。",
+        "localAttachFailed": "添加本机图片失败，请重试。"
+      },
+      "wardrobePicker": {
+        "title": "从衣橱选择图片",
+        "description": "可多选，将作为对话附件上传（与本地图片相同流程，最多 5 张）。",
+        "addToComposer": "加入输入框",
+        "empty": "衣橱为空，请先在衣橱页上传单品。",
+        "loginRequired": "请登录后从衣橱选择图片。",
+        "attachFailed": "添加失败，请重试。"
+      }
+    },
     "title": "工作室",
     "loginRequired": "请先登录后使用此功能",
     "uploadModel": "上传模特照片",

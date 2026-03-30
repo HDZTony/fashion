@@ -502,6 +502,28 @@ def get_user_items(user_id: str) -> List[Dict[str, Any]]:
         raise
 
 
+def get_wardrobe_item_image_url_for_user(user_id: str, item_id: str) -> Optional[str]:
+    """Return the stored image URL for a wardrobe row if it belongs to the user."""
+    if not supabase:
+        raise Exception("Supabase client not initialized")
+    try:
+        response = (
+            supabase.table("wardrobe_items")
+            .select("image_url")
+            .eq("id", item_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not response.data:
+            return None
+        url = response.data[0].get("image_url")
+        return str(url).strip() if url else None
+    except Exception as e:
+        print(f"[Vector DB] get_wardrobe_item_image_url_for_user failed: {e}")
+        return None
+
+
 def get_items_by_urls(image_urls: List[str], user_id: str) -> List[Dict[str, Any]]:
     """
     Get wardrobe items by their image URLs.

@@ -12,10 +12,13 @@ export interface ModelImage {
   nickname?: string
 }
 
+/** Used for ChatKit / try-on when no model is selected (keep in sync with backend `chatkit_tools`). */
+export const DEFAULT_MODEL_IMAGE_URL = 'https://r2.fashion-rec.com/example/IMG_9953.JPG'
+
 const EXAMPLE_MODEL_IMAGES: ModelImage[] = [
   {
     id: 'example-IMG_9953',
-    image_url: 'https://r2.fashion-rec.com/example/IMG_9953.JPG',
+    image_url: DEFAULT_MODEL_IMAGE_URL,
     image_type: 'model',
     created_at: '2025-01-01T00:00:00Z',
     isExample: true,
@@ -56,6 +59,13 @@ export function useModelImages() {
     if (!id) return null
     const found = allModels.value.find(m => m.id === id)
     return found?.image_url ?? null
+  })
+
+  /** For API context (e.g. Studio chat): selected model, else built-in default — never omit. */
+  const modelImageUrlForChatContext = computed(() => {
+    const u = activeModelUrl.value?.trim()
+    if (u) return u
+    return DEFAULT_MODEL_IMAGE_URL
   })
 
   async function loadModels(): Promise<void> {
@@ -218,6 +228,7 @@ export function useModelImages() {
     uploadProgress,
     activeModelId,
     activeModelUrl,
+    modelImageUrlForChatContext,
     exampleModelImages: EXAMPLE_MODEL_IMAGES,
     loadModels,
     uploadModelImage,

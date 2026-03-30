@@ -265,12 +265,26 @@ function routeToFrontend(request: Request, hostname: string): Request {
   headers.delete('X-Forwarded-Host')
   headers.delete('X-Forwarded-Proto')
 
-  return new Request(url.toString(), {
+  const init: RequestInit = {
     method: request.method,
     headers: headers,
-    body: request.body,
     redirect: request.redirect,
-  })
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body != null) {
+    init.body = request.body
+  }
+
+  try {
+    return new Request(url.toString(), init)
+  } catch (e) {
+    // Body may already be consumed (e.g. error fallback after a failed proxy fetch)
+    console.warn('[Router] routeToFrontend: could not reuse body, forwarding without body', e)
+    return new Request(url.toString(), {
+      method: request.method,
+      headers: headers,
+      redirect: request.redirect,
+    })
+  }
 }
 
 /**
@@ -302,12 +316,24 @@ function routeToBackend(request: Request, backendUrl: string): Request {
     headers.set('Authorization', authHeader)
   }
 
-  return new Request(url.toString(), {
+  const init: RequestInit = {
     method: request.method,
     headers: headers,
-    body: request.body,
     redirect: request.redirect,
-  })
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body != null) {
+    init.body = request.body
+  }
+  try {
+    return new Request(url.toString(), init)
+  } catch (e) {
+    console.warn('[Router] routeToBackend: could not reuse body', e)
+    return new Request(url.toString(), {
+      method: request.method,
+      headers: headers,
+      redirect: request.redirect,
+    })
+  }
 }
 
 /**
@@ -371,7 +397,20 @@ function routeToBlogService(request: Request, blogServiceUrl: string): Request {
  */
 function isApiRequest(url: URL, request: Request): boolean {
   const path = url.pathname
-  
+
+  // ChatKit (OpenAI): POST/OPTIONS/upload/preview must hit FastAPI, never the Vite SPA
+  if (path === '/chatkit' || path.startsWith('/chatkit/')) {
+    console.log(`[Router] isApiRequest: true (ChatKit path ${path})`)
+    return true
+  }
+
+  // Studio chat: intent-conditioned garment crops (FastAPI). Do not use path.startsWith('/studio/') —
+  // the SPA serves /studio and /studio/chat and must stay on the frontend.
+  if (path === '/studio/intent-garment-crops') {
+    console.log(`[Router] isApiRequest: true (Studio API ${path})`)
+    return true
+  }
+
   // Check Accept header first (most reliable way to distinguish)
   const acceptHeader = request.headers.get('Accept') || ''
   const isHtmlRequest = acceptHeader.includes('text/html')
@@ -386,7 +425,7 @@ function isApiRequest(url: URL, request: Request): boolean {
   // List of all API endpoints from backend (main.py), subscription service, and blog service
   // This ensures all API requests are routed to backend, not frontend
   // NOTE: Root path '/' should route to frontend, not backend
-  const isApi = path.startsWith('/api/') || 
+  const isApi = path.startsWith('/api/') ||
          path.startsWith('/health') ||
          path.startsWith('/outfit') ||
          path.startsWith('/try-on') ||
@@ -487,7 +526,8 @@ export default {
         const headers: Record<string, string> = {
           'Access-Control-Allow-Origin': allowOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, creem-signature',
+          'Access-Control-Allow-Headers':
+            'Content-Type, Authorization, creem-signature, x-fashion-rec-outfit-context',
           'Access-Control-Max-Age': '86400',
         }
         // Only add credentials header if we're using a specific origin (not wildcard)
@@ -1120,19 +1160,37 @@ export default {
         // Add timeout to backend fetch using AbortController
         // upload/model-image/background-image: 10 min (R2 直连慢，需要充足时间)
         // generate-angles: 6 min; try-on/outfit: 4 min
-        // PUT/DELETE: 60s; others: 25s
+        // model-profiles / user-images: cold DB or busy uvicorn can exceed 25s (parallel loads)
+        // studio/intent-garment-crops: Qwen + R2 may approach 25s under load
+        // PUT/DELETE: 60s; default GET/POST: 25s
         const isTryOnRequest = path === '/try-on'
-        const isUploadRequest = path === '/upload' || path === '/model-image' || path === '/background-image'
+        const isChatKitUploadPath = path === '/chatkit/upload'
+        const isChatKitProtocolPath = path === '/chatkit'
+        const isUploadRequest =
+          path === '/upload' ||
+          path === '/model-image' ||
+          path === '/background-image' ||
+          isChatKitUploadPath
         const isOutfitRequest = path === '/outfit'
         const isGenerateAnglesRequest = path === '/generate-angles'
+        const isStudioIntentGarmentCrops = path === '/studio/intent-garment-crops'
+        // Cold DB / large lists can exceed 120s locally; align with other slow API buckets
+        const isSlowModelLibraryRead =
+          path === '/model-profiles' || path === '/user-images'
         const isPutOrDeleteRequest = request.method === 'PUT' || request.method === 'DELETE'
         const timeoutMs = isUploadRequest
           ? 600000
           : isGenerateAnglesRequest
             ? 360000
-            : (isTryOnRequest || isOutfitRequest)
-              ? 240000
-              : (isPutOrDeleteRequest ? 60000 : 25000)
+            : isChatKitProtocolPath
+              ? 600000
+              : (isTryOnRequest || isOutfitRequest)
+                ? 240000
+                : isStudioIntentGarmentCrops
+                  ? 240000
+                  : isSlowModelLibraryRead
+                    ? 240000
+                    : (isPutOrDeleteRequest ? 60000 : 25000)
         
         const backendRequest = routeToBackend(request, backendUrl)
         console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)

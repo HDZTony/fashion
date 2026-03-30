@@ -41,7 +41,12 @@
                   <CollapsibleContent>
                     <SidebarMenuSub>
                       <SidebarMenuSubItem>
-                        <SidebarMenuSubButton as-child :is-active="isActiveRoute('/studio')">
+                        <SidebarMenuSubButton as-child :is-active="isStudioChatNavActive">
+                          <router-link to="/studio/chat">{{ $t('nav.studioChat') }}</router-link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton as-child :is-active="isStudioOutfitActive">
                           <router-link to="/studio">{{ $t('nav.studioOutfit') }}</router-link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
@@ -172,7 +177,7 @@
   </Sidebar>
 
   <SidebarInset>
-    <div class="min-h-screen bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
+    <div class="flex min-h-screen min-h-0 flex-1 flex-col bg-gradient-to-b from-pink-50 via-white to-purple-50 font-sans text-gray-900">
       <!-- Top Navigation Bar -->
       <nav class="sticky top-0 z-40 w-full border-b border-pink-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8 gap-4">
@@ -201,7 +206,7 @@
             </router-link>
           </div>
           <!-- 推荐穿搭步骤条：shadcn Stepper，Separator 放在 Item 内 + v-if，单向 model-value 防递归 -->
-          <div v-if="isStudioRoute" class="flex-1 flex items-center justify-center min-w-0 max-w-2xl mx-auto" aria-label="Try-on flow progress">
+          <div v-if="isClassicStudioRoute" class="flex-1 flex items-center justify-center min-w-0 max-w-2xl mx-auto" aria-label="Try-on flow progress">
             <Stepper
               :model-value="stepperStepNumber"
               orientation="horizontal"
@@ -236,8 +241,13 @@
           </div>
         </div>
       </nav>
-      <main>
-        <router-view />
+      <main class="flex min-h-0 flex-1 flex-col">
+        <!-- keep-alive：离开 AI 对话工作室再返回时保留会话与滚动，不整页缓存其它路由 -->
+        <router-view v-slot="{ Component }">
+          <keep-alive include="StudioChat">
+            <component :is="Component" class="flex min-h-0 flex-1 flex-col" />
+          </keep-alive>
+        </router-view>
       </main>
     </div>
   </SidebarInset>
@@ -301,12 +311,14 @@ const { t } = useI18n()
 const studioStore = useStudioStore()
 const { currentVersion, getVersion, isV2, isLoading: isLoadingVersion } = useVersion()
 
-const isStudioRoute = computed(() => route.name === 'studio')
+/** Classic step-based studio only (hide stepper on AI ChatKit page). */
+const isClassicStudioRoute = computed(() => route.name === 'studio')
 
 // Breadcrumb title from current route (sidebar-08 style header)
 const breadcrumbTitle = computed(() => {
   const path = route.path
   if (path === '/' || path === '') return 'Fashion Rec'
+  if (path === '/studio/chat' || path.startsWith('/studio/chat/')) return t('studio.chat.title')
   if (path.startsWith('/studio')) return t('nav.studio')
   if (path.startsWith('/multi-angle')) return t('nav.studioMultiAngle')
   if (path.startsWith('/wardrobe')) return t('nav.wardrobe')
@@ -339,9 +351,22 @@ const isActiveRoute = (path: string) => {
 
 // Check if any studio route is active
 const isStudioActive = computed(() => {
-  return route.path === '/studio' || route.path === '/multi-angle' ||
-         route.path.startsWith('/studio/') || route.path.startsWith('/multi-angle/')
+  return (
+    route.path === '/studio' ||
+    route.path === '/studio/chat' ||
+    route.path === '/multi-angle' ||
+    route.path.startsWith('/studio/') ||
+    route.path.startsWith('/multi-angle/')
+  )
 })
+
+const isStudioOutfitActive = computed(
+  () => route.path === '/studio' && route.name === 'studio',
+)
+
+const isStudioChatNavActive = computed(
+  () => route.path === '/studio/chat' || route.path.startsWith('/studio/chat/'),
+)
 
 // Check if any history route is active
 const isHistoryActive = computed(() => {

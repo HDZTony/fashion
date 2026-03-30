@@ -1,63 +1,49 @@
 import os
 import json
-from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Dict, Any, List, Literal
+
 from dotenv import load_dotenv
+
+from services.dashscope_openai_client import (
+    dashscope_chat_completions_text,
+    get_dashscope_sg_async_openai_client,
+)
 
 load_dotenv()
 
-# Initialize Qwen-VL model (default)
-# Using Singapore endpoint, so must use Singapore API key
-SINGAPORE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-api_key = os.getenv("DASHSCOPE_API_KEY_SG")
-if not api_key:
+# Eager check: Singapore key required for default Qwen-VL path (same as before).
+if not (os.getenv("DASHSCOPE_API_KEY_SG") or "").strip():
     raise RuntimeError(
         "DASHSCOPE_API_KEY_SG must be set in environment variables for Singapore endpoint. "
         "Please set this environment variable in Fly.io using: "
         "fly secrets set DASHSCOPE_API_KEY_SG=your_singapore_key_here"
     )
 
-print("[Qwen-VL] Using Singapore endpoint with Singapore API key")
+print("[Qwen-VL] Using Singapore endpoint with Singapore API key (native OpenAI SDK)")
 
-llm = ChatOpenAI(
-    model="qwen3-vl-plus",
-    api_key=api_key,
-    base_url=SINGAPORE_BASE_URL,  # Singapore endpoint
-    temperature=0.1,
-)
+# Touch client so misconfiguration fails at import like the old ChatOpenAI init.
+get_dashscope_sg_async_openai_client()
 
-# xAI / Grok vision model (lazy-init, only created when selected)
-XAI_BASE_URL = "https://api.x.ai/v1"
-_grok_llm: ChatOpenAI | None = None
+# 穿搭生成在 outfit_agent 中选 Grok 时使用；可用 OUTFIT_GROK_MODEL 覆盖。
+OUTFIT_GROK_MODEL = (os.getenv("OUTFIT_GROK_MODEL") or "grok-imagine-image").strip()
 
 
-def get_llm(model_name: str = "qwen") -> ChatOpenAI:
-    """Return the appropriate LLM based on model_name ('qwen' or 'grok')."""
-    global _grok_llm
+def get_llm(model_name: str = "qwen") -> Literal["qwen", "grok"]:
+    """
+    Return which backend ``outfit_agent`` should use.
 
+    Legacy name kept for callers: ``'qwen'`` or ``'grok'`` (not an LLM instance).
+    """
     if model_name == "grok":
-        if _grok_llm is not None:
-            return _grok_llm
-
-        xai_key = os.getenv("XAI_API_KEY")
-        if not xai_key:
+        if not (os.getenv("XAI_API_KEY") or "").strip():
             raise RuntimeError(
                 "XAI_API_KEY must be set in environment variables to use Grok. "
                 "Get your API key from https://console.x.ai and set it: "
                 "fly secrets set XAI_API_KEY=your_xai_key_here"
             )
-        _grok_llm = ChatOpenAI(
-            model="grok-2-vision-latest",
-            api_key=xai_key,
-            base_url=XAI_BASE_URL,
-            temperature=0.1,
-        )
-        print("[Grok] Initialized xAI Grok vision model")
-        return _grok_llm
-
-    # Default: Qwen
-    return llm
+        print("[Grok] xAI Grok vision (Responses API) selected for outfit generation")
+        return "grok"
+    return "qwen"
 
 SYSTEM_PROMPT = """
 You are a fashion expert AI. Your task is to analyze clothing images and extract structured data.
@@ -212,16 +198,25 @@ async def analyze_image(image_url: str) -> List[Dict[str, Any]]:
             pass
 
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=[
-            {"type": "text", "text": "Analyze all clothing items in this image. Identify each distinct item and extract their features."},
-            {"type": "image_url", "image_url": {"url": final_url}}
-        ])
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Analyze all clothing items in this image. Identify each distinct item and extract their features.",
+                },
+                {"type": "image_url", "image_url": {"url": final_url}},
+            ],
+        },
     ]
 
     try:
-        response = await llm.ainvoke(messages)
-        content = response.content.strip()
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=messages,
+            temperature=0.1,
+        )
         
         # Clean up potential markdown code blocks if the model ignores instructions
         if content.startswith("```json"):
@@ -267,11 +262,14 @@ async def generate_compatibility_queries(item_features: Dict[str, Any], occasion
     Example: ["Blue denim jeans", "White sneakers", "Black leather belt"]
     """
     
-    messages = [HumanMessage(content=prompt)]
-    
+    messages = [{"role": "user", "content": prompt}]
+
     try:
-        response = await llm.ainvoke(messages)
-        content = response.content.strip()
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=messages,
+            temperature=0.1,
+        )
         if content.startswith("```json"):
             content = content[7:]
         if content.endswith("```"):
@@ -294,11 +292,14 @@ async def generate_outfit_queries(occasion: str) -> List[str]:
     Example: ["White linen shirt", "Beige chinos", "Brown loafers", "Silver watch"]
     """
     
-    messages = [HumanMessage(content=prompt)]
-    
+    messages = [{"role": "user", "content": prompt}]
+
     try:
-        response = await llm.ainvoke(messages)
-        content = response.content.strip()
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=messages,
+            temperature=0.1,
+        )
         if content.startswith("```json"):
             content = content[7:]
         if content.endswith("```"):

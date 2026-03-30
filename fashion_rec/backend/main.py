@@ -1,9 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
+import time
 import requests
 import urllib3
 from io import BytesIO
@@ -39,6 +40,13 @@ from services.guest_quota import (
     get_guest_quota,
     get_client_ip as get_guest_client_ip,
 )
+from chatkit.server import StreamingResult
+from chatkit.store import NotFoundError as ChatKitNotFoundError
+from chatkit.store import default_generate_id as chatkit_default_generate_id
+from chatkit.types import FileAttachment, ImageAttachment
+from services.chatkit_fashion_server import fashion_chatkit_server
+from services.chatkit_outfit_context import parse_outfit_context_from_request
+from services.chatkit_tools import garment_url_kind_for_tryon_log
 
 app = FastAPI(title="Fashion Recommendation API")
 app.include_router(auth_router)
@@ -135,6 +143,13 @@ class SaveFavoriteRequest(BaseModel):
     prompt: Optional[str] = None  # User's custom prompt
     model_image_url: Optional[str] = None  # Model image URL
     model_image_id: Optional[str] = None  # Model image ID
+
+
+class IntentGarmentCropsRequest(BaseModel):
+    """Studio chat rail: intent-guided garment crops (Qwen3-VL + R2)."""
+
+    image_urls: List[str]
+    intent_text: str = ""
 
 
 @app.get("/")
@@ -1176,6 +1191,43 @@ async def get_items(user_id: str = Depends(get_current_user)):
         )
 
 
+@app.get("/items/{item_id}/image")
+async def download_wardrobe_item_image(
+    item_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Stream wardrobe image bytes for the owner (avoids browser CORS on R2).
+    Used when attaching closet items to ChatKit as composer files.
+    """
+    from services.vector_db import get_wardrobe_item_image_url_for_user
+    import httpx
+
+    url = get_wardrobe_item_image_url_for_user(user_id, item_id)
+    if not url:
+        raise HTTPException(status_code=404, detail="Wardrobe item not found")
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Image upstream returned HTTP {e.response.status_code}",
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e!s}")
+
+    content = resp.content
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image too large")
+
+    raw_ct = (resp.headers.get("content-type") or "image/jpeg").split(";")[0].strip()
+    media_type = raw_ct if raw_ct.startswith("image/") else "image/jpeg"
+    return Response(content=content, media_type=media_type)
+
+
 class DeleteItemsRequest(BaseModel):
     item_ids: List[str]
 
@@ -1450,6 +1502,124 @@ async def import_example_items(
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
+@app.post("/studio/intent-garment-crops")
+async def studio_intent_garment_crops(body: IntentGarmentCropsRequest):
+    """
+    Return R2 URLs of **cropped** garment tiles guided by the user's message (e.g. 裙子 vs 抹胸).
+    Used by the Studio chat left rail — not raw uploads.
+    """
+    from services.garment_vl_pipeline import intent_preview_crops
+
+    urls = [u.strip() for u in body.image_urls if isinstance(u, str) and u.strip()][:5]
+    if not urls:
+        return {"crops": []}
+    intent = (body.intent_text or "").strip()
+    if not intent:
+        intent = (
+            "Identify garment pieces in the image for virtual try-on; "
+            "one box per distinct top, bottom, or dress."
+        )
+    try:
+        crops = await intent_preview_crops(urls, intent)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("[studio/intent-garment-crops] failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"crops": crops}
+
+
+@app.post("/chatkit")
+async def chatkit_endpoint(
+    request: Request,
+    auth: tuple = Depends(get_optional_user_and_token),
+):
+    """
+    OpenAI ChatKit protocol endpoint: multi-turn chat with Agents SDK orchestration.
+    The chat model decides when to call server tools (e.g. outfit generation); optional
+    `X-Fashion-Rec-Outfit-Context` supplies Studio-aligned fields when tools run.
+    Response shape matches the ChatKit starter POST /chatkit (StreamingResult, JSON body, etc.).
+    """
+    user_id, access_token = auth
+    payload = await request.body()
+    outfit_ctx = parse_outfit_context_from_request(request)
+    ctx: Dict[str, Any] = {
+        "request": request,
+        "user_id": user_id,
+        # Cookie auth has no Authorization header; tools calling /try-on, /generate-angles need this.
+        "access_token": access_token,
+    }
+    if outfit_ctx:
+        ctx["outfit_context"] = outfit_ctx
+    result = await fashion_chatkit_server.process(payload, ctx)
+    if isinstance(result, StreamingResult):
+        return StreamingResponse(result, media_type="text/event-stream")
+    if hasattr(result, "json"):
+        return Response(content=result.json, media_type="application/json")
+    return JSONResponse(result)
+
+
+_MAX_CHATKIT_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+@app.post("/chatkit/upload")
+async def chatkit_direct_upload(
+    request: Request,
+    auth: tuple = Depends(get_optional_user_and_token),
+):
+    """
+    ChatKit direct upload strategy: multipart/form-data field `file`.
+    See https://github.com/openai/chatkit-python/blob/main/docs/guides/accept-rich-user-input.md
+    """
+    _user_id, _ = auth
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None:
+        raise HTTPException(status_code=400, detail="Missing file field")
+    if not hasattr(upload, "read"):
+        raise HTTPException(status_code=400, detail="Invalid file field")
+    content = await upload.read()
+    if len(content) > _MAX_CHATKIT_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
+    filename = getattr(upload, "filename", None) or "upload"
+    content_type = getattr(upload, "content_type", None) or "application/octet-stream"
+
+    aid = chatkit_default_generate_id("attachment")
+    base = str(request.base_url).rstrip("/")
+    store = fashion_chatkit_server.store
+    store.put_attachment_blob(aid, content)
+
+    if content_type.startswith("image/"):
+        preview_url = f"{base}/chatkit/attachments/{aid}/preview"
+        att = ImageAttachment(
+            id=aid,
+            name=filename,
+            mime_type=content_type,
+            preview_url=preview_url,
+        )
+    else:
+        att = FileAttachment(id=aid, name=filename, mime_type=content_type)
+
+    await store.save_attachment(att, {})
+    return Response(content=att.model_dump_json(), media_type="application/json")
+
+
+@app.get("/chatkit/attachments/{attachment_id}/preview")
+async def chatkit_attachment_preview(attachment_id: str):
+    """Image preview for ChatKit; used as img src (typically no Authorization header)."""
+    store = fashion_chatkit_server.store
+    try:
+        meta = await store.load_attachment(attachment_id, {})
+    except ChatKitNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if meta.type != "image":
+        raise HTTPException(status_code=404, detail="Not an image")
+    blob = store.get_attachment_blob(attachment_id)
+    if not blob:
+        raise HTTPException(status_code=404, detail="Empty attachment")
+    return Response(content=blob, media_type=meta.mime_type)
+
+
 @app.post("/outfit")
 async def generate_outfit(
     request: OutfitAgentRequest,
@@ -1525,6 +1695,46 @@ async def generate_outfit(
         raise HTTPException(status_code=500, detail=f"Failed to generate outfit: {e}")
 
 
+def _http_url_targets_loopback(url: str) -> bool:
+    """True when host is loopback. System HTTP/SOCKS proxy must not be used (requests honors env even if session.proxies is None)."""
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(url).hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1"):
+            return True
+        if host.startswith("127."):
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _chatkit_attachment_id_from_preview_url(url: str) -> str | None:
+    """Parse .../chatkit/attachments/{id}/preview → attachment id."""
+    try:
+        from urllib.parse import urlparse
+
+        parts = [p for p in urlparse(url).path.split("/") if p]
+        if len(parts) >= 4 and parts[0] == "chatkit" and parts[1] == "attachments" and parts[-1] == "preview":
+            return parts[2]
+    except Exception:
+        pass
+    return None
+
+
+def _try_load_tryon_image_bytes_from_local_chatkit(url: str) -> bytes | None:
+    """
+    /try-on may receive ChatKit preview URLs pointing at this same uvicorn process.
+    build_garment_collage uses synchronous requests.get; inside async try_on that blocks the event loop,
+    so the GET is never served → ReadTimeout. Read bytes from MemoryStore instead.
+    """
+    aid = _chatkit_attachment_id_from_preview_url(url)
+    if not aid:
+        return None
+    return fashion_chatkit_server.store.get_attachment_blob(aid)
+
+
 @app.post("/try-on")
 async def try_on(
     request: Request,
@@ -1548,7 +1758,17 @@ async def try_on(
     At least one of person_image or person_image_url must be provided.
     Guest (no auth): allowed with IP-based limit of 3/day. No history saved.
     """
-    from services.qwen_image_edit import QwenImageEditClient, _load_env_config
+    from services.qwen_image_edit import (
+        QwenImageEditClient,
+        QwenImageEditError,
+        _load_env_config,
+    )
+    from services.xai_tryon_fallback import (
+        looks_like_dashscope_content_block,
+        tryon_xai_fallback_enabled,
+        tryon_xai_fallback_on_any_qwen_error,
+        virtual_tryon_via_xai_imagine,
+    )
     from services.storage import upload_file_to_r2
     import httpx
 
@@ -1606,6 +1826,21 @@ async def try_on(
             raise ValueError("garment_urls must be a JSON list of URLs")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid garment_urls: {e}")
+
+    _kinds = [garment_url_kind_for_tryon_log(u) for u in garment_list]
+    _chatkit_n = sum(1 for k in _kinds if k == "chatkit_preview_full_frame")
+    logger.info(
+        "[Try-On][Qwen Image 2.0] garment collage input (Image 1): n=%s chatkit_preview_full_frame=%s "
+        "kinds=%s urls=%s",
+        len(garment_list),
+        _chatkit_n,
+        _kinds,
+        json.dumps(garment_list, ensure_ascii=False),
+    )
+    print(
+        f"[Try-On][Qwen Image 2.0] garment tile URLs ({len(garment_list)}): "
+        f"{json.dumps(garment_list, ensure_ascii=False)}"
+    )
 
     # Parse unmatched_descriptions (items with no wardrobe image; use text in prompt)
     parsed_unmatched: List[Dict[str, str]] = []
@@ -1682,7 +1917,10 @@ async def try_on(
         elif person_image_url:
             # Get dimensions from URL
             try:
-                async with httpx.AsyncClient() as client:
+                client_kw: Dict[str, Any] = {}
+                if _http_url_targets_loopback(person_image_url):
+                    client_kw["trust_env"] = False
+                async with httpx.AsyncClient(**client_kw) as client:
                     resp = await client.get(person_image_url, timeout=10.0)
                     if resp.status_code == 200:
                         img = Image.open(BytesIO(resp.content))
@@ -1799,7 +2037,7 @@ async def try_on(
                 # Use system proxy (requests will auto-detect)
                 print(f"[Try-On] Using system proxy for R2 URLs (auto-detected)")
         else:
-            # Production environment or non-R2 URL: do not use proxy (direct connection)
+            # Non-R2: no explicit session proxies; requests may still use HTTP_PROXY from env (see loopback branch).
             session.proxies = None
             if is_r2_url:
                 print(f"[Try-On] R2_USE_PROXY not enabled, using direct connection for R2 URLs")
@@ -1809,7 +2047,29 @@ async def try_on(
         for idx, url in enumerate(urls):
             try:
                 print(f"[Try-On] Downloading garment image {idx + 1}/{len(urls)}: {url[:80]}...")
-                resp = session.get(url, timeout=15, verify=False)
+                local_blob = _try_load_tryon_image_bytes_from_local_chatkit(url)
+                if local_blob:
+                    img = Image.open(BytesIO(local_blob)).convert("RGBA")
+                    if img.size[0] == 0 or img.size[1] == 0:
+                        raise ValueError("Invalid image dimensions")
+                    images.append(img)
+                    print(
+                        f"[Try-On] Loaded garment image {idx + 1}/{len(urls)} from in-process ChatKit store (no HTTP)"
+                    )
+                    continue
+                if _http_url_targets_loopback(url):
+                    # Bypass HTTP_PROXY/ALL_PROXY — SOCKS to 127.0.0.1:8001 often hangs/timeouts.
+                    # trust_env is a Session attribute, not a request() kwarg.
+                    with requests.Session() as lb_sess:
+                        lb_sess.trust_env = False
+                        resp = lb_sess.get(
+                            url,
+                            timeout=30,
+                            verify=False,
+                            proxies={"http": None, "https": None},
+                        )
+                else:
+                    resp = session.get(url, timeout=15, verify=False)
                 resp.raise_for_status()
                 
                 # Check if response has content
@@ -1852,8 +2112,9 @@ async def try_on(
         if failed_urls:
             print(f"[Try-On] Warning: {len(failed_urls)} images failed to download")
 
-        # Normalize size: resize all to same thumbnail size
-        thumb_w, thumb_h = 256, 256
+        # Normalize size: slightly larger tiles when only a few garments so skirts/details stay visible to the edit model
+        n_imgs = len(images)
+        thumb_w, thumb_h = (384, 384) if n_imgs <= 2 else (256, 256)
         thumbs = [img.resize((thumb_w, thumb_h), Image.LANCZOS) for img in images]
 
         # Simple grid: up to 3 columns
@@ -1898,6 +2159,44 @@ async def try_on(
                 + "\n"
             )
 
+    multi_garment_section = ""
+    if len(garment_list) > 1:
+        multi_garment_section = (
+            "\nMULTI-GARMENT: Image 1 is a collage of separate garment or reference photos in a grid. "
+            "Each region may show a different item (top, skirt, pants, dress, etc.). "
+            "Apply **every** distinct garment visible in Image 1 onto the model in Image 2: "
+            "replace upper-body clothing with tops from the collage, and **fully replace** lower-body clothing "
+            "(trousers, shorts, or an existing skirt) with any bottom garment clearly shown in Image 1. "
+            "Do not stop after changing only the top — if both a top and a bottom appear in Image 1, the output must show both.\n"
+        )
+
+    # Qwen often "pastes" a new skirt/shorts on top of old long pants; force true replacement, not stacking.
+    replace_clothing_section = ""
+    if garment_list or parsed_unmatched:
+        replace_clothing_section = (
+            "\nCLOTHING REPLACEMENT (critical): Remove the model's **original** garment in each body region before drawing the new one. "
+            "New bottoms from Image 1 must **replace** prior pants/skirts/shorts — the old lower-body fabric must disappear, "
+            "not remain visible under a new skirt or shorts (no trousers-under-skirt, no double-layer legs). "
+            "Same for tops: replace the prior shirt/top unless Image 1 explicitly shows intentional layering. "
+            "The final outfit must look like a single coherent layer, not stacked or pasted clothing.\n"
+        )
+
+    user_hint_section = ""
+    if user_custom_prompt and str(user_custom_prompt).strip():
+        user_hint_section = (
+            "\nUser request (must honor): " + str(user_custom_prompt).strip() + "\n"
+        )
+
+    tryon_extra_text = (
+        multi_garment_section + replace_clothing_section + user_hint_section
+    )
+
+    _tryon_layering_negative = (
+        "Prohibit long pants or jeans visible under a skirt, dress, or new shorts; "
+        "prohibit stacked duplicate bottoms; prohibit the model's original trousers showing beneath new lower-body garments; "
+        "prohibit pasted or floating clothing layers."
+    )
+
     action_description_section = ""
     if background_action_prompt:
         action_description_section = f"Image 2 Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
@@ -1914,6 +2213,15 @@ async def try_on(
         if garment_list:
             garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{effective_user_id}_collage.png"
             garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
+            logger.info(
+                "[Try-On][Qwen Image 2.0] stitched garment collage (Image 1) path=%s from %d tile(s)",
+                garments_collage_path,
+                len(garment_list),
+            )
+            print(
+                f"[Try-On][Qwen Image 2.0] stitched garment collage (Image 1): {garments_collage_path} "
+                f"(from {len(garment_list)} tile URL(s))"
+            )
 
             garment_items = get_items_by_urls(garment_list, effective_user_id) if user_id is not None else []
             garment_descriptions = []
@@ -1946,8 +2254,16 @@ async def try_on(
                     "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
                     "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
                     + garment_desc_text
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."
+                negative_prompt = (
+                    "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. "
+                    "Prohibit shoes, glasses, accessories scattered on the ground or in the air. "
+                    "All items must be correctly worn on the model. "
+                    "Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, "
+                    "inconsistent depth perception, warped backgrounds, unnatural spatial relationships. "
+                    + _tryon_layering_negative
+                )
             else:
                 prompt = (
                     "Person from Image 2 wearing all clothes and accessories from Image 1, keep person identity and original background natural and reasonable, "
@@ -1963,8 +2279,16 @@ async def try_on(
                     "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
                     "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
                     + garment_desc_text
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."
+                negative_prompt = (
+                    "Prohibit person from Image 1. Prohibit items floating in the air. "
+                    "Prohibit shoes, glasses, accessories scattered on the ground or in the air. "
+                    "All items must be correctly worn on the model. "
+                    "Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, "
+                    "inconsistent depth perception, warped backgrounds, unnatural spatial relationships. "
+                    + _tryon_layering_negative
+                )
             garment_collage_index = 0
         else:
             # Text-only garments: no collage; person is Image 1, optional background is Image 2
@@ -1988,8 +2312,13 @@ async def try_on(
                     "All items must be correctly worn on the model (tops on torso, bottoms on legs, shoes on feet, outerwear as outer layer, accessories in place). "
                     "CRITICAL: Preserve perspective and spatial consistency; the model must fit naturally into Image 2's scene. "
                     "Result should be harmonious, natural, with consistent lighting and correct perspective alignment."
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit items floating in the air or scattered on the ground. Prohibit perspective distortion, mismatched scale, model floating above ground, warped backgrounds."
+                negative_prompt = (
+                    "Prohibit items floating in the air or scattered on the ground. "
+                    "Prohibit perspective distortion, mismatched scale, model floating above ground, warped backgrounds. "
+                    + _tryon_layering_negative
+                )
             else:
                 prompt = (
                     "Keep the person and original background of Image 1. "
@@ -2000,8 +2329,13 @@ async def try_on(
                     "All items must be correctly worn on the model (tops on torso, bottoms on legs, shoes on feet, outerwear as outer layer, accessories in place). "
                     "CRITICAL: Maintain the original perspective and spatial relationships from Image 1. "
                     "Result should be harmonious, natural, with consistent lighting and correct perspective alignment."
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit items floating in the air or scattered on the ground. Prohibit perspective distortion, mismatched scale, warped backgrounds."
+                negative_prompt = (
+                    "Prohibit items floating in the air or scattered on the ground. "
+                    "Prohibit perspective distortion, mismatched scale, warped backgrounds. "
+                    + _tryon_layering_negative
+                )
             garment_collage_index = None
     except Exception as e:
         print(f"Failed to build try-on inputs: {e}")
@@ -2009,6 +2343,13 @@ async def try_on(
 
     logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
     logger.info(f"[Try-On] Full prompt sent to API:\n{prompt}")
+
+    _inputs_log = [str(x) for x in image_inputs]
+    logger.info(
+        "[Try-On][Qwen Image 2.0] edit_image sequence (collage=R2 URL after upload inside client): %s",
+        json.dumps(_inputs_log, ensure_ascii=False),
+    )
+    print(f"[Try-On][Qwen Image 2.0] edit_image raw inputs ({len(_inputs_log)}): {_inputs_log}")
 
     try:
         edited_path = await client.edit_image(
@@ -2020,6 +2361,60 @@ async def try_on(
             garment_collage_index=garment_collage_index,
             size=output_size,
         )
+    except QwenImageEditError as e:
+        use_xai = tryon_xai_fallback_enabled() and (
+            tryon_xai_fallback_on_any_qwen_error()
+            or looks_like_dashscope_content_block(str(e))
+        )
+        if use_xai:
+            logger.warning(
+                "[Try-On] Qwen Image failed; attempting xAI Grok Imagine fallback: %s",
+                e,
+            )
+            try:
+                img_bytes = await virtual_tryon_via_xai_imagine(
+                    image_inputs=image_inputs,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                )
+                out_path = (
+                    output_path
+                    if isinstance(output_path, Path)
+                    else Path(output_path)
+                )
+                out_path.write_bytes(img_bytes)
+                edited_path = out_path
+                logger.info(
+                    "[Try-On] xAI Grok Imagine fallback succeeded (saved %s bytes)",
+                    len(img_bytes),
+                )
+            except Exception as xai_e:
+                import traceback
+
+                error_trace = traceback.format_exc()
+                print(f"\n{'='*80}")
+                print("=== Qwen Image Error + xAI Fallback Failed ===")
+                print(f"Qwen: {e}")
+                print(f"xAI: {xai_e}")
+                print(f"Traceback:\n{error_trace}")
+                print(f"{'='*80}\n")
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        f"Qwen Image failed: {e}; "
+                        f"xAI Imagine fallback failed: {xai_e}"
+                    ),
+                ) from xai_e
+        else:
+            import traceback
+
+            error_trace = traceback.format_exc()
+            print(f"\n{'='*80}")
+            print("=== Qwen Image Edit Error ===")
+            print(f"Error: {e}")
+            print(f"Traceback:\n{error_trace}")
+            print(f"{'='*80}\n")
+            raise HTTPException(status_code=500, detail=f"Qwen Image Edit failed: {e}")
     except Exception as e:
         import traceback
 

@@ -8,8 +8,6 @@ dependencies = [
     "uvicorn",
     "python-multipart",
     "python-dotenv",
-    "langchain-openai",
-    "langchain-core",
     "sentence-transformers",
     "pillow",
     "boto3>=1.42.0",
@@ -26,6 +24,8 @@ dependencies = [
     "google-auth-oauthlib>=1.1.0",
     "cryptography>=41.0.0",
     "fal-client>=0.5.0",
+    "openai-chatkit>=1.4,<2",
+    "openai>=1.40",
 ]
 
 [dependency-groups]

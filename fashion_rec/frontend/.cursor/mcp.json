@@ -12,6 +12,14 @@
         "http_proxy": "http://127.0.0.1:10808",
         "https_proxy": "http://127.0.0.1:10808"
       }
+    },
+    "ai-elements-vue": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://registry.ai-elements-vue.com/mcp"
+      ]
     }
   }
 }
