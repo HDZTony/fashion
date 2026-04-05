@@ -13,8 +13,18 @@ from chatkit.types import (
 )
 
 
-def thread_owned_by_user(meta: ThreadMetadata, user_id: str) -> bool:
-    return str(meta.metadata.get("user_id", "")) == str(user_id)
+def thread_owned_by_user(
+    meta: ThreadMetadata,
+    user_id: str,
+    model_id: str | None = None,
+) -> bool:
+    if str(meta.metadata.get("user_id", "")) != str(user_id):
+        return False
+    scoped = str(model_id).strip() if model_id is not None else ""
+    current = str(meta.metadata.get("model_id", "")).strip()
+    if not scoped:
+        return current == ""
+    return (current == "") or (current == scoped)
 
 
 async def first_user_message_preview(

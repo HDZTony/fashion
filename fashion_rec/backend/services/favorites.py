@@ -28,11 +28,14 @@ def save_favorite(user_id: str, favorite: Dict[str, Any], user_token: Optional[s
         Saved favorite record with id and created_at
     """
     favorite_id = str(uuid.uuid4())
+    model_id = favorite.get("model_id")
+    scoped_model_id = str(model_id).strip() if model_id else None
     record = {
         "id": favorite_id,
         "user_id": user_id,
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         **favorite,
+        "model_id": scoped_model_id,
     }
     
     try:
@@ -53,7 +56,7 @@ def save_favorite(user_id: str, favorite: Dict[str, Any], user_token: Optional[s
         raise
 
 
-def list_favorites(user_id: str, user_token: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_favorites(user_id: str, user_token: Optional[str] = None, model_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     List saved favorites for a user.
     
@@ -79,7 +82,13 @@ def list_favorites(user_id: str, user_token: Optional[str] = None) -> List[Dict[
             # Use global client (for background tasks)
             table = _table
         
-        response = table.select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        query = table.select("*").eq("user_id", user_id).order("created_at", desc=True)
+        scoped_model_id = str(model_id).strip() if model_id else ""
+        if scoped_model_id:
+            query = query.or_(f"model_id.is.null,model_id.eq.{scoped_model_id}")
+        else:
+            query = query.is_("model_id", "null")
+        response = query.execute()
         return response.data if response.data else []
     except Exception as e:
         print(f"[Favorites] Error listing favorites: {e}")

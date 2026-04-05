@@ -25,7 +25,7 @@
   "nav": {
     "home": "首页",
     "studio": "工作室",
-    "studioOutfit": "推荐穿搭",
+    "studioChat": "AI 对话工作室",
     "studioMultiAngle": "多角度切换",
     "historyTryOn": "试穿历史",
     "historyMultiAngle": "多角度历史",
@@ -65,8 +65,7 @@
       "saving": "保存中...",
       "saveSuccess": "保存成功",
       "saveFailed": "保存失败",
-      "noModel": "暂无模特",
-      "switchModel": "切换模特"
+      "noModel": "暂无模特"
     }
   },
   "home": {
@@ -367,7 +366,9 @@
         "lightboxTitle": "试穿预览",
         "copyLink": "复制链接",
         "linkCopied": "链接已复制",
-        "copyFailed": "复制失败，请手动复制链接"
+        "copyFailed": "复制失败，请手动复制链接",
+        "favoriteTitle": "对话试穿",
+        "favoriteFailed": "收藏失败，请稍后重试。"
       },
       "contextGarmentsRail": {
         "title": "本对话上下文",

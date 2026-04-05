@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'MultiAngle' })
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { 
@@ -10,9 +10,13 @@ import {
 import ImageViewer from '@/components/ImageViewer.vue'
 import { apiClient, uploadApiClient } from '../lib/api-client'
 import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { useStudioStore } from '@/stores/studio'
+import { MODEL_SCOPE_QUERY_KEY, resolveModelScopeId } from '@/lib/model-scope'
 
 const { t } = useI18n()
 const route = useRoute()
+const studioStore = useStudioStore()
+const modelScopeId = computed(() => resolveModelScopeId(studioStore.activeModelId))
 
 // Source image from query parameter or upload
 const sourceImageUrl = ref<string>('')
@@ -79,6 +83,11 @@ watch(() => route.query.sourceImage, async (newVal) => {
   }
 })
 
+watch(modelScopeId, async () => {
+  historyPage.value = 1
+  await loadHistory()
+})
+
 // Load multi-angle history
 const loadHistory = async () => {
   isLoadingHistory.value = true
@@ -86,6 +95,7 @@ const loadHistory = async () => {
     const params: any = {
       page: historyPage.value,
       limit: 20,
+      [MODEL_SCOPE_QUERY_KEY]: modelScopeId.value,
     }
     if (sourceImageUrl.value) {
       params.source_url = sourceImageUrl.value
@@ -138,6 +148,7 @@ const generateMultiAngle = async (preset?: string) => {
       formData.append('vertical_angle', String(angleParams.value.vertical))
     }
     formData.append('zoom', String(angleParams.value.zoom))
+    formData.append('model_id', modelScopeId.value)
 
     const response = await uploadApiClient.post<{
       url: string

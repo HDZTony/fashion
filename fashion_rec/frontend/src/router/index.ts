@@ -1,6 +1,5 @@
 import { createMemoryHistory, createRouter, createWebHistory, type Router, type RouteRecordRaw } from 'vue-router'
 import Home from '../views/Home.vue'
-import Studio from '../views/Studio.vue'
 import StudioChat from '../views/StudioChat.vue'
 import Login from '../views/Login.vue'
 import Callback from '../views/Callback.vue'
@@ -67,8 +66,7 @@ export const routes: RouteRecordRaw[] = [
       },
       {
         path: 'studio',
-        name: 'studio',
-        component: Studio,
+        redirect: { path: '/studio/chat' },
       },
       {
         path: 'wardrobe',
@@ -158,7 +156,7 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 export const setupRouterGuards = (router: Router) => {
-  router.beforeEach(async (to, from, next) => {
+  router.beforeEach(async (to, _from, next) => {
     // Skip auth check in SSR (server-side rendering)
     // SSR should only render public pages, authenticated pages are rendered on client
     if (typeof window === 'undefined') {
@@ -174,16 +172,9 @@ export const setupRouterGuards = (router: Router) => {
     if (to.query.code && to.name !== 'callback') {
       await authStore.loadSession()
       if (authStore.isAuthenticated) {
-        next({ name: 'studio', replace: true })
+        next({ name: 'studio-chat', replace: true })
         return
       }
-    }
-
-    // Mark route navigation (not page refresh) for Studio page
-    // This helps Studio.vue distinguish between route navigation and page refresh
-    if (to.name === 'studio' && from.name) {
-      // Only set marker if navigating from another route (not initial load)
-      sessionStorage.setItem('studio-route-navigation', 'true')
     }
 
     // Wait for initial session load if still loading

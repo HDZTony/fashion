@@ -130,7 +130,7 @@ async def _expand_chatkit_preview_garment_urls(
             [x[:100] for x in run],
         )
         try:
-            rows = await intent_preview_crops(run, itxt)
+            rows, _scene_idx = await intent_preview_crops(run, itxt)
             nu = [
                 str(r["url"]).strip()
                 for r in rows
@@ -173,15 +173,20 @@ def _internal_api_auth_headers(req_ctx: dict[str, Any]) -> dict[str, str]:
     Forward auth to same-origin FastAPI routes. Cookie-only sessions have no Authorization header
     on the incoming request; optional auth still provides access_token in context.
     """
+    out: dict[str, str] = {}
+    model_id = req_ctx.get("model_id")
+    if isinstance(model_id, str) and model_id.strip():
+        out["X-Fashion-Rec-Model-Id"] = model_id.strip()
     token = req_ctx.get("access_token")
     if isinstance(token, str) and token.strip():
-        return {"Authorization": f"Bearer {token.strip()}"}
+        out["Authorization"] = f"Bearer {token.strip()}"
+        return out
     http_request = req_ctx.get("request")
     if http_request is not None:
         auth_h = http_request.headers.get("authorization")
         if auth_h:
-            return {"Authorization": auth_h}
-    return {}
+            out["Authorization"] = auth_h
+    return out
 
 
 def _merge_outfit_params_from_context(

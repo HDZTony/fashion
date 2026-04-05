@@ -71,7 +71,8 @@ def save_multiangle_history(
     result_url: str,
     angle_type: str,
     angle_params: Optional[Dict[str, Any]] = None,
-    user_token: Optional[str] = None
+    user_token: Optional[str] = None,
+    model_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     保存多角度生成历史记录
@@ -105,6 +106,7 @@ def save_multiangle_history(
         created_at = datetime.utcnow()
         expires_at = created_at + timedelta(days=retention_days)
         
+        scoped_model_id = str(model_id).strip() if model_id else None
         record = {
             "id": str(uuid.uuid4()),
             "user_id": str(user_id),
@@ -112,6 +114,7 @@ def save_multiangle_history(
             "result_url": result_url,
             "angle_type": angle_type,
             "angle_params": angle_params,
+            "model_id": scoped_model_id,
             "created_at": created_at.isoformat() + "Z",
             "expires_at": expires_at.isoformat() + "Z",
         }
@@ -132,7 +135,8 @@ def list_multiangle_history(
     user_token: Optional[str] = None,
     source_url: Optional[str] = None,
     limit: Optional[int] = 50,
-    offset: int = 0
+    offset: int = 0,
+    model_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     获取用户的多角度生成历史
@@ -161,6 +165,11 @@ def list_multiangle_history(
             table = _table
         
         query = table.select("*").eq("user_id", str(user_id)).order("created_at", desc=True)
+        scoped_model_id = str(model_id).strip() if model_id else ""
+        if scoped_model_id:
+            query = query.or_(f"model_id.is.null,model_id.eq.{scoped_model_id}")
+        else:
+            query = query.is_("model_id", "null")
         
         if source_url:
             query = query.eq("source_tryon_url", source_url)
@@ -179,7 +188,11 @@ def list_multiangle_history(
         return []
 
 
-def count_multiangle_history(user_id: str, user_token: Optional[str] = None) -> int:
+def count_multiangle_history(
+    user_id: str,
+    user_token: Optional[str] = None,
+    model_id: Optional[str] = None,
+) -> int:
     """统计用户的多角度历史记录数量"""
     try:
         if SUPABASE_SERVICE_ROLE_KEY:
@@ -193,7 +206,13 @@ def count_multiangle_history(user_id: str, user_token: Optional[str] = None) -> 
         else:
             table = _table
         
-        response = table.select("id", count="exact").eq("user_id", str(user_id)).limit(0).execute()
+        query = table.select("id", count="exact").eq("user_id", str(user_id))
+        scoped_model_id = str(model_id).strip() if model_id else ""
+        if scoped_model_id:
+            query = query.or_(f"model_id.is.null,model_id.eq.{scoped_model_id}")
+        else:
+            query = query.is_("model_id", "null")
+        response = query.limit(0).execute()
         return response.count if hasattr(response, 'count') and response.count is not None else 0
     except Exception as e:
         logger.error(f"[MultiAngle History] Error counting: {e}")

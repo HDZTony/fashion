@@ -1,10 +1,11 @@
 import os
 import sys
 
-# Set HF Mirror
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-
-print("Setting HF_ENDPOINT to https://hf-mirror.com")
+# Optional mirror (China); default official hub — hf-mirror SSL errors are common
+if not os.getenv("HF_ENDPOINT"):
+    print("HF_ENDPOINT unset — using https://huggingface.co (set HF_ENDPOINT=https://hf-mirror.com if needed)")
+else:
+    print(f"HF_ENDPOINT={os.getenv('HF_ENDPOINT')}")
 print("Downloading CLIP model (clip-ViT-B-32)...")
 
 try:

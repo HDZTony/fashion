@@ -3,6 +3,7 @@ Vector DB Service - Supabase pgvector Implementation
 Replaces the ChromaDB implementation with Supabase for persistent vector storage.
 """
 import os
+import sys
 import asyncio
 from typing import Dict, Any, List, Optional
 from pathlib import Path
@@ -14,22 +15,51 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
+def _append_hosts_to_no_proxy(hosts: tuple[str, ...]) -> None:
+    """Append hosts to NO_PROXY/no_proxy so requests/urllib3 may bypass broken local proxies."""
+    for host in hosts:
+        if not host:
+            continue
+        for key in ("NO_PROXY", "no_proxy"):
+            cur = os.environ.get(key, "")
+            if host in cur:
+                continue
+            sep = "," if cur else ""
+            os.environ[key] = f"{cur}{sep}{host}"
+
+
+# Optional: bypass system proxy for Hugging Face (TLS EOF / protocol errors when proxy MITM breaks HTTPS)
+_hf_bypass = (os.getenv("HF_BYPASS_PROXY_FOR_HUB") or "").strip().lower()
+if _hf_bypass in ("1", "true", "yes"):
+    _append_hosts_to_no_proxy(("huggingface.co", "hf-mirror.com", "cdn-lfs.huggingface.co"))
+    print("[Vector DB] HF_BYPASS_PROXY_FOR_HUB enabled — added huggingface.co / hf-mirror.com to NO_PROXY")
+
 # ============================================================================
 # Configure Hugging Face environment variables BEFORE importing SentenceTransformer
 # This is critical: sentence_transformers initializes huggingface_hub on import,
 # so all environment variables must be set before the import.
 # ============================================================================
 
-# Set Hugging Face mirror endpoint (must be set before importing SentenceTransformer)
-if not os.getenv("HF_ENDPOINT"):
-    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    print("[Vector DB] Using Hugging Face mirror: https://hf-mirror.com")
+# HF_ENDPOINT: default is official hub. If you see SSL EOF to huggingface.co, set HF_ENDPOINT=https://hf-mirror.com
+# (or enable HF_BYPASS_PROXY_FOR_HUB if a local proxy breaks TLS to the hub).
+_hf_ep = (os.getenv("HF_ENDPOINT") or "").strip()
+if _hf_ep:
+    os.environ["HF_ENDPOINT"] = _hf_ep
+    print(f"[Vector DB] HF_ENDPOINT={_hf_ep}")
 else:
-    print(f"[Vector DB] HF_ENDPOINT already set to: {os.getenv('HF_ENDPOINT')}")
+    print(
+        "[Vector DB] HF_ENDPOINT unset — lazy CLIP load will try hf-mirror first, then huggingface.co "
+        "(set HF_HUB_TRY_ORDER=official_first to reverse, or HF_ENDPOINT=... for a single hub)"
+    )
 
 # Disable HF Transfer for more reliable downloads
 if not os.getenv("HF_HUB_ENABLE_HF_TRANSFER"):
     os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+
+# Shorter hub timeouts so a dead TLS path fails faster (override in .env if needed)
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
+os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "15")
 
 # Set Hugging Face cache directory
 hf_cache_dir = os.getenv("HF_HOME") or os.path.expanduser("~/.cache/huggingface")
@@ -82,13 +112,10 @@ if cache_is_complete:
     print(f"[Vector DB] Cache path: {model_cache_path}")
     print("[Vector DB] This will prevent all network requests to huggingface.co")
 else:
-    # Disable offline mode for initial download, but ensure mirror is used
     if "HF_HUB_OFFLINE" in os.environ:
         del os.environ["HF_HUB_OFFLINE"]
-    print("[Vector DB] Model cache incomplete or missing, will download from mirror if needed")
-    print(f"[Vector DB] Will use mirror endpoint: {os.getenv('HF_ENDPOINT', 'NOT SET!')}")
-    if not os.getenv("HF_ENDPOINT"):
-        print("[Vector DB] ERROR: HF_ENDPOINT not set! This will cause connection to huggingface.co!")
+    print("[Vector DB] Model cache incomplete or missing, will download when first used")
+    print(f"[Vector DB] Hub endpoint: {os.getenv('HF_ENDPOINT') or 'https://huggingface.co (default)'}")
 
 # Configure Hugging Face Hub HTTP retry strategy BEFORE importing SentenceTransformer
 # Reduce retry attempts from default 5 to 2, increase timeout for slow connections (VPN)
@@ -99,9 +126,6 @@ try:
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
     from urllib3.exceptions import ReadTimeoutError, ConnectTimeoutError
-    
-    # Get mirror endpoint
-    mirror_endpoint = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")
     
     # Create a custom retry strategy with only 2 retries
     # Include timeout errors in retry (important for VPN/unstable connections)
@@ -132,10 +156,12 @@ try:
     original_request = requests.Session.request
     
     def rewrite_url(url: str) -> str:
-        """Rewrite huggingface.co URLs to use mirror site."""
-        if isinstance(url, str) and 'huggingface.co' in url:
-            # Replace huggingface.co with mirror endpoint
-            new_url = url.replace('https://huggingface.co', mirror_endpoint)
+        """Rewrite huggingface.co to current HF_ENDPOINT (read on each request — supports runtime fallback)."""
+        ep = (os.getenv("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
+        if ep in ("", "https://huggingface.co"):
+            return url
+        if isinstance(url, str) and "huggingface.co" in url:
+            new_url = url.replace("https://huggingface.co", ep)
             if new_url != url:
                 print(f"[Vector DB] URL rewrite: {url[:80]}... -> {new_url[:80]}...")
             return new_url
@@ -182,8 +208,10 @@ try:
     requests.Session.head = patched_head
     requests.Session.request = patched_request
     
-    print(f"[Vector DB] Configured HTTP: retry=2, timeout=60s/120s, URL rewrite to {mirror_endpoint}")
-    print("[Vector DB] All huggingface.co URLs will be automatically rewritten to mirror site")
+    _ep0 = (os.getenv("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
+    print(f"[Vector DB] Configured HTTP: retry=2, timeout=60s/120s, HF_ENDPOINT={_ep0}")
+    if _ep0 != "https://huggingface.co":
+        print("[Vector DB] huggingface.co download URLs will be rewritten to HF_ENDPOINT")
 except Exception as e:
     print(f"[Vector DB] Warning: Could not configure retry/timeout/URL rewrite: {e}")
 
@@ -193,21 +221,54 @@ try:
     import huggingface_hub
     from huggingface_hub import constants
     
-    # Force set the endpoint via environment variable
-    mirror_endpoint = "https://hf-mirror.com"
-    if not os.getenv("HF_ENDPOINT"):
-        os.environ["HF_ENDPOINT"] = mirror_endpoint
-    
-    # Try to set it directly in huggingface_hub constants if possible
-    # This ensures it's used even if environment variable is read at import time
-    if hasattr(constants, 'ENDPOINT'):
+    mirror_endpoint = (os.getenv("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
+    if hasattr(constants, "ENDPOINT"):
         constants.ENDPOINT = mirror_endpoint
-    if hasattr(constants, 'DEFAULT_ENDPOINT'):
+    if hasattr(constants, "DEFAULT_ENDPOINT"):
         constants.DEFAULT_ENDPOINT = mirror_endpoint
-    
+
     print(f"[Vector DB] Configured huggingface_hub endpoint: {mirror_endpoint}")
 except Exception as e:
     print(f"[Vector DB] Warning: Could not configure huggingface_hub endpoint: {e}")
+
+
+def _patch_hf_hub_http_backoff() -> None:
+    """
+    huggingface_hub uses http_backoff(max_retries=5) in file_download — separate from urllib3's Retry.
+    Patch before SentenceTransformer pulls models so failed endpoints fail faster and fallbacks run sooner.
+    """
+    try:
+        import huggingface_hub.utils._http as hf_http
+
+        max_r = int((os.getenv("HF_HUB_HTTP_MAX_RETRIES") or "2").strip() or "2")
+        max_r = max(1, min(max_r, 10))
+        _orig = hf_http.http_backoff
+
+        def http_backoff_wrapped(*args, **kwargs):
+            kwargs.setdefault("max_retries", max_r)
+            return _orig(*args, **kwargs)
+
+        hf_http.http_backoff = http_backoff_wrapped
+        try:
+            import huggingface_hub.utils as hf_utils
+
+            hf_utils.http_backoff = http_backoff_wrapped
+        except Exception:
+            pass
+        for name in (
+            "huggingface_hub.file_download",
+            "huggingface_hub.hf_file_system",
+            "huggingface_hub.lfs",
+        ):
+            mod = sys.modules.get(name)
+            if mod is not None and hasattr(mod, "http_backoff"):
+                mod.http_backoff = http_backoff_wrapped
+        print(f"[Vector DB] Patched huggingface_hub http_backoff default max_retries -> {max_r} (HF_HUB_HTTP_MAX_RETRIES)")
+    except Exception as e:
+        print(f"[Vector DB] Warning: could not patch huggingface_hub http_backoff: {e}")
+
+
+_patch_hf_hub_http_backoff()
 
 # Import SentenceTransformer AFTER all environment variables and huggingface_hub are configured
 from sentence_transformers import SentenceTransformer
@@ -218,11 +279,11 @@ try:
     # Create an API instance to verify endpoint
     api = HfApi()
     actual_endpoint = getattr(api, 'endpoint', None) or getattr(api, '_endpoint', None)
-    if actual_endpoint and 'huggingface.co' in actual_endpoint:
-        print(f"[Vector DB] WARNING: huggingface_hub is still using {actual_endpoint}, not mirror!")
-        print("[Vector DB] This may cause connection timeouts. Consider using offline mode if cache exists.")
+    ep_env = (os.getenv("HF_ENDPOINT") or "").strip()
+    if actual_endpoint and ep_env and "huggingface.co" in str(actual_endpoint) and "huggingface.co" not in ep_env:
+        print(f"[Vector DB] WARNING: expected mirror {ep_env} but API reports {actual_endpoint}")
     else:
-        print(f"[Vector DB] Verified huggingface_hub endpoint: {actual_endpoint or 'using HF_ENDPOINT'}")
+        print(f"[Vector DB] Verified huggingface_hub endpoint: {actual_endpoint or 'default'}")
 except Exception as e:
     print(f"[Vector DB] Could not verify huggingface_hub endpoint: {e}")
 
@@ -236,22 +297,107 @@ except RuntimeError as e:
     print("[Vector DB] Vector DB will fail.")
     supabase = None
 
-# Initialize CLIP model for embeddings
-# Environment variables and cache check are already done above
+# CLIP: lazy-load on first embedding call (fast server startup). Tries multiple HF endpoints on download.
 embedding_model = None
+_embedding_load_attempted = False
 
-try:
-    if cache_is_complete:
-        print(f"[Vector DB] Loading model from cache: {model_cache_path}")
+
+def _apply_hf_hub_endpoint(ep: str) -> None:
+    ep = ep.rstrip("/")
+    os.environ["HF_ENDPOINT"] = ep
+    try:
+        from huggingface_hub import constants
+
+        if hasattr(constants, "ENDPOINT"):
+            constants.ENDPOINT = ep
+        if hasattr(constants, "DEFAULT_ENDPOINT"):
+            constants.DEFAULT_ENDPOINT = ep
+    except Exception:
+        pass
+
+
+def _hf_endpoint_candidates() -> list[str]:
+    """Order: explicit HF_ENDPOINT, HF_ENDPOINT_FALLBACKS, then defaults (order configurable)."""
+    out: list[str] = []
+    user = (os.getenv("HF_ENDPOINT") or "").strip().rstrip("/")
+    if user:
+        out.append(user)
+    raw_fb = (os.getenv("HF_ENDPOINT_FALLBACKS") or "").strip()
+    if raw_fb:
+        for part in raw_fb.split(","):
+            p = part.strip().rstrip("/")
+            if p and p not in out:
+                out.append(p)
+    # When HF_ENDPOINT is unset, prefer mirror first (faster fallback if official hub TLS/proxy fails).
+    order = (os.getenv("HF_HUB_TRY_ORDER") or os.getenv("HF_ENDPOINT_TRY_ORDER") or "").strip().lower()
+    if order in ("official_first", "official", "hub_first"):
+        default_pair = ("https://huggingface.co", "https://hf-mirror.com")
+    elif order in ("mirror_first", "mirror", ""):
+        default_pair = ("https://hf-mirror.com", "https://huggingface.co")
     else:
-        print(f"[Vector DB] Model cache not found or incomplete, will download to: {model_cache_path}")
-    
-    embedding_model = SentenceTransformer(MODEL_NAME, cache_folder=hf_cache_dir)
-    print(f"[Vector DB] Successfully loaded CLIP model: {MODEL_NAME}")
-except Exception as e:
-    print(f"[Vector DB] Warning: Failed to load CLIP model {MODEL_NAME}: {e}")
-    print("[Vector DB] Vector search will return mock results.")
+        default_pair = ("https://hf-mirror.com", "https://huggingface.co")
+    for ep in default_pair:
+        if ep not in out:
+            out.append(ep)
+    return out
+
+
+def _validate_clip_sentence_transformer(m) -> None:
+    """sentence_transformers may return a stub model without raising; reject wrong embedding size."""
+    dim_fn = getattr(m, "get_sentence_embedding_dimension", None)
+    if not callable(dim_fn):
+        raise RuntimeError("loaded object has no get_sentence_embedding_dimension()")
+    dim = dim_fn()
+    # sentence-transformers clip-ViT-B-32 joint embedding dimension
+    if dim != 512:
+        raise RuntimeError(
+            f"unexpected embedding dimension {dim} (expected 512 for clip-ViT-B-32); likely incomplete download or stub model"
+        )
+
+
+def get_embedding_model():
+    """
+    Load SentenceTransformer once. Offline cache path first (if complete), then network fallbacks.
+    """
+    global embedding_model, _embedding_load_attempted
+    if _embedding_load_attempted:
+        return embedding_model
+    _embedding_load_attempted = True
+
+    if cache_is_complete:
+        try:
+            print(f"[Vector DB] Loading CLIP from local cache (offline): {model_cache_path}")
+            m = SentenceTransformer(MODEL_NAME, cache_folder=hf_cache_dir)
+            _validate_clip_sentence_transformer(m)
+            embedding_model = m
+            print("[Vector DB] Successfully loaded CLIP from cache (offline)")
+            return m
+        except Exception as e:
+            print(f"[Vector DB] Offline CLIP load failed: {str(e)[:400]}")
+            if "HF_HUB_OFFLINE" in os.environ:
+                del os.environ["HF_HUB_OFFLINE"]
+            print("[Vector DB] Retrying download with endpoint fallback...")
+
+    for ep in _hf_endpoint_candidates():
+        try:
+            _apply_hf_hub_endpoint(ep)
+            print(f"[Vector DB] Loading CLIP (download) via {ep} ...")
+            m = SentenceTransformer(MODEL_NAME, cache_folder=hf_cache_dir)
+            _validate_clip_sentence_transformer(m)
+            embedding_model = m
+            print(f"[Vector DB] Successfully loaded CLIP via {ep}")
+            return m
+        except Exception as e:
+            print(f"[Vector DB] CLIP load failed via {ep}: {str(e)[:350]}")
+
     embedding_model = None
+    print("[Vector DB] Vector search will use mock embeddings.")
+    print(
+        "[Vector DB] Tip: SSLEOF — try HF_BYPASS_PROXY_FOR_HUB=1, HF_ENDPOINT=https://hf-mirror.com, "
+        "HF_HUB_TRY_ORDER=official_first, or HF_ENDPOINT_FALLBACKS=https://hf-mirror.com"
+    )
+    return None
+
 
 # For health check compatibility
 collection = supabase if supabase else None
@@ -259,11 +405,13 @@ collection = supabase if supabase else None
 import requests
 from io import BytesIO
 
+
 def get_image_embedding(image_path_or_url: str) -> List[float]:
     """Generate CLIP embedding for an image."""
-    if not embedding_model:
+    model = get_embedding_model()
+    if not model:
         return [0.0] * 512  # Fallback mock embedding
-    
+
     try:
         img = None
         if image_path_or_url.startswith("http"):
@@ -272,8 +420,8 @@ def get_image_embedding(image_path_or_url: str) -> List[float]:
             img = Image.open(BytesIO(response.content))
         else:
             img = Image.open(image_path_or_url)
-            
-        embedding = embedding_model.encode(img)
+
+        embedding = model.encode(img)
         return embedding.tolist()
     except Exception as e:
         print(f"Error generating embedding for {image_path_or_url}: {e}")
@@ -285,6 +433,7 @@ async def add_to_wardrobe(
     features: Dict[str, Any], 
     user_id: str,
     gender: Optional[str] = None,
+    model_id: Optional[str] = None,
     embedding: Optional[List[float]] = None
 ) -> str:
     """
@@ -345,6 +494,7 @@ async def add_to_wardrobe(
         "material": normalize_value(features.get("material")),
         "description": description,
         "gender": final_gender,
+        "model_id": (str(model_id).strip() if model_id else None),
     }
     
     response = supabase.table("wardrobe_items").insert(item_data).execute()
@@ -414,12 +564,13 @@ def search_by_text(query_text: str, k: int = 3, user_id: str = None) -> List[Dic
     Search for items that match the text description using CLIP text embeddings.
     If user_id is provided, only search within that user's items.
     """
-    if not embedding_model or not supabase:
+    model = get_embedding_model()
+    if not model or not supabase:
         return []
-        
+
     try:
         # Encode text query
-        query_embedding = embedding_model.encode(query_text).tolist()
+        query_embedding = model.encode(query_text).tolist()
         
         # Use the RPC function for similarity search
         results = supabase.rpc("match_wardrobe_items", {
@@ -450,7 +601,7 @@ def search_by_text(query_text: str, k: int = 3, user_id: str = None) -> List[Dic
         return []
 
 
-def get_user_items(user_id: str) -> List[Dict[str, Any]]:
+def get_user_items(user_id: str, model_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Get all items belonging to a specific user.
     """
@@ -458,9 +609,15 @@ def get_user_items(user_id: str) -> List[Dict[str, Any]]:
         raise Exception("Supabase client not initialized")
     
     try:
-        response = supabase.table("wardrobe_items").select(
+        query = supabase.table("wardrobe_items").select(
             "id, image_url, type, color, style, occasion, pattern, material, gender, description, created_at"
-        ).eq("user_id", user_id).execute()
+        ).eq("user_id", user_id)
+        scoped_model_id = (str(model_id).strip() if model_id else "")
+        if scoped_model_id:
+            query = query.or_(f"model_id.is.null,model_id.eq.{scoped_model_id}")
+        else:
+            query = query.is_("model_id", "null")
+        response = query.execute()
         
         formatted_results = []
         if response.data:

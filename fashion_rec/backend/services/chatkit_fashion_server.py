@@ -38,6 +38,85 @@ logger = logging.getLogger(__name__)
 
 MAX_RECENT_ITEMS = 30
 
+# --- Optional verbose logging (set CHATKIT_AGENT_DEBUG=1 in .env) ---
+_OPENAI_AGENTS_DEBUG_HANDLER_ATTR = "_chatkit_openai_agents_debug_handler"
+
+
+def configure_chatkit_agent_debug_logging() -> None:
+    """
+    Enable DEBUG logs from the OpenAI Agents SDK (logger ``openai.agents``):
+    ``Running agent … (turn N)``, ``Invoking tool …``, tool output, etc.
+
+    Call once at app startup (see main.py). Controlled by ``CHATKIT_AGENT_DEBUG``.
+    """
+    raw = (os.getenv("CHATKIT_AGENT_DEBUG") or "").strip().lower()
+    if raw not in ("1", "true", "yes", "on"):
+        return
+    lg = logging.getLogger("openai.agents")
+    if getattr(lg, _OPENAI_AGENTS_DEBUG_HANDLER_ATTR, False):
+        return
+    lg.setLevel(logging.DEBUG)
+    h = logging.StreamHandler()
+    h.setLevel(logging.DEBUG)
+    h.setFormatter(
+        logging.Formatter("%(asctime)s [openai.agents] %(levelname)s %(message)s")
+    )
+    lg.addHandler(h)
+    # Avoid duplicate lines if root also prints DEBUG from children
+    lg.propagate = False
+    setattr(lg, _OPENAI_AGENTS_DEBUG_HANDLER_ATTR, True)
+    logger.info(
+        "[ChatKit] CHATKIT_AGENT_DEBUG: openai.agents DEBUG enabled "
+        "(turn index, tool name, tool args/output). "
+        "Thread stream summary: same flag logs thread.item.added/done, progress, errors (not text deltas)."
+    )
+
+
+def _chatkit_agent_debug_enabled() -> bool:
+    return (os.getenv("CHATKIT_AGENT_DEBUG") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+_STREAM_EVENT_TYPES_LOGGED = frozenset(
+    {
+        "thread.created",
+        "thread.item.added",
+        "thread.item.done",
+        "progress_update",
+        "error",
+        "stream_options",
+    }
+)
+
+
+def _log_chatkit_thread_stream_event(event: ThreadStreamEvent) -> None:
+    """High-signal ChatKit stream events only (skip per-token deltas)."""
+    try:
+        t = getattr(event, "type", None)
+        if t not in _STREAM_EVENT_TYPES_LOGGED:
+            return
+        extra = ""
+        if t == "thread.item.added":
+            it = getattr(event, "item", None)
+            if it is not None:
+                _id = str(getattr(it, "id", "") or "")
+                extra = f" item_type={getattr(it, 'type', '?')} id={_id[:16]}…"
+        elif t == "thread.item.done":
+            it = getattr(event, "item", None)
+            if it is not None:
+                extra = f" item_type={getattr(it, 'type', '?')}"
+        elif t == "progress_update":
+            extra = f" text={getattr(event, 'text', '')[:120]!r}"
+        elif t == "error":
+            extra = f" msg={getattr(event, 'message', '')[:200]!r}"
+        logger.info("[ChatKit][stream] %s%s", t, extra)
+    except Exception as e:
+        logger.debug("[ChatKit][stream] log helper failed: %s", e)
+
 # ThreadMetadata.metadata key: maps user message item id -> scene used for that turn (client header)
 FASHION_REC_MESSAGE_BACKGROUNDS = "fashion_rec_message_backgrounds"
 
@@ -117,6 +196,11 @@ class FashionChatKitServer(ChatKitServer[dict[str, Any]]):
         uid = context.get("user_id")
         if uid is not None:
             md["user_id"] = str(uid)
+        mid = context.get("model_id")
+        if mid is not None:
+            s = str(mid).strip()
+            if s:
+                md["model_id"] = s
         return md
 
     async def _process_streaming_impl(
@@ -245,6 +329,12 @@ class FashionChatKitServer(ChatKitServer[dict[str, Any]]):
         )
 
         max_turns = _chatkit_max_turns()
+        logger.info(
+            "[ChatKit] Runner max_turns=%s — each orchestration step (LLM reply + tool) uses turns; "
+            "virtual try-on may call assess → extract → try-on and appear slow. "
+            "Set CHATKIT_MAX_TURNS lower to fail faster while debugging.",
+            max_turns,
+        )
         result = Runner.run_streamed(
             agent,
             agent_input,
@@ -253,8 +343,11 @@ class FashionChatKitServer(ChatKitServer[dict[str, Any]]):
             max_turns=max_turns,
         )
 
+        _dbg = _chatkit_agent_debug_enabled()
         try:
             async for event in stream_agent_response(agent_context, result):
+                if _dbg:
+                    _log_chatkit_thread_stream_event(event)
                 yield event
         except MaxTurnsExceeded as e:
             logger.warning("[ChatKit] MaxTurnsExceeded (max_turns=%s): %s", max_turns, e)

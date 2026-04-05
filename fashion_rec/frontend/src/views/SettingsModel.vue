@@ -3,7 +3,6 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Upload, User, Check, Loader2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { useModelImages, type ModelImage } from '@/composables/useModelImages'
 import { apiClient } from '@/lib/api-client'
 import { getMediumImageUrl, getLargeImageUrl } from '@/lib/imageOptimizer'
@@ -25,15 +24,8 @@ const {
   isUploading,
   uploadProgress,
   loadModels,
-  selectModel,
   replaceModelImage,
 } = useModelImages()
-
-function onModelChange(id: unknown) {
-  const strId = String(id ?? '')
-  if (!strId) return
-  selectModel(strId)
-}
 
 const activeModel = computed<ModelImage | null>(() => {
   if (!activeModelId.value) return null
@@ -67,13 +59,6 @@ const saveError = ref<string | null>(null)
 
 const currentYear = new Date().getFullYear()
 const yearOptions = Array.from({ length: 80 }, (_, i) => currentYear - 15 - i)
-
-function formatModelLabel(model: ModelImage): string {
-  if (model.isExample) {
-    return model.nickname || `Example - ${model.id.replace('example-', '')}`
-  }
-  return model.nickname || new Date(model.created_at).toLocaleDateString()
-}
 
 function resetFields() {
   nickname.value = ''
@@ -164,16 +149,6 @@ async function onFileChange(event: Event) {
         {{ t('settings.model.title') }}
       </h1>
       <p class="text-sm text-muted-foreground mb-6">{{ t('settings.model.description') }}</p>
-
-      <!-- Model switcher -->
-      <div class="mb-8 space-y-2">
-        <label class="text-sm font-medium text-gray-700">{{ t('settings.model.switchModel') }}</label>
-        <NativeSelect :model-value="activeModelId ?? ''" @update:model-value="onModelChange" class="w-full h-10 text-sm">
-          <NativeSelectOption v-for="m in allModels" :key="m.id" :value="m.id">
-            {{ formatModelLabel(m) }}
-          </NativeSelectOption>
-        </NativeSelect>
-      </div>
 
       <!-- No model selected hint -->
       <div v-if="!activeModel" class="text-center py-16">

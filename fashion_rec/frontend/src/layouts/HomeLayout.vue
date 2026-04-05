@@ -14,7 +14,7 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const handleGetStarted = () => {
   if (isAuthenticated.value) {
-    router.push('/studio')
+    router.push('/studio/chat')
   } else {
     router.push('/login')
   }

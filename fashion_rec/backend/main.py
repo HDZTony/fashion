@@ -53,6 +53,15 @@ from services.chatkit_session_api import (
 )
 from services.chatkit_tools import garment_url_kind_for_tryon_log
 
+MODEL_SCOPE_HEADER = "X-Fashion-Rec-Model-Id"
+
+
+def _normalize_model_id(raw: Optional[str]) -> Optional[str]:
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return value or None
+
 app = FastAPI(title="Fashion Recommendation API")
 app.include_router(auth_router)
 
@@ -148,6 +157,7 @@ class SaveFavoriteRequest(BaseModel):
     prompt: Optional[str] = None  # User's custom prompt
     model_image_url: Optional[str] = None  # Model image URL
     model_image_id: Optional[str] = None  # Model image ID
+    model_id: Optional[str] = None  # Explicit model scope ID
 
 
 class IntentGarmentCropsRequest(BaseModel):
@@ -747,6 +757,7 @@ async def _download_and_upload_image(image_url: str) -> str:
 @app.post("/items")
 async def add_item(
     file: UploadFile = File(...),
+    model_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -777,7 +788,13 @@ async def add_item(
         # Add to vector database
         # Extract gender from features if present
         gender = features.get("gender") if isinstance(features, dict) else None
-        item_id = await add_to_wardrobe(url, features, user_id, gender=gender)
+        item_id = await add_to_wardrobe(
+            url,
+            features,
+            user_id,
+            gender=gender,
+            model_id=_normalize_model_id(model_id),
+        )
 
         # Clean up temp file
         temp_path.unlink()
@@ -796,6 +813,7 @@ async def add_item(
 async def upload_image(
     file: Optional[UploadFile] = File(None),
     image_url: Optional[str] = Form(None),
+    model_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1098,7 +1116,13 @@ async def upload_image(
             logger.info("Adding item to wardrobe database...")
             # Extract gender from features if present
             gender = features.get("gender")
-            item_id = await add_to_wardrobe(final_url, features, user_id, gender=gender)
+            item_id = await add_to_wardrobe(
+                final_url,
+                features,
+                user_id,
+                gender=gender,
+                model_id=_normalize_model_id(model_id),
+            )
             logger.info(f"Step 4/4: Item added to wardrobe with ID: {item_id}")
             logger.info("===== URL upload process completed successfully =====")
             
@@ -1140,6 +1164,7 @@ async def upload_image(
 @app.post("/items/batch")
 async def batch_add_items(
     items: List[Dict[str, Any]],
+    model_id: Optional[str] = Query(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1148,6 +1173,7 @@ async def batch_add_items(
     """
     try:
         added_items = []
+        scoped_model_id = _normalize_model_id(model_id)
         for item_data in items:
             if "error" in item_data.get("features", {}):
                 continue  # Skip items with errors
@@ -1161,6 +1187,7 @@ async def batch_add_items(
                 features,
                 user_id,
                 gender=gender,
+                model_id=_normalize_model_id(item_data.get("model_id")) or scoped_model_id,
             )
             added_items.append(
                 {
@@ -1178,12 +1205,15 @@ async def batch_add_items(
 
 
 @app.get("/items")
-async def get_items(user_id: str = Depends(get_current_user)):
+async def get_items(
+    model_id: Optional[str] = Query(None),
+    user_id: str = Depends(get_current_user),
+):
     """
     Get all items belonging to the current user.
     """
     try:
-        items = get_user_items(user_id)
+        items = get_user_items(user_id, model_id=_normalize_model_id(model_id))
         return {"items": items}
     except Exception as e:
         import traceback
@@ -1389,6 +1419,7 @@ async def delete_items(
 @app.post("/items/import-examples")
 async def import_example_items(
     gender: str = Form(...),  # "male", "female", or "both"
+    model_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1436,7 +1467,8 @@ async def import_example_items(
         logger.info(f"[Import Examples] Filtered to {len(filtered_items)} items matching gender {gender}")
         
         # 4. Check if current user already has items with same image_url (deduplication)
-        existing_items = get_user_items(user_id)
+        scoped_model_id = _normalize_model_id(model_id)
+        existing_items = get_user_items(user_id, model_id=scoped_model_id)
         existing_urls = {item.get("path") or item.get("image_url") for item in existing_items if item.get("path") or item.get("image_url")}
         
         logger.info(f"[Import Examples] Found {len(existing_urls)} existing items in target user's wardrobe")
@@ -1475,6 +1507,7 @@ async def import_example_items(
                     features=features,
                     user_id=user_id,
                     gender=item.get("gender", "Unisex"),
+                    model_id=scoped_model_id,
                     embedding=embedding  # Use original embedding
                 )
                 imported_count += 1
@@ -1525,13 +1558,13 @@ async def studio_intent_garment_crops(body: IntentGarmentCropsRequest):
             "one box per distinct top, bottom, or dress."
         )
     try:
-        crops = await intent_preview_crops(urls, intent)
+        crops, scene_image_index = await intent_preview_crops(urls, intent)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception("[studio/intent-garment-crops] failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
-    return {"crops": crops}
+    return {"crops": crops, "scene_image_index": scene_image_index}
 
 
 @app.post("/chatkit")
@@ -1548,12 +1581,15 @@ async def chatkit_endpoint(
     user_id, access_token = auth
     payload = await request.body()
     outfit_ctx = parse_outfit_context_from_request(request)
+    scoped_model_id = _normalize_model_id(request.headers.get(MODEL_SCOPE_HEADER))
     ctx: Dict[str, Any] = {
         "request": request,
         "user_id": user_id,
         # Cookie auth has no Authorization header; tools calling /try-on, /generate-angles need this.
         "access_token": access_token,
     }
+    if scoped_model_id:
+        ctx["model_id"] = scoped_model_id
     if outfit_ctx:
         ctx["outfit_context"] = outfit_ctx
     result = await fashion_chatkit_server.process(payload, ctx)
@@ -1629,11 +1665,15 @@ async def chatkit_attachment_preview(attachment_id: str):
 async def chatkit_sessions_list(
     limit: int = Query(20, ge=1, le=100),
     after: str | None = None,
+    model_id: str | None = Query(None),
     user_id: str = Depends(get_current_user),
 ):
     """List ChatKit threads for the current user (metadata.user_id), for Studio history UI."""
     store = fashion_chatkit_server.store
     ctx: Dict[str, Any] = {"user_id": user_id}
+    scoped_model_id = _normalize_model_id(model_id)
+    if scoped_model_id:
+        ctx["model_id"] = scoped_model_id
     page = await store.load_threads(limit=limit, after=after, order="desc", context=ctx)
     threads_out: list[Dict[str, Any]] = []
     for t in page.data:
@@ -1653,16 +1693,20 @@ async def chatkit_sessions_list(
 @app.get("/chatkit/sessions/{thread_id}/items")
 async def chatkit_session_items(
     thread_id: str,
+    model_id: str | None = Query(None),
     user_id: str = Depends(get_current_user),
 ):
     """Thread items for hydrating the UI; same store as Agents/Grok multi-turn context."""
     store = fashion_chatkit_server.store
+    scoped_model_id = _normalize_model_id(model_id)
     ctx: Dict[str, Any] = {"user_id": user_id}
+    if scoped_model_id:
+        ctx["model_id"] = scoped_model_id
     try:
         meta = await store.load_thread(thread_id, ctx)
     except ChatKitNotFoundError:
         raise HTTPException(status_code=404, detail="Thread not found")
-    if not thread_owned_by_user(meta, user_id):
+    if not thread_owned_by_user(meta, user_id, model_id=scoped_model_id):
         raise HTTPException(status_code=404, detail="Thread not found")
     page = await store.load_thread_items(thread_id, None, 500, "asc", ctx)
     visible = filter_visible_items(list(page.data))
@@ -1812,6 +1856,7 @@ async def try_on(
     background_image_url: Optional[str] = Form(None),
     background_action_prompt: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
+    model_id: Optional[str] = Form(None),
     auth: tuple = Depends(get_optional_user_and_token),
 ):
     """
@@ -2502,6 +2547,10 @@ async def try_on(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload try-on image: {e}")
 
+    scoped_model_id = _normalize_model_id(model_id) or _normalize_model_id(
+        request.headers.get(MODEL_SCOPE_HEADER)
+    )
+
     # Save try-on history only for logged-in users (retention by subscription plan)
     if user_id is not None:
         try:
@@ -2512,7 +2561,7 @@ async def try_on(
                 "background_image_url": background_image_url,
                 "prompt": user_custom_prompt,
                 "model_image_url": person_image_url,
-            }, user_token)
+            }, user_token, model_id=scoped_model_id)
         except Exception as e:
             import traceback
             print(f"[Try-On History] Failed to save history: {e}")
@@ -2531,6 +2580,7 @@ async def guest_quota(request: Request):
 
 @app.post("/generate-angles")
 async def generate_angles(
+    request: Request,
     image_url: str = Form(...),
     preset: Optional[str] = Form(None),
     horizontal_angle: Optional[float] = Form(None),
@@ -2538,6 +2588,7 @@ async def generate_angles(
     zoom: Optional[float] = Form(5.0),
     additional_prompt: Optional[str] = Form(None),
     parent_tryon_id: Optional[str] = Form(None),
+    model_id: Optional[str] = Form(None),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
@@ -2676,6 +2727,9 @@ async def generate_angles(
     
     try:
         from services.multiangle_history import save_multiangle_history
+        scoped_model_id = _normalize_model_id(model_id) or _normalize_model_id(
+            request.headers.get(MODEL_SCOPE_HEADER)
+        )
         save_multiangle_history(
             user_id=user_id,
             source_tryon_url=image_url,
@@ -2683,6 +2737,7 @@ async def generate_angles(
             angle_type=angle_type,
             angle_params=angle_params_dict,
             user_token=user_token,
+            model_id=scoped_model_id,
         )
     except Exception as e:
         logger.warning(f"[Multi-Angle] Failed to save history: {e}")
@@ -2706,6 +2761,7 @@ async def get_angle_presets():
 @app.get("/multiangle-history")
 async def get_multiangle_history(
     source_url: Optional[str] = Query(None),
+    model_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
@@ -2724,13 +2780,15 @@ async def get_multiangle_history(
     offset = (page - 1) * limit
     
     try:
-        total = count_multiangle_history(user_id, user_token)
+        scoped_model_id = _normalize_model_id(model_id)
+        total = count_multiangle_history(user_id, user_token, model_id=scoped_model_id)
         history = list_multiangle_history(
             user_id=user_id,
             user_token=user_token,
             source_url=source_url,
             limit=limit,
             offset=offset,
+            model_id=scoped_model_id,
         )
         
         total_pages = (total + limit - 1) // limit if total > 0 else 0
@@ -3139,7 +3197,10 @@ async def cleanup_expired_files(background_tasks: BackgroundTasks):
 
 
 @app.get("/favorites")
-async def get_favorites(auth: tuple[str, str] = Depends(get_current_user_and_token)):
+async def get_favorites(
+    model_id: Optional[str] = Query(None),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
     """
     Get all saved favorites for the current user.
     """
@@ -3148,7 +3209,7 @@ async def get_favorites(auth: tuple[str, str] = Depends(get_current_user_and_tok
     user_id, user_token = auth
 
     try:
-        favorites = list_favorites(user_id, user_token)
+        favorites = list_favorites(user_id, user_token, model_id=_normalize_model_id(model_id))
         # Sort by created_at descending (newest first)
         favorites.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return {"favorites": favorites}
@@ -3171,6 +3232,10 @@ async def save_favorite(
 
     try:
         favorite_dict = favorite.model_dump()
+        favorite_dict["model_id"] = (
+            _normalize_model_id(favorite.model_id)
+            or _normalize_model_id(favorite.model_image_id)
+        )
         saved_favorite = save_favorite_service(user_id, favorite_dict, user_token)
         return saved_favorite
     except Exception as e:
@@ -3204,6 +3269,7 @@ async def delete_favorite(
 async def get_tryon_history(
     page: int = 1,
     limit: int = 20,
+    model_id: Optional[str] = Query(None),
     user_id: str = Depends(get_current_user),
     user_token: str = Depends(get_current_user_token),
 ):
@@ -3227,8 +3293,15 @@ async def get_tryon_history(
         logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}, page: {page}, limit: {limit}")
         
         # Get total count and paginated history
-        total = count_tryon_history(user_id, user_token)
-        history = list_tryon_history(user_id, user_token, limit=limit, offset=offset)
+        scoped_model_id = _normalize_model_id(model_id)
+        total = count_tryon_history(user_id, user_token, model_id=scoped_model_id)
+        history = list_tryon_history(
+            user_id,
+            user_token,
+            limit=limit,
+            offset=offset,
+            model_id=scoped_model_id,
+        )
         
         # Log query result count
         logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id} (total: {total})")
@@ -3317,6 +3390,13 @@ async def startup_event():
     from services.storage import delete_expired_files_from_r2, delete_file_from_r2_by_url
     from services.looks import cleanup_expired_looks
     
+    try:
+        from services.chatkit_fashion_server import configure_chatkit_agent_debug_logging
+
+        configure_chatkit_agent_debug_logging()
+    except Exception as e:
+        logger.warning("configure_chatkit_agent_debug_logging failed: %s", e)
+
     # Log that the application is starting up
     logger.info("=" * 60)
     logger.info("Fashion Recommendation API - Starting up...")

@@ -42,7 +42,7 @@ onMounted(async () => {
           // Also set cookie for browser-initiated requests
           const { setTokenInCookie } = await import('../lib/cookie-storage')
           setTokenInCookie(retryData.session.access_token)
-          router.push('/studio')
+          router.push('/studio/chat')
           return
         }
       }
@@ -57,7 +57,7 @@ onMounted(async () => {
       setTokenInCookie(data.session.access_token)
       
       // Redirect to studio
-      router.push('/studio')
+      router.push('/studio/chat')
     } else {
       error.value = 'No session found. Please check your email confirmation link or try signing in again.'
       setTimeout(() => router.push('/login'), 3000)

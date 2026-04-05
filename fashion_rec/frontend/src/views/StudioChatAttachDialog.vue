@@ -3,8 +3,10 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePromptInput } from '@/components/ai-elements/prompt-input/context'
 import { useAuthStore } from '@/stores/auth'
+import { useStudioStore } from '@/stores/studio'
 import { apiClient } from '@/lib/api-client'
 import { getThumbnailUrl } from '@/lib/imageOptimizer'
+import { withModelScopeParams } from '@/lib/model-scope'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,6 +26,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const studioStore = useStudioStore()
 const { addFiles } = usePromptInput()
 
 const wardrobeLoading = ref(false)
@@ -51,7 +54,9 @@ async function loadWardrobeItems() {
         type?: string
         color?: string
       }>
-    }>('/items')
+    }>('/items', {
+      params: withModelScopeParams(undefined, studioStore.activeModelId),
+    })
     wardrobeItems.value = (data.items || [])
       .map((it) => {
         const url = (it.path || it.url || '').trim()

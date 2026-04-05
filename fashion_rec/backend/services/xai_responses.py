@@ -84,6 +84,8 @@ async def xai_responses_output_text(
     kwargs: dict[str, Any] = {
         "model": model,
         "input": [{"role": "user", "content": content}],
+        # xAI: large multimodal outputs can exceed default server-side storage; we only need text.
+        "store": False,
     }
     if instructions:
         kwargs["instructions"] = instructions
@@ -94,7 +96,11 @@ async def xai_responses_output_text(
         resp = await client.responses.create(**kwargs)
     except TypeError:
         kwargs.pop("temperature", None)
-        resp = await client.responses.create(**kwargs)
+        try:
+            resp = await client.responses.create(**kwargs)
+        except TypeError:
+            kwargs.pop("store", None)
+            resp = await client.responses.create(**kwargs)
 
     text = _extract_responses_output_text(resp)
     if not text.strip():

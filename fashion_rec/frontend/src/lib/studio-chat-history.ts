@@ -11,8 +11,8 @@ export type StudioChatHistoryEntry = {
 const MAX_ENTRIES = 40
 const STORAGE_PREFIX = 'fashion-rec-studio-chat-sessions:'
 
-export function historyStorageKey(userKey: string): string {
-  return `${STORAGE_PREFIX}${userKey}`
+export function historyStorageKey(userKey: string, modelId: string): string {
+  return `${STORAGE_PREFIX}${userKey}:${modelId}`
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -52,10 +52,10 @@ export function deriveChatTitle(messages: StudioChatMessage[]): string {
   return '—'
 }
 
-export function loadHistoryList(userKey: string): StudioChatHistoryEntry[] {
+export function loadHistoryList(userKey: string, modelId: string): StudioChatHistoryEntry[] {
   if (typeof localStorage === 'undefined') return []
   try {
-    const raw = localStorage.getItem(historyStorageKey(userKey))
+    const raw = localStorage.getItem(historyStorageKey(userKey, modelId))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -65,24 +65,24 @@ export function loadHistoryList(userKey: string): StudioChatHistoryEntry[] {
   }
 }
 
-export function upsertHistoryEntry(userKey: string, entry: StudioChatHistoryEntry): void {
+export function upsertHistoryEntry(userKey: string, modelId: string, entry: StudioChatHistoryEntry): void {
   if (typeof localStorage === 'undefined') return
-  const list = loadHistoryList(userKey).filter(e => e.id !== entry.id)
+  const list = loadHistoryList(userKey, modelId).filter(e => e.id !== entry.id)
   list.push(entry)
   list.sort((a, b) => b.updatedAt - a.updatedAt)
   const trimmed = list.slice(0, MAX_ENTRIES)
   try {
-    localStorage.setItem(historyStorageKey(userKey), JSON.stringify(trimmed))
+    localStorage.setItem(historyStorageKey(userKey, modelId), JSON.stringify(trimmed))
   } catch {
     // quota / private mode
   }
 }
 
-export function deleteHistoryEntry(userKey: string, id: string): void {
+export function deleteHistoryEntry(userKey: string, modelId: string, id: string): void {
   if (typeof localStorage === 'undefined') return
-  const list = loadHistoryList(userKey).filter(e => e.id !== id)
+  const list = loadHistoryList(userKey, modelId).filter(e => e.id !== id)
   try {
-    localStorage.setItem(historyStorageKey(userKey), JSON.stringify(list))
+    localStorage.setItem(historyStorageKey(userKey, modelId), JSON.stringify(list))
   } catch {
     // ignore
   }

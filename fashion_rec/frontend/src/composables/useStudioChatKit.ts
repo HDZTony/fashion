@@ -19,7 +19,11 @@ import {
 } from '@/lib/outfit-chat-context'
 import type { AttachmentFile } from '@/components/ai-elements/prompt-input/types'
 import { extractStudioResultImageUrl } from '@/lib/studio-chat-result-image'
-import { isPersistableSceneImageUrl } from '@/lib/studio-example-background-match'
+import {
+  englishActionPromptForExampleImageUrl,
+  isPersistableSceneImageUrl,
+  pickExampleBackgroundFromUserText,
+} from '@/lib/studio-example-background-match'
 import {
   buildStudioChatSceneContextEntries,
   effectiveTryOnSceneFromContextEntries,
@@ -27,6 +31,7 @@ import {
 import { API_URL } from '@/config/api'
 import { apiClient } from '@/lib/api-client'
 import { threadItemsJsonToStudioMessages } from '@/lib/chatkit-thread-to-messages'
+import { MODEL_SCOPE_HEADER_KEY, MODEL_SCOPE_QUERY_KEY, resolveModelScopeId } from '@/lib/model-scope'
 
 export type StudioChatMessage = {
   id: string
@@ -194,6 +199,7 @@ export function useStudioChatKit(
   getChatPickedSceneBackground?: () => { url: string; actionPrompt: string } | null,
 ) {
   const authStore = useAuthStore()
+  const studioStore = useStudioStore()
   const { t } = useI18n()
 
   function mapStreamError(raw: string | null | undefined): string {
@@ -222,7 +228,7 @@ export function useStudioChatKit(
     imageUrls: string[],
     intentText: string,
     signal: AbortSignal,
-  ): Promise<string[]> {
+  ): Promise<{ urls: string[]; sceneImageIndex: number | null }> {
     const cropHeaders = new Headers()
     cropHeaders.set('Content-Type', 'application/json')
     if (authStore.accessToken)
@@ -241,8 +247,19 @@ export function useStudioChatKit(
       const txt = await res.text().catch(() => '')
       throw new Error(txt || `HTTP ${res.status}`)
     }
-    const data = (await res.json()) as { crops?: { url: string }[] }
-    return (data.crops ?? []).map(c => c.url).filter(Boolean)
+    const data = (await res.json()) as {
+      crops?: { url: string }[]
+      scene_image_index?: number | null
+    }
+    const rawIdx = data.scene_image_index
+    const sceneImageIndex =
+      typeof rawIdx === 'number' && Number.isFinite(rawIdx)
+        ? Math.trunc(rawIdx)
+        : null
+    return {
+      urls: (data.crops ?? []).map(c => c.url).filter(Boolean),
+      sceneImageIndex,
+    }
   }
 
   async function hydrateIntentCropsForRestoredMessages(signal: AbortSignal) {
@@ -270,11 +287,26 @@ export function useStudioChatKit(
       const intentForApi =
         m.text.trim()
         || 'Identify clothing pieces in the image for virtual try-on (tops, bottoms, dress).'
-      const urls = await requestIntentGarmentCrops(https, intentForApi, signal)
+      const { urls, sceneImageIndex } = await requestIntentGarmentCrops(https, intentForApi, signal)
       if (!signal.aborted) {
         intentCropUrlsByMessageId.value = {
           ...intentCropUrlsByMessageId.value,
           [uid]: urls,
+        }
+        if (
+          sceneImageIndex != null
+          && sceneImageIndex >= 0
+          && sceneImageIndex < https.length
+          && !m.sceneBackgroundUrl?.trim()
+        ) {
+          const su = https[sceneImageIndex]!.trim()
+          if (isPersistableSceneImageUrl(su)) {
+            m.sceneBackgroundUrl = su
+            const auto = pickExampleBackgroundFromUserText(m.text.trim())
+            const ap = (auto?.actionPrompt ?? '').trim() || englishActionPromptForExampleImageUrl(su)
+            if (ap)
+              m.sceneBackgroundActionPrompt = ap
+          }
         }
       }
     }
@@ -302,6 +334,7 @@ export function useStudioChatKit(
   function buildFetchHeaders(): Headers {
     const h = new Headers()
     h.set('Content-Type', 'application/json')
+    h.set(MODEL_SCOPE_HEADER_KEY, resolveModelScopeId(studioStore.activeModelId))
     const base = getOutfitPayload()
     const resolvedBg = resolveTryOnSceneFromContext()
     const mergedBase: OutfitChatContextPayload = {
@@ -351,6 +384,7 @@ export function useStudioChatKit(
 
   function buildUploadHeaders(): Headers {
     const h = new Headers()
+    h.set(MODEL_SCOPE_HEADER_KEY, resolveModelScopeId(studioStore.activeModelId))
     const token = authStore.accessToken
     if (token) h.set('Authorization', `Bearer ${token}`)
     return h
@@ -412,6 +446,7 @@ export function useStudioChatKit(
   async function fetchServerThread(threadId: string) {
     const { data } = await apiClient.get<{ items?: unknown[] }>(
       `/chatkit/sessions/${encodeURIComponent(threadId)}/items`,
+      { params: { [MODEL_SCOPE_QUERY_KEY]: resolveModelScopeId(studioStore.activeModelId) } },
     )
     const msgs = threadItemsJsonToStudioMessages(data.items ?? []) as StudioChatMessage[]
     restoreThread(msgs, threadId)
@@ -473,10 +508,28 @@ export function useStudioChatKit(
           trimmed
           || 'Identify clothing pieces in the image for virtual try-on (tops, bottoms, dress).'
         try {
-          const urls = await requestIntentGarmentCrops(uploadedPreviewUrls, intentForApi, signal)
+          const { urls, sceneImageIndex } = await requestIntentGarmentCrops(
+            uploadedPreviewUrls,
+            intentForApi,
+            signal,
+          )
           intentCropUrlsByMessageId.value = {
             ...intentCropUrlsByMessageId.value,
             [uid]: urls,
+          }
+          if (
+            sceneImageIndex != null
+            && sceneImageIndex >= 0
+            && sceneImageIndex < uploadedPreviewUrls.length
+          ) {
+            const su = uploadedPreviewUrls[sceneImageIndex]!.trim()
+            if (isPersistableSceneImageUrl(su)) {
+              lastUser.sceneBackgroundUrl = su
+              const auto = pickExampleBackgroundFromUserText(trimmed)
+              const ap = (auto?.actionPrompt ?? '').trim() || englishActionPromptForExampleImageUrl(su)
+              if (ap)
+                lastUser.sceneBackgroundActionPrompt = ap
+            }
           }
         }
         catch {

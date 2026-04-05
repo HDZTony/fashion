@@ -51,7 +51,7 @@ const handleGetStarted = async () => {
     }
   }
   // Studio is available without login (guest: 3 try-on/day, 100 outfit/day by IP)
-  router.push('/studio')
+  router.push('/studio/chat')
 }
 
 const buttonText = computed(() => {

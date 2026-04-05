@@ -46,11 +46,6 @@
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
                       <SidebarMenuSubItem>
-                        <SidebarMenuSubButton as-child :is-active="isStudioOutfitActive">
-                          <router-link to="/studio">{{ $t('nav.studioOutfit') }}</router-link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
                         <SidebarMenuSubButton as-child :is-active="isActiveRoute('/multi-angle')">
                           <router-link to="/multi-angle">{{ $t('nav.studioMultiAngle') }}</router-link>
                         </SidebarMenuSubButton>
@@ -205,37 +200,6 @@
               <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Fashion Rec</span>
             </router-link>
           </div>
-          <!-- 推荐穿搭步骤条：shadcn Stepper，Separator 放在 Item 内 + v-if，单向 model-value 防递归 -->
-          <div v-if="isClassicStudioRoute" class="flex-1 flex items-center justify-center min-w-0 max-w-2xl mx-auto" aria-label="Try-on flow progress">
-            <Stepper
-              :model-value="stepperStepNumber"
-              orientation="horizontal"
-              :linear="true"
-              class="flex w-full flex-row items-center gap-0"
-            >
-              <StepperItem
-                v-for="item in studioStepperSteps"
-                :key="item.step"
-                :step="item.step"
-                :completed="item.completed"
-                class="relative flex flex-1 flex-col items-center justify-center min-w-0"
-              >
-                <StepperTrigger class="relative z-10 cursor-pointer flex flex-col items-center gap-1 px-2 py-1 rounded-lg hover:bg-pink-50 transition-colors">
-                  <StepperIndicator class="bg-muted">
-                    {{ item.step }}
-                  </StepperIndicator>
-                </StepperTrigger>
-                <!-- 左右不额外留间距；右端不超出 3：仅略伸入下一列以连接圆 -->
-                <StepperSeparator
-                  v-if="item.step !== studioStepperSteps[studioStepperSteps.length - 1]?.step"
-                  class="absolute left-[calc(50%)] right-[calc(-50%)] top-[10px] -translate-y-1/2 z-0 block h-0.5 shrink-0 rounded-full bg-pink-200 my-0 w-auto"
-                />
-                <StepperTitle class="text-xs text-center">
-                  {{ $t(item.titleKey) }}
-                </StepperTitle>
-              </StepperItem>
-            </Stepper>
-          </div>
           <div class="flex items-center gap-4 shrink-0">
             <LanguageSwitcher />
           </div>
@@ -261,17 +225,8 @@ import { Heart, Send, Palette, Shirt, History, ChevronRight, FileText, Settings 
 import SidebarNavUser from '@/components/SidebarNavUser.vue'
 import ModelSwitcher from '@/components/ModelSwitcher.vue'
 import { useVersion } from '@/composables/useVersion'
-import { useStudioStore } from '@/stores/studio'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { useSidebar } from '@/components/ui/sidebar/useSidebar'
-import {
-  Stepper,
-  StepperIndicator,
-  StepperItem,
-  StepperSeparator,
-  StepperTitle,
-  StepperTrigger,
-} from '@/components/ui/stepper'
 import {
   Collapsible,
   CollapsibleContent,
@@ -308,11 +263,7 @@ const route = useRoute()
 const router = useRouter()
 const { isMobile, setOpenMobile } = useSidebar()
 const { t } = useI18n()
-const studioStore = useStudioStore()
 const { currentVersion, getVersion, isV2, isLoading: isLoadingVersion } = useVersion()
-
-/** Classic step-based studio only (hide stepper on AI ChatKit page). */
-const isClassicStudioRoute = computed(() => route.name === 'studio')
 
 // Breadcrumb title from current route (sidebar-08 style header)
 const breadcrumbTitle = computed(() => {
@@ -332,14 +283,6 @@ const breadcrumbTitle = computed(() => {
   return (route.meta?.title as string) ?? route.name?.toString() ?? route.path
 })
 
-// 单向 model-value 用数字，避免 store 水合时 Stepper 内部 watch 触发递归
-const stepperStepNumber = computed(() => Number(studioStore.stepperStep))
-const studioStepperSteps = computed(() => [
-  { step: 1, completed: studioStore.step1Completed, titleKey: 'studio.stepper.step1Title' },
-  { step: 2, completed: studioStore.step2Completed, titleKey: 'studio.stepper.step2Title' },
-  { step: 3, completed: studioStore.step3Completed, titleKey: 'studio.stepper.step3Title' },
-])
-
 // Submenu states
 const studioMenuOpen = ref(true)
 const historyMenuOpen = ref(true)
@@ -352,17 +295,12 @@ const isActiveRoute = (path: string) => {
 // Check if any studio route is active
 const isStudioActive = computed(() => {
   return (
-    route.path === '/studio' ||
     route.path === '/studio/chat' ||
     route.path === '/multi-angle' ||
     route.path.startsWith('/studio/') ||
     route.path.startsWith('/multi-angle/')
   )
 })
-
-const isStudioOutfitActive = computed(
-  () => route.path === '/studio' && route.name === 'studio',
-)
 
 const isStudioChatNavActive = computed(
   () => route.path === '/studio/chat' || route.path.startsWith('/studio/chat/'),

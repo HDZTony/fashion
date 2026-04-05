@@ -22,9 +22,19 @@ def filter_threads_for_context(
     Anonymous: threads without user_id in metadata (guest-created).
     """
     want_uid = context.get("user_id")
+    want_mid_raw = context.get("model_id")
+    want_mid = str(want_mid_raw).strip() if want_mid_raw is not None else ""
     if want_uid is not None:
         ws = str(want_uid)
-        return [t for t in threads if str(t.metadata.get("user_id", "")) == ws]
+        base = [t for t in threads if str(t.metadata.get("user_id", "")) == ws]
+        if not want_mid:
+            return [t for t in base if not str(t.metadata.get("model_id", "")).strip()]
+        return [
+            t
+            for t in base
+            if (not str(t.metadata.get("model_id", "")).strip())
+            or str(t.metadata.get("model_id", "")).strip() == want_mid
+        ]
     return [t for t in threads if not t.metadata.get("user_id")]
 
 

@@ -9,7 +9,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import type { Item } from '@/types'
 import { useClipboard, useDebounceFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
-import { History, Image, Shirt, Trash2 } from 'lucide-vue-next'
+import { Heart, History, Image, Shirt, Trash2 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useStudioStore } from '@/stores/studio'
 import { useModelImages } from '@/composables/useModelImages'
@@ -66,6 +66,7 @@ import {
   effectiveTryOnSceneFromContextEntries,
 } from '@/lib/studio-chat-scene-context'
 import { apiClient, uploadApiClient } from '@/lib/api-client'
+import { MODEL_SCOPE_QUERY_KEY, resolveModelScopeId, withModelScopeParams } from '@/lib/model-scope'
 
 type ServerChatSessionRow = {
   thread_id: string
@@ -107,12 +108,14 @@ const serverSessions = ref<ServerChatSessionRow[]>([])
 const currentSessionId = ref(newChatSessionId())
 
 const chatHistoryUserKey = computed(() => authStore.user?.id ?? 'anon')
+const chatHistoryModelKey = computed(() => resolveModelScopeId(studioStore.activeModelId))
 
 async function refreshHistoryList() {
   if (authStore.isAuthenticated) {
     try {
       const { data } = await apiClient.get<{ threads?: ServerChatSessionRow[] }>(
         '/chatkit/sessions',
+        { params: { [MODEL_SCOPE_QUERY_KEY]: chatHistoryModelKey.value } },
       )
       serverSessions.value = data.threads ?? []
     } catch {
@@ -122,7 +125,7 @@ async function refreshHistoryList() {
   else {
     serverSessions.value = []
   }
-  historyEntries.value = loadHistoryList(chatHistoryUserKey.value)
+  historyEntries.value = loadHistoryList(chatHistoryUserKey.value, chatHistoryModelKey.value)
 }
 
 function formatHistoryTime(ts: number): string {
@@ -240,7 +243,7 @@ function persistCurrentSession() {
     return
   if (messages.value.length === 0)
     return
-  upsertHistoryEntry(chatHistoryUserKey.value, {
+  upsertHistoryEntry(chatHistoryUserKey.value, chatHistoryModelKey.value, {
     id: currentSessionId.value,
     updatedAt: Date.now(),
     title: deriveChatTitle(messages.value),
@@ -284,9 +287,29 @@ watch(isStreaming, (streaming) => {
     debouncedPersist()
 })
 
-watch(chatHistoryUserKey, () => {
+watch([chatHistoryUserKey, chatHistoryModelKey], () => {
   void refreshHistoryList()
 })
+
+watch(
+  () => studioStore.activeModelId,
+  () => {
+    if (isStreaming.value)
+      stopGeneration()
+    newConversation()
+    currentSessionId.value = newChatSessionId()
+    composerResetKey.value += 1
+    favoriteIdByImageUrl.value = {}
+    excludedTryOnGarmentUrls.value = []
+    excludedSceneBackgroundUrls.value = []
+    chatPickedSceneBackground.value = null
+    railActionFeedback.value = null
+    tryOnLightboxUrl.value = null
+    void refreshHistoryList()
+    if (authStore.isAuthenticated)
+      void syncChatFavoritesFromServer()
+  },
+)
 
 /** Thumbnails for base items sent in X-Fashion-Rec-Outfit-Context (same logic as buildCurrentOutfitChatContext). */
 const contextGarmentThumbs = computed(() => {
@@ -401,6 +424,111 @@ async function copyTryOnResultLink(messageId: string, url: string) {
   }
 }
 
+/** Try-on result image URL → Supabase favorite id (logged-in only) */
+const favoriteIdByImageUrl = ref<Record<string, string>>({})
+const savingFavoriteUrl = ref<string | null>(null)
+
+const garmentUrlsForFavorite = computed(() => {
+  const ids = studioStore.activeWardrobeIds
+  if (ids.length === 0)
+    return [] as string[]
+  return studioStore.uploadedItems
+    .filter(it => ids.includes(String(it.id)))
+    .map(it => it.url || it.features.path)
+    .filter((u): u is string => !!u)
+})
+
+async function syncChatFavoritesFromServer() {
+  if (!authStore.isAuthenticated) {
+    favoriteIdByImageUrl.value = {}
+    return
+  }
+  const urls = [
+    ...new Set(
+      messages.value
+        .filter(m => m.role === 'assistant' && m.resultImageUrl)
+        .map(m => m.resultImageUrl!.trim())
+        .filter(Boolean),
+    ),
+  ]
+  if (urls.length === 0)
+    return
+  try {
+    const { data } = await apiClient.get<{ favorites: Array<{ id: string; image_url: string }> }>(
+      '/favorites',
+      { params: { [MODEL_SCOPE_QUERY_KEY]: chatHistoryModelKey.value } },
+    )
+    const merged: Record<string, string> = {}
+    for (const u of urls) {
+      const fav = data.favorites.find(f => f.image_url === u)
+      if (fav)
+        merged[u] = fav.id
+    }
+    favoriteIdByImageUrl.value = merged
+  }
+  catch {
+    /* ignore */
+  }
+}
+
+const debouncedSyncChatFavorites = useDebounceFn(() => {
+  void syncChatFavoritesFromServer()
+}, 400)
+
+watch(
+  () =>
+    messages.value
+      .filter(m => m.role === 'assistant')
+      .map(m => `${m.id}:${m.resultImageUrl ?? ''}`)
+      .join('|'),
+  () => debouncedSyncChatFavorites(),
+)
+
+watch(
+  () => authStore.isAuthenticated,
+  (ok) => {
+    if (ok)
+      debouncedSyncChatFavorites()
+    else
+      favoriteIdByImageUrl.value = {}
+  },
+)
+
+async function toggleTryOnResultFavorite(url: string) {
+  const u = url.trim()
+  if (!u || !authStore.isAuthenticated)
+    return
+  const existing = favoriteIdByImageUrl.value[u]
+  savingFavoriteUrl.value = u
+  try {
+    if (existing) {
+      await apiClient.delete(`/favorites/${existing}`)
+      const copy = { ...favoriteIdByImageUrl.value }
+      delete copy[u]
+      favoriteIdByImageUrl.value = copy
+    }
+    else {
+      const { data } = await apiClient.post<{ id: string }>('/favorites', {
+        image_url: u,
+        title: t('studio.chat.tryOnInline.favoriteTitle'),
+        garment_urls: garmentUrlsForFavorite.value.length > 0 ? garmentUrlsForFavorite.value : undefined,
+        background_image_url: studioStore.backgroundImageUrl || undefined,
+        model_image_url: modelImageUrlForChatContext.value || undefined,
+        model_image_id: studioStore.activeModelId || undefined,
+        model_id: chatHistoryModelKey.value,
+      })
+      favoriteIdByImageUrl.value = { ...favoriteIdByImageUrl.value, [u]: data.id }
+    }
+  }
+  catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    window.alert(err?.response?.data?.detail || t('studio.chat.tryOnInline.favoriteFailed'))
+  }
+  finally {
+    savingFavoriteUrl.value = null
+  }
+}
+
 onMounted(() => {
   void refreshHistoryList()
   const bg = studioStore.backgroundImageUrl
@@ -410,6 +538,7 @@ onMounted(() => {
   }
   if (authStore.isAuthenticated) {
     void loadModels()
+    void syncChatFavoritesFromServer()
   }
 })
 
@@ -507,7 +636,7 @@ function onSelectHistoryEntry(entry: StudioChatHistoryEntry) {
 }
 
 function onDeleteHistoryEntry(id: string) {
-  deleteHistoryEntry(chatHistoryUserKey.value, id)
+  deleteHistoryEntry(chatHistoryUserKey.value, chatHistoryModelKey.value, id)
   refreshHistoryList()
   if (id === currentSessionId.value) {
     newConversation()
@@ -579,7 +708,9 @@ async function onRailAddToWardrobe(url: string) {
           description: 'Studio chat',
         },
       },
-    ])
+    ], {
+      params: withModelScopeParams(undefined, studioStore.activeModelId),
+    })
     const refreshed = await apiClient.get<{
       items: {
         id?: string | number
@@ -591,7 +722,9 @@ async function onRailAddToWardrobe(url: string) {
         occasion?: string
         material?: string
       }[]
-    }>('/items')
+    }>('/items', {
+      params: withModelScopeParams(undefined, studioStore.activeModelId),
+    })
     studioStore.setUploadedItems(mapApiItemsToStore(refreshed.data.items))
     showRailFeedback(t('studio.chat.contextGarmentsRail.feedbackAddedToWardrobe'))
   } catch (e: unknown) {
@@ -700,20 +833,50 @@ async function onRailAddToWardrobe(url: string) {
                     v-if="m.resultImageUrl"
                     class="mb-3 space-y-2"
                   >
-                    <button
-                      type="button"
-                      class="group block max-w-full rounded-lg border border-pink-100/90 p-0 text-left shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-400"
-                      :aria-label="t('studio.chat.tryOnInline.openEnlarged')"
-                      @click="openTryOnLightbox(m.resultImageUrl!)"
-                    >
-                      <img
-                        :src="m.resultImageUrl"
-                        :alt="t('studio.chat.tryOnInline.imageAlt')"
-                        class="max-h-[min(360px,55vh)] max-w-full cursor-zoom-in rounded-lg object-contain"
-                        loading="lazy"
-                        decoding="async"
+                    <div class="relative inline-block max-w-full">
+                      <button
+                        type="button"
+                        class="group block max-w-full rounded-lg border border-pink-100/90 p-0 text-left shadow-sm transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-400"
+                        :aria-label="t('studio.chat.tryOnInline.openEnlarged')"
+                        @click="openTryOnLightbox(m.resultImageUrl!)"
                       >
-                    </button>
+                        <img
+                          :src="m.resultImageUrl"
+                          :alt="t('studio.chat.tryOnInline.imageAlt')"
+                          class="max-h-[min(360px,55vh)] max-w-full cursor-zoom-in rounded-lg object-contain"
+                          loading="lazy"
+                          decoding="async"
+                        >
+                      </button>
+                      <Button
+                        v-if="authStore.isAuthenticated"
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        class="absolute bottom-2 right-2 z-10 h-10 w-10 rounded-full border border-pink-100 bg-white/95 shadow-md hover:bg-pink-50"
+                        :disabled="savingFavoriteUrl === m.resultImageUrl"
+                        :aria-label="
+                          favoriteIdByImageUrl[m.resultImageUrl]
+                            ? t('studio.virtualTryOn.saved')
+                            : t('studio.virtualTryOn.favorite')
+                        "
+                        :title="
+                          favoriteIdByImageUrl[m.resultImageUrl]
+                            ? t('studio.virtualTryOn.saved')
+                            : t('studio.virtualTryOn.favorite')
+                        "
+                        @click.stop="toggleTryOnResultFavorite(m.resultImageUrl!)"
+                      >
+                        <Heart
+                          class="h-5 w-5"
+                          :class="
+                            favoriteIdByImageUrl[m.resultImageUrl]
+                              ? 'fill-pink-600 text-pink-600'
+                              : 'text-pink-700'
+                          "
+                        />
+                      </Button>
+                    </div>
                     <p class="text-xs text-muted-foreground italic">
                       {{ t('studio.chat.tryOnInline.caption') }}
                     </p>
@@ -999,7 +1162,29 @@ async function onRailAddToWardrobe(url: string) {
             :alt="t('studio.chat.tryOnInline.imageAlt')"
             class="max-h-[min(85vh,900px)] w-full object-contain"
           >
-          <DialogFooter class="sm:justify-center">
+          <DialogFooter class="flex flex-wrap items-center justify-center gap-2 sm:justify-center">
+            <Button
+              v-if="tryOnLightboxUrl && authStore.isAuthenticated"
+              type="button"
+              variant="outline"
+              class="border-pink-200 text-pink-900 hover:bg-pink-50"
+              :disabled="tryOnLightboxUrl ? savingFavoriteUrl === tryOnLightboxUrl : false"
+              @click="tryOnLightboxUrl && toggleTryOnResultFavorite(tryOnLightboxUrl)"
+            >
+              <Heart
+                class="mr-2 h-4 w-4"
+                :class="
+                  tryOnLightboxUrl && favoriteIdByImageUrl[tryOnLightboxUrl]
+                    ? 'fill-pink-600 text-pink-600'
+                    : ''
+                "
+              />
+              {{
+                tryOnLightboxUrl && favoriteIdByImageUrl[tryOnLightboxUrl]
+                  ? t('studio.virtualTryOn.saved')
+                  : t('studio.virtualTryOn.favorite')
+              }}
+            </Button>
             <Button
               v-if="tryOnLightboxUrl"
               as="a"

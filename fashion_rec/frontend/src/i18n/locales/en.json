@@ -25,7 +25,7 @@
   "nav": {
     "home": "Home",
     "studio": "Studio",
-    "studioOutfit": "Outfit Generator",
+    "studioChat": "AI Chat Studio",
     "studioMultiAngle": "Multi-Angle Switch",
     "historyTryOn": "Try-On History",
     "historyMultiAngle": "Multi-Angle History",
@@ -65,8 +65,7 @@
       "saving": "Saving...",
       "saveSuccess": "Saved successfully",
       "saveFailed": "Save failed",
-      "noModel": "No model selected",
-      "switchModel": "Switch Model"
+      "noModel": "No model selected"
     }
   },
   "home": {
@@ -367,7 +366,9 @@
         "lightboxTitle": "Try-on preview",
         "copyLink": "Copy link",
         "linkCopied": "Link copied",
-        "copyFailed": "Could not copy the link"
+        "copyFailed": "Could not copy the link",
+        "favoriteTitle": "Chat try-on",
+        "favoriteFailed": "Could not save to favorites. Please try again."
       },
       "contextGarmentsRail": {
         "title": "This chat context",

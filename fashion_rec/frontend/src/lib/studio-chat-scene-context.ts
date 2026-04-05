@@ -25,15 +25,28 @@ function userMessageSuggestsSceneBackground(text: string): boolean {
   return /背景|场景|换.*景|大海|沙滩|海边|海滩|beach|ocean|sea|background|scene|换成/i.test(s)
 }
 
-function firstPersistableHttpImageUrl(urls: string[] | undefined): string | null {
+function persistableHttpImageUrls(urls: string[] | undefined): string[] {
   if (!urls?.length)
-    return null
+    return []
+  const out: string[] = []
   for (const u of urls) {
     const t = (u || '').trim()
     if (isPersistableSceneImageUrl(t))
-      return t
+      out.push(t)
   }
-  return null
+  return out
+}
+
+/**
+ * 无 Grok 返回的 scene_image_index、且本条未写 sceneBackgroundUrl 时的弱兜底（顺序不固定，仅作回退）。
+ */
+function sceneIntentAttachmentUrl(urls: string[] | undefined): string | null {
+  const list = persistableHttpImageUrls(urls)
+  if (list.length === 0)
+    return null
+  if (list.length >= 2)
+    return list[list.length - 1]!
+  return list[0]!
 }
 
 export type StudioChatSceneEntry = { url: string; actionPrompt: string }
@@ -71,13 +84,13 @@ export function buildStudioChatSceneContextEntries(
     }
     const auto = pickExampleBackgroundFromUserText(m.text)
     const bgIntent = userMessageSuggestsSceneBackground(m.text)
-    const firstAttach = firstPersistableHttpImageUrl(m.imageUrls)
-    // Prefer uploaded image when user asks for background change — matches LLM / try-on tool
-    if (bgIntent && firstAttach) {
+    const sceneAttach = sceneIntentAttachmentUrl(m.imageUrls)
+    // 文案换场景 + 上传：多图时末张常为海景/环境；单图时即用户指定的自定义背景
+    if (bgIntent && sceneAttach) {
       const p =
         (auto?.actionPrompt ?? '').trim()
-        || englishActionPromptForExampleImageUrl(firstAttach)
-      push(firstAttach, p)
+        || englishActionPromptForExampleImageUrl(sceneAttach)
+      push(sceneAttach, p)
       continue
     }
     if (auto)

@@ -115,6 +115,72 @@ async def _xai_vision_image_url_param(image_url: str) -> str:
     return image_url
 
 
+# DashScope chat.completions: "Exceeded limit on max bytes per data-uri item : 10485760"
+# Keep raw payload under ~7 MiB so base64 + `data:...;base64,` stays under the wire cap.
+_QWEN_VL_SAFE_DATA_URI_RAW_BYTES = 7 * 1024 * 1024
+
+
+def downscale_image_bytes_for_qwen_data_uri(data: bytes) -> bytes:
+    """
+    Shrink image bytes so Qwen-VL inline data URIs stay under provider limits.
+
+    Callers must use the **returned** bytes for both ``qwen_detect_*`` (via data URL) and
+    ``crop_boxes_upload`` so bbox coordinates and PIL crops share the same dimensions.
+    """
+    if len(data) <= _QWEN_VL_SAFE_DATA_URI_RAW_BYTES:
+        return data
+    try:
+        im = Image.open(BytesIO(data))
+        im.load()
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            bg.paste(im, mask=im.split()[3])
+            im = bg
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+    except Exception as e:
+        logger.warning("downscale_image_bytes_for_qwen_data_uri: open failed (%s)", e)
+        return data
+
+    max_dim = 4096
+    orig_len = len(data)
+    while max_dim >= 256:
+        im2 = im
+        w, h = im2.size
+        if max(w, h) > max_dim:
+            r = max_dim / max(w, h)
+            im2 = im2.resize(
+                (max(1, int(w * r)), max(1, int(h * r))),
+                Image.Resampling.LANCZOS,
+            )
+        for q in (88, 82, 75, 68, 60, 52, 45, 38, 32):
+            buf = BytesIO()
+            im2.save(buf, format="JPEG", quality=q, optimize=True)
+            out = buf.getvalue()
+            if len(out) <= _QWEN_VL_SAFE_DATA_URI_RAW_BYTES:
+                logger.info(
+                    "downscale_image_bytes_for_qwen_data_uri: %d -> %d bytes (max_dim=%s q=%s)",
+                    orig_len,
+                    len(out),
+                    max_dim,
+                    q,
+                )
+                return out
+        max_dim = int(max_dim * 0.72)
+
+    tiny = im.resize((256, 256), Image.Resampling.LANCZOS)
+    buf = BytesIO()
+    tiny.save(buf, format="JPEG", quality=32, optimize=True)
+    out = buf.getvalue()
+    logger.warning(
+        "downscale_image_bytes_for_qwen_data_uri: aggressive fallback %d -> %d bytes",
+        orig_len,
+        len(out),
+    )
+    return out
+
+
 def _bytes_to_data_url(data: bytes) -> str:
     mime = "image/jpeg"
     try:
@@ -131,6 +197,7 @@ def _bytes_to_data_url(data: bytes) -> str:
 async def _qwen_vision_image_url_param(image_url: str) -> str:
     if _url_needs_inline_image_for_vl_api(image_url):
         blob = await fetch_image_bytes(image_url)
+        blob = downscale_image_bytes_for_qwen_data_uri(blob)
         return _bytes_to_data_url(blob)
     return image_url
 
@@ -211,6 +278,10 @@ Your job:
 3) Decide **which image index** should supply **which** piece. Prefer **one clear photo per piece** — do **not**
    assign the same outfit pieces redundantly from every photo. Skip photos that do not help.
 4) If **one** photo clearly shows **two different requested** pieces, you may set max_crops to 2 for that index only.
+5) **Scene vs garment (order is NOT fixed):** If **exactly one** image is primarily **environment / background**
+   (beach, ocean, street, park, empty room, landscape) and is **not** the best source for a garment crop, set
+   `scene_image_index` to that 0-based index. If every image is a person, flat-lay product, or outfit reference,
+   set `scene_image_index` to null. **Never** list the same index in both `scene_image_index` and `assignments`.
 
 Image indices are **0, 1, 2, …** in the same order as the images appear below (first image = 0).
 
@@ -219,13 +290,15 @@ Return **only** valid JSON (no markdown):
   "assignments": [
     {{"image_index": 0, "focus": "English: exactly what to tightly crop from this image only", "max_crops": 1}}
   ],
-  "garments_seen_summary": "optional short English — what clothing appears across photos"
+  "garments_seen_summary": "optional short English — what clothing appears across photos",
+  "scene_image_index": null
 }}
 
 Rules:
 - **image_index** must satisfy 0 <= image_index < {n_images}.
 - **max_crops** must be 1 or 2 (prefer 1).
 - **assignments** may be empty if nothing is usable.
+- **scene_image_index** is either null or an integer with 0 <= scene_image_index < {n_images}.
 """
 
 
@@ -513,7 +586,7 @@ async def extract_or_passthrough_urls(
             steps.append(f"passthrough: {u[:60]}...")
             continue
         try:
-            b = await fetch_image_bytes(u)
+            b = downscale_image_bytes_for_qwen_data_uri(await fetch_image_bytes(u))
             boxes = await qwen_detect_garment_boxes(
                 u, user_intent_summary, image_bytes=b
             )
@@ -584,22 +657,36 @@ def _parse_assignment_rows(assign: list[Any], n: int) -> list[dict[str, Any]]:
     return out
 
 
+def _parse_scene_image_index(raw: Any, n: int) -> int | None:
+    if raw is None:
+        return None
+    try:
+        idx = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0 or idx >= n:
+        return None
+    return idx
+
+
 async def plan_multi_image_intent_crops(
     image_urls: list[str],
     intent_text: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int | None] | None:
     """
-    **Grok 4.1 Fast** sees all user images + text (no Qwen 3-image cap). Returns which index to crop what.
+    **Grok 4.1 Fast reasoning** sees all user images + text. Returns garment assignment rows and optional
+    ``scene_image_index`` (environment frame — not a garment crop source).
+    ``None`` means planner failed; use full fallback. ``([], idx)`` means no garment rows but scene known.
     """
     n = len(image_urls)
     if n < 2:
-        return []
+        return None
 
     try:
         get_xai_async_openai_client()
     except RuntimeError as e:
         logger.warning("[intent_plan] Grok unavailable: %s", e)
-        return []
+        return None
 
     safe_intent = (intent_text or "").strip().replace("\\", "\\\\").replace('"', "'")[:1200]
     header = (
@@ -613,7 +700,7 @@ async def plan_multi_image_intent_crops(
         )
     except Exception as e:
         logger.warning("[intent_plan] fetch images failed: %s", e)
-        return []
+        return None
 
     content: list[dict[str, Any]] = [{"type": "text", "text": header}]
     for i, blob in enumerate(blobs):
@@ -632,17 +719,31 @@ async def plan_multi_image_intent_crops(
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         logger.warning("[intent_plan] Grok planner JSON failed: %s", e)
-        return []
+        return None
 
-    assign = data.get("assignments") if isinstance(data, dict) else None
-    if not isinstance(assign, list) or not assign:
-        return []
+    if not isinstance(data, dict):
+        return None
 
-    out = _parse_assignment_rows(assign, n)
-    if not out:
-        return []
-    logger.info("[intent_plan] grok assignments=%s", json.dumps(out, ensure_ascii=False))
-    return out
+    scene_idx = _parse_scene_image_index(data.get("scene_image_index"), n)
+    assign_raw = data.get("assignments")
+    assign_list = assign_raw if isinstance(assign_raw, list) else []
+    out = _parse_assignment_rows(assign_list, n)
+    if scene_idx is not None:
+        out = [a for a in out if int(a["image_index"]) != scene_idx]
+
+    if not out and scene_idx is None:
+        return None
+
+    if out:
+        logger.info(
+            "[intent_plan] grok assignments=%s scene_image_index=%s",
+            json.dumps(out, ensure_ascii=False),
+            scene_idx,
+        )
+    else:
+        logger.info("[intent_plan] grok assignments=[] scene_image_index=%s", scene_idx)
+
+    return (out, scene_idx)
 
 
 async def _run_single_assignment_crop(
@@ -803,7 +904,9 @@ async def _execute_intent_assignments_qwen(
     idx_set = {int(a["image_index"]) for a in assignments}
     blobs: dict[int, bytes] = {}
     for idx in sorted(idx_set):
-        blobs[idx] = await fetch_image_bytes(urls[idx])
+        blobs[idx] = downscale_image_bytes_for_qwen_data_uri(
+            await fetch_image_bytes(urls[idx])
+        )
 
     out: list[dict[str, str]] = []
     i = 0
@@ -832,12 +935,16 @@ async def _execute_intent_assignments_qwen(
 async def _intent_preview_crops_fallback_multi(
     image_urls: list[str],
     intent_text: str,
+    skip_indices: set[int] | None = None,
 ) -> list[dict[str, str]]:
     """If planner fails or yields no crops: per-image Qwen with explicit cross-image disambiguation."""
     out: list[dict[str, str]] = []
     n = len(image_urls)
     base = (intent_text or "").strip()
+    skip = skip_indices or set()
     for i, src in enumerate(image_urls):
+        if i in skip:
+            continue
         s = (src or "").strip()
         if not s:
             continue
@@ -851,7 +958,7 @@ async def _intent_preview_crops_fallback_multi(
             '"bbox_2d":[x0,y0,x1,y1]}]} — bbox 0–1000 scale.\n'
         )
         try:
-            blob = await fetch_image_bytes(s)
+            blob = downscale_image_bytes_for_qwen_data_uri(await fetch_image_bytes(s))
             boxes = await qwen_detect_garment_boxes_for_intent(
                 s,
                 base,
@@ -872,14 +979,15 @@ async def _intent_preview_crops_fallback_multi(
 async def intent_preview_crops(
     image_urls: list[str],
     intent_text: str,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], int | None]:
     """
     Studio chat rail: crop + R2 upload guided by user text.
-    Multiple uploads: first a **multi-image plan** (which photo supplies which piece), then bbox per assigned photo only.
+    Multiple uploads: **Grok 4.1 fast reasoning** plans garment indices + optional ``scene_image_index``,
+    then Qwen bbox per assigned photo only. Second return value is 0-based scene frame index or null.
     """
     urls = [u.strip() for u in image_urls if isinstance(u, str) and u.strip()]
     if not urls:
-        return []
+        return [], None
 
     intent = (intent_text or "").strip()
     if not intent:
@@ -891,31 +999,46 @@ async def intent_preview_crops(
     if len(urls) == 1:
         src = urls[0]
         try:
-            blob = await fetch_image_bytes(src)
+            blob = downscale_image_bytes_for_qwen_data_uri(await fetch_image_bytes(src))
             boxes = await qwen_detect_garment_boxes_for_intent(
                 src, intent, image_bytes=blob, max_items=3
             )
             if not boxes:
                 logger.info("[intent_preview] no boxes for source=%s", src[:60])
-                return []
+                return [], None
             uploaded = await crop_boxes_upload(blob, boxes, max_outputs=3)
-            return [{"url": u, "source_url": src} for u in uploaded]
+            return [{"url": u, "source_url": src} for u in uploaded], None
         except Exception as e:
             logger.exception("intent_preview_crops failed for %s: %s", src[:80], e)
-            return []
+            return [], None
 
-    plan = await plan_multi_image_intent_crops(urls, intent)
-    if not plan:
+    plan_result = await plan_multi_image_intent_crops(urls, intent)
+    if plan_result is None:
         logger.info("[intent_preview] empty plan, using per-image fallback")
-        return await _intent_preview_crops_fallback_multi(urls, intent)
+        fb = await _intent_preview_crops_fallback_multi(urls, intent, None)
+        return fb, None
+
+    assignments, scene_idx = plan_result
+    if not assignments:
+        fb = await _intent_preview_crops_fallback_multi(
+            urls,
+            intent,
+            {scene_idx} if scene_idx is not None else None,
+        )
+        return fb, scene_idx
 
     try:
-        out = await _execute_intent_assignments_qwen(plan, urls, intent)
+        out = await _execute_intent_assignments_qwen(assignments, urls, intent)
     except Exception as e:
         logger.exception("[intent_preview] Qwen execute plan failed: %s", e)
         out = []
 
     if not out:
         logger.info("[intent_preview] plan produced no crops, fallback")
-        return await _intent_preview_crops_fallback_multi(urls, intent)
-    return out
+        fb = await _intent_preview_crops_fallback_multi(
+            urls,
+            intent,
+            {scene_idx} if scene_idx is not None else None,
+        )
+        return fb, scene_idx
+    return out, scene_idx

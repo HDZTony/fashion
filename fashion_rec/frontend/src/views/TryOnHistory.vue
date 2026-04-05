@@ -1,18 +1,22 @@
 <script setup lang="ts">
 defineOptions({ name: 'TryOnHistory' })
-import { onMounted, onActivated, ref } from 'vue'
+import { computed, onMounted, onActivated, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useStudioStore } from '../stores/studio'
 import { apiClient } from '../lib/api-client'
 import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
 import { History, X, RotateCcw } from 'lucide-vue-next'
 import ImageViewer from '@/components/ImageViewer.vue'
+import { MODEL_SCOPE_QUERY_KEY, resolveModelScopeId } from '@/lib/model-scope'
 
 const { t } = useI18n()
 
 const router = useRouter()
 const authStore = useAuthStore()
+const studioStore = useStudioStore()
+const modelScopeId = computed(() => resolveModelScopeId(studioStore.activeModelId))
 
 // Ensure token is synced when component is activated (for keep-alive scenarios)
 onActivated(async () => {
@@ -69,7 +73,8 @@ const loadHistory = async (page: number = 1) => {
     }>('/tryon-history', {
       params: {
         page: page,
-        limit: pageSize.value
+        limit: pageSize.value,
+        [MODEL_SCOPE_QUERY_KEY]: modelScopeId.value,
       }
     })
     historyItems.value = response.data.history || []
@@ -137,6 +142,10 @@ onMounted(async () => {
   await loadHistory()
 })
 
+watch(modelScopeId, async () => {
+  await loadHistory(1)
+})
+
 const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString)
@@ -199,7 +208,7 @@ const restoreTryOnHistory = async (item: TryOnHistoryItem) => {
     
     // Navigate to Studio page with query parameter
     router.push({
-      path: '/studio',
+      path: '/studio/chat',
       query: { tryonHistoryId: item.id }
     })
   } catch (error: any) {
