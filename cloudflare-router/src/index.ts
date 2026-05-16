@@ -249,17 +249,22 @@ async function setUserVersion(userId: string, version: string, env: Env): Promis
 /**
  * Route request to appropriate frontend deployment
  */
-function routeToFrontend(request: Request, hostname: string): Request {
+function routeToFrontend(request: Request, frontendHostOrUrl: string): Request {
   const url = new URL(request.url)
-  url.hostname = hostname
-  url.port = '' // Remove port if present
+  const target = frontendHostOrUrl.includes('://')
+    ? new URL(frontendHostOrUrl)
+    : new URL(`${url.protocol}//${frontendHostOrUrl}`)
+
+  url.protocol = target.protocol
+  url.hostname = target.hostname
+  url.port = target.port
 
   // Create new request with updated URL
   // Preserve original method, headers, and body
   const headers = new Headers(request.headers)
   
   // Update Host header
-  headers.set('Host', hostname)
+  headers.set('Host', target.host)
   
   // Remove X-Forwarded-* headers that might interfere
   headers.delete('X-Forwarded-Host')

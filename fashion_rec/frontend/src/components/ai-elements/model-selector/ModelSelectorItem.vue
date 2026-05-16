@@ -1,9 +1,19 @@
 <script setup lang="ts">
+import type { HTMLAttributes } from 'vue'
 import { CommandItem } from '@/components/ui/command'
+import { cn } from '@/lib/utils'
+
+type ModelSelectorItemProps = InstanceType<typeof CommandItem>['$props']
+
+interface Props extends /* @vue-ignore */ ModelSelectorItemProps {
+  class?: HTMLAttributes['class']
+}
+
+const props = defineProps<Props>()
 </script>
 
 <template>
-  <CommandItem v-bind="$attrs">
+  <CommandItem v-bind="props" :class="cn(props.class)">
     <slot />
   </CommandItem>
 </template>

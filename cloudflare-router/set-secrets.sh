@@ -26,7 +26,7 @@ fi
 
 # 配置值
 STABLE_FRONTEND_HOST="fashion-rec-frontend.pages.dev"  # 前端 hostname（stable 和 v2 共用同一个 Pages 项目）
-V2_FRONTEND_HOST="fashion-rec-frontend.pages.dev"      # 前端 hostname（stable 和 v2 共用同一个 Pages 项目）
+V2_FRONTEND_HOST="v2.fashion-rec-frontend.pages.dev"   # V2 分支预览 hostname
 STABLE_BACKEND_URL="https://fashion-rec-backend.fly.dev"       # 稳定版后端 URL
 V2_BACKEND_URL="https://fashion-rec-backend-v2.fly.dev"        # v2 后端 URL
 
