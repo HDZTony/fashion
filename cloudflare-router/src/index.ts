@@ -33,6 +33,10 @@ interface Env {
   USER_VERSIONS: KVNamespace
 }
 
+function hasSupabaseCredentials(env: Env): boolean {
+  return !!(env.SUPABASE_URL?.trim() && env.SUPABASE_SERVICE_ROLE_KEY?.trim())
+}
+
 /**
  * Extract user ID from JWT token
  * JWT format: header.payload.signature
@@ -132,6 +136,12 @@ async function cacheUserVersion(userId: string, version: string, env: Env): Prom
  */
 async function getUserFrontendVersionFromDB(userId: string, env: Env): Promise<string> {
   try {
+    if (!hasSupabaseCredentials(env)) {
+      console.warn(
+        '[Router] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing in .dev.vars — skipping DB version lookup (using stable)',
+      )
+      return 'stable'
+    }
     /**
      * Create Supabase client with explicit configuration.
      * 
@@ -197,6 +207,11 @@ async function setUserVersion(userId: string, version: string, env: Env): Promis
   try {
     // Validate version
     if (version !== 'stable' && version !== 'v2') {
+      return false
+    }
+
+    if (!hasSupabaseCredentials(env)) {
+      console.warn('[Router] setUserVersion: Supabase not configured in .dev.vars')
       return false
     }
 
@@ -739,6 +754,19 @@ export default {
               status: 400,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
             })
+          }
+
+          if (!hasSupabaseCredentials(env)) {
+            return new Response(
+              JSON.stringify({
+                error:
+                  'Router Supabase not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in cloudflare-router/.dev.vars (copy from .dev.vars.example)',
+              }),
+              {
+                status: 503,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              },
+            )
           }
 
           // ── 通用流程：创建/查找用户 → 生成 OTP → 换取 session ──

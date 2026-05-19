@@ -21,12 +21,14 @@ def get_dashscope_sg_async_openai_client() -> AsyncOpenAI:
     key = (os.getenv("DASHSCOPE_API_KEY_SG") or "").strip()
     if not key:
         raise RuntimeError(
-            "DASHSCOPE_API_KEY_SG is required for Qwen (Singapore DashScope compatible endpoint)."
+            "DASHSCOPE_API_KEY_SG is required for Qwen (Singapore DashScope compatible endpoint). "
+            "本地可在 .env 中设置；线上可执行: fly secrets set DASHSCOPE_API_KEY_SG=your_key_here"
         )
     _dashscope_client = AsyncOpenAI(
         api_key=key,
         base_url=SINGAPORE_BASE_URL,
     )
+    print("[Qwen-VL] Using Singapore DashScope compatible endpoint (native OpenAI SDK)")
     return _dashscope_client
 
 

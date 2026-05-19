@@ -12,14 +12,13 @@ import PrivacyPolicy from '../views/PrivacyPolicy.vue'
 import TermsOfService from '../views/TermsOfService.vue'
 import Pricing from '../views/Pricing.vue'
 import Profile from '../views/Profile.vue'
-import AppLayout from '../layouts/AppLayout.vue'
-import HomeLayout from '../layouts/HomeLayout.vue'
+import RootShellLayout from '../layouts/RootShellLayout.vue'
 import { useAuthStore } from '../stores/auth'
 
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: HomeLayout,
+    component: RootShellLayout,
     children: [
       {
         path: '',
@@ -36,11 +35,7 @@ export const routes: RouteRecordRaw[] = [
         name: 'blog',
         component: () => import('../views/BlogList.vue')
       },
-      {
-        path: 'blog/:id',
-        name: 'blog-detail',
-        component: () => import('../views/BlogDetail.vue')
-      },
+      // 静态子路径必须在 blog/:id 之前，避免 create / edit 被当成动态 id
       {
         path: 'blog/create',
         name: 'blog-create',
@@ -52,13 +47,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'blog-edit',
         component: () => import('../views/BlogCreate.vue'),
         meta: { requiresAuth: true }
-      }
-    ]
-  },
-  {
-    path: '/',
-    component: AppLayout,
-    children: [
+      },
+      {
+        path: 'blog/:id',
+        name: 'blog-detail',
+        component: () => import('../views/BlogDetail.vue')
+      },
       {
         path: 'studio/chat',
         name: 'studio-chat',

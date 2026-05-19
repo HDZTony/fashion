@@ -19,8 +19,15 @@ $services = @(
     @{
         Name = "Vue Frontend"
         Path = "fashion_rec\frontend"
-        Command = "pnpm dev"
+        Command = "node scripts/dev.mjs"
         Color = "Yellow"
+        Port = 5173
+    },
+    @{
+        Name = "UniApp v2 (H5)"
+        Path = "fashion_rec\uniapp-v2"
+        Command = "pnpm dev"
+        Color = "DarkYellow"
     },
     @{
         Name = "Blog Service"
@@ -52,9 +59,58 @@ foreach ($service in $services) {
     }
     
     Write-Host "启动 $($service.Name)..." -ForegroundColor $service.Color
+
+    # Python：首次缺少 .venv 时先同步依赖（Wrangler / Node：缺少 node_modules 时先 pnpm install）
+    if ($service.Command -match '^\s*uv\s') {
+        $venvPath = Join-Path $servicePath ".venv"
+        if (-not (Test-Path $venvPath)) {
+            Write-Host "  首次同步 Python 依赖 ($($service.Name))..." -ForegroundColor DarkGray
+            Push-Location $servicePath
+            try {
+                uv sync
+                if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
+            } finally {
+                Pop-Location
+            }
+        }
+    }
+    elseif ($service.Command -match '^\s*pnpm\s') {
+        $nmPath = Join-Path $servicePath "node_modules"
+        if (-not (Test-Path $nmPath)) {
+            Write-Host "  首次安装 Node 依赖 ($($service.Name))..." -ForegroundColor DarkGray
+            Push-Location $servicePath
+            try {
+                pnpm install
+                if ($LASTEXITCODE -ne 0) { throw "pnpm install failed with exit code $LASTEXITCODE" }
+            } finally {
+                Pop-Location
+            }
+        }
+    }
     
-    # 创建启动命令
-    $command = "cd `"$servicePath`"; $($service.Command)"
+    # 带 Port 的服务：启动前释放端口，关闭窗口时再次释放，避免 Vite 退到 5174
+    if ($service.Port) {
+        $port = $service.Port
+        $conn = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
+        if ($conn) {
+            Write-Host "  释放占用端口 $port 的旧进程..." -ForegroundColor DarkGray
+            $conn | ForEach-Object {
+                Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Milliseconds 500
+        }
+        $command = @"
+Set-Location '$servicePath'
+`$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+  Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
+    ForEach-Object { Stop-Process -Id `$_.OwningProcess -Force -ErrorAction SilentlyContinue }
+}
+$($service.Command)
+"@
+    }
+    else {
+        $command = "cd `"$servicePath`"; $($service.Command)"
+    }
     
     # 在新窗口中启动服务
     Start-Process pwsh -ArgumentList "-NoExit", "-Command", $command

@@ -64,8 +64,8 @@ const buttonText = computed(() => {
       </div>
     </nav>
 
-    <!-- Main Content Area -->
-    <router-view />
+    <!-- 由 RootShellLayout 注入：营销页子路由 -->
+    <slot />
   </div>
 </template>
 

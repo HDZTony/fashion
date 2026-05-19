@@ -4,25 +4,12 @@ from typing import Dict, Any, List, Literal
 
 from dotenv import load_dotenv
 
-from services.dashscope_openai_client import (
-    dashscope_chat_completions_text,
-    get_dashscope_sg_async_openai_client,
-)
+from services.dashscope_openai_client import dashscope_chat_completions_text
 
 load_dotenv()
 
-# Eager check: Singapore key required for default Qwen-VL path (same as before).
-if not (os.getenv("DASHSCOPE_API_KEY_SG") or "").strip():
-    raise RuntimeError(
-        "DASHSCOPE_API_KEY_SG must be set in environment variables for Singapore endpoint. "
-        "Please set this environment variable in Fly.io using: "
-        "fly secrets set DASHSCOPE_API_KEY_SG=your_singapore_key_here"
-    )
-
-print("[Qwen-VL] Using Singapore endpoint with Singapore API key (native OpenAI SDK)")
-
-# Touch client so misconfiguration fails at import like the old ChatOpenAI init.
-get_dashscope_sg_async_openai_client()
+# Qwen（DashScope 新加坡端点）仅在调用 analyze_image / dashscope_chat_completions_text 时懒加载；
+# 未配置 DASHSCOPE_API_KEY_SG 时仍可启动 API，便于本地只测非图像识别接口。
 
 # 穿搭生成在 outfit_agent 中选 Grok 时使用；可用 OUTFIT_GROK_MODEL 覆盖。
 OUTFIT_GROK_MODEL = (os.getenv("OUTFIT_GROK_MODEL") or "grok-imagine-image").strip()

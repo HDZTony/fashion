@@ -16,9 +16,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <router-view v-slot="{ Component }">
-    <keep-alive>
-      <component :is="Component" />
+  <router-view v-slot="{ Component, route }">
+    <keep-alive :include="/^StudioChat$/">
+      <component :is="Component" :key="route.path" />
     </keep-alive>
   </router-view>
 </template>
