@@ -61,16 +61,34 @@ function extractUserIdFromToken(token: string): string | null {
 }
 
 /**
+ * Read a cookie value by name from the Cookie header.
+ */
+function getCookieValue(cookieHeader: string, name: string): string | null {
+  const prefix = `${name}=`
+  for (const part of cookieHeader.split(';')) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(prefix)) {
+      const raw = trimmed.slice(prefix.length)
+      try {
+        return decodeURIComponent(raw)
+      } catch {
+        return raw
+      }
+    }
+  }
+  return null
+}
+
+/**
  * Extract user ID from request
- * Tries Authorization header first (Bearer token), then Cookie
+ * Tries Authorization header first (Bearer token), then auth cookies.
  */
 function extractUserIdFromCookie(request: Request): string | null {
-  // 1. Try Authorization header first (Bearer token)
+  // 1. Try Authorization header first (Bearer token) — used by apiClient XHR/fetch
   const authHeader = request.headers.get('Authorization') || request.headers.get('authorization')
   if (authHeader) {
-    // Extract token from "Bearer <token>" format
     const match = authHeader.match(/^Bearer\s+(.+)$/i)
-    if (match && match[1]) {
+    if (match?.[1]) {
       const userId = extractUserIdFromToken(match[1])
       if (userId) {
         return userId
@@ -78,24 +96,29 @@ function extractUserIdFromCookie(request: Request): string | null {
     }
   }
 
-  // 2. Fallback to Cookie header
+  // 2. Cookie header — sent on full page navigations (GET /studio, etc.)
   try {
     const cookies = request.headers.get('Cookie')
     if (!cookies) {
       return null
     }
 
-    // Match Supabase auth token cookie pattern
-    // Format: sb-<project-ref>-auth-token=<jwt-token>
-    const match = cookies.match(/sb-[^-]+-auth-token=([^;]+)/)
-    if (!match || !match[1]) {
-      return null
+    // Frontend stores JWT in auth_token (see fashion_rec/frontend/src/lib/cookie-storage.ts)
+    const authToken = getCookieValue(cookies, 'auth_token')
+    if (authToken) {
+      const userId = extractUserIdFromToken(authToken)
+      if (userId) {
+        return userId
+      }
     }
 
-    const token = match[1]
-    const userId = extractUserIdFromToken(token)
-    if (userId) {
-      return userId
+    // Supabase default cookie: sb-<project-ref>-auth-token=<jwt>
+    const sbMatch = cookies.match(/sb-[^-]+-auth-token=([^;]+)/)
+    if (sbMatch?.[1]) {
+      const userId = extractUserIdFromToken(sbMatch[1])
+      if (userId) {
+        return userId
+      }
     }
   } catch (error) {
     console.error('[Router] Error extracting user ID from cookie:', error)
