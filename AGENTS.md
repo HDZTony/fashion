@@ -21,6 +21,16 @@ fashion/                          # Git root
 
 ## Development
 
+**Node.js (local):** Use **24** (see repo root `.nvmrc`). CI uses the same version.
+
+| Tool | Windows commands |
+|------|------------------|
+| **fnm** | `winget install Schniz.fnm` → restart terminal → `cd` to repo → `fnm install` → `fnm use` |
+| **nvm-windows** | Install [nvm-windows](https://github.com/coreybutler/nvm-windows) → `nvm install 24` → `nvm use 24` |
+| **Installer** | [nodejs.org](https://nodejs.org/) → download **24.x LTS** |
+
+Verify: `node -v` should show `v24.x.x`.
+
 **Start all services at once (PowerShell):** `.\start-dev.ps1` — opens each service in a separate window.
 
 ### fashion_rec/backend (Python)
@@ -75,13 +85,13 @@ Single workflow: `.github/workflows/deploy.yml`
 - Frontend deploys to Cloudflare Pages
 - Subscription service and router deploy to Cloudflare Workers
 - V2 branch deploys to separate `-v2` app names
-- pnpm 10, Node 20, `--frozen-lockfile`
+- pnpm 10, Node 24, `--frozen-lockfile`
 
 ## Key Conventions
 
 - **Language:** All services are TypeScript/JavaScript except `fashion_rec/backend` and `src/YIDEA` (Python)
 - **Python:** Uses `uv` for package management (not pip/poetry). Dev deps: pytest, ruff
-- **Node:** pnpm 10+, Node 20+. Each top-level directory has its own `pnpm-lock.yaml`
+- **Node:** pnpm 10+, Node 24+ (LTS; Wrangler 4.92+ requires ≥22). Each top-level directory has its own `pnpm-lock.yaml`
 - **fashion_rec is a pnpm workspace** with packages: frontend, uniapp-v2, shared
 - **Frontend build order matters:** `shared` must be resolvable before `frontend` builds (workspace link handles this)
 - **No root-level lint/test/typecheck** — each service runs its own
