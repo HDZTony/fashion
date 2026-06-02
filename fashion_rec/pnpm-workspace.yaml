@@ -34,11 +34,11 @@ peerDependencyRules:
     vue: '3.5'
 
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  '@uni-helper/unocss-preset-uni': set this to true or false
-  core-js: set this to true or false
-  es5-ext: set this to true or false
-  esbuild: set this to true or false
-  sharp: set this to true or false
-  vue-demi: set this to true or false
-  workerd: set this to true or false
+  '@parcel/watcher': true
+  '@uni-helper/unocss-preset-uni': true
+  core-js: true
+  es5-ext: true
+  esbuild: true
+  sharp: true
+  vue-demi: true
+  workerd: true

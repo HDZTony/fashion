@@ -1,9 +1,10 @@
 # Multi-stage build to reduce image size
 FROM python:3.12-slim as builder
 
-# Install build dependencies
+# Install build dependencies (git required for hdz-auth git dependency in pyproject.toml)
 RUN apt-get update && apt-get install -y \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
