@@ -12,8 +12,8 @@
     "./api/config": "./src/api/config.ts",
     "./api/client": "./src/api/client.ts"
   },
-  "scripts": {},
   "dependencies": {
+    "@hdz/auth": "file:../../../hdz-auth/ts",
     "axios": "^1.16.1"
   },
   "devDependencies": {

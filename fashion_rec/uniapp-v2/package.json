@@ -111,6 +111,7 @@
     "@dcloudio/uni-mp-xhs": "3.0.0-4070620250821001",
     "@dcloudio/uni-quickapp-webview": "3.0.0-4070620250821001",
     "@fashion-rec/shared": "workspace:*",
+    "@hdz/auth": "file:../../../hdz-auth/ts",
     "@supabase/auth-js": "github:HDZTony/supabase-uniapp#master&path:/packages/core/auth-js",
     "@supabase/functions-js": "github:HDZTony/supabase-uniapp#master&path:/packages/core/functions-js",
     "@supabase/postgrest-js": "github:HDZTony/supabase-uniapp#master&path:/packages/core/postgrest-js",

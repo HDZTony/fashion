@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@fashion-rec/shared": "workspace:*",
+    "@hdz/auth": "file:../../../hdz-auth/ts",
     "@supabase/supabase-js": "^2.106.0",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",
