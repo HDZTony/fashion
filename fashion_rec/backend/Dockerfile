@@ -19,6 +19,11 @@ RUN pip install --no-cache-dir --user --extra-index-url https://download.pytorch
 # Final stage
 FROM python:3.12-slim
 
+# Tailscale (userspace) so Fly backend can reach LocateAnything on tailnet (100.x)
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL https://tailscale.com/install.sh | sh \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -49,8 +54,9 @@ RUN /root/.local/bin/uvicorn --version || python -m uvicorn --version || (echo "
 # Expose port 8000
 EXPOSE 8000
 
-# Run uvicorn when the container launches
-# 增加超时设置以支持大图片上传和处理（下载、上传到R2、AI分析等）
-# 使用单进程模式（适合 Fly.io），确保日志输出，监听所有网络接口
-# Use python -m uvicorn for more reliable execution
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-level", "info", "--timeout-keep-alive", "300", "--timeout-graceful-shutdown", "30", "--access-log"]
+COPY scripts/fly-start.sh /fly-start.sh
+# Strip Windows CRLF so Linux init can exec the shebang (Fly logs: "No such file or directory")
+RUN sed -i 's/\r$//' /fly-start.sh && chmod +x /fly-start.sh
+
+# fly-start.sh: optional Tailscale (TAILSCALE_AUTHKEY) + uvicorn
+CMD ["/bin/sh", "/fly-start.sh"]

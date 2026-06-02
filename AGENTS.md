@@ -85,13 +85,13 @@ Single workflow: `.github/workflows/deploy.yml`
 - Frontend deploys to Cloudflare Pages
 - Subscription service and router deploy to Cloudflare Workers
 - V2 branch deploys to separate `-v2` app names
-- pnpm 10, Node 24, `--frozen-lockfile`
+- pnpm 11.5.0, Node 24, `--frozen-lockfile`
 
 ## Key Conventions
 
 - **Language:** All services are TypeScript/JavaScript except `fashion_rec/backend` and `src/YIDEA` (Python)
 - **Python:** Uses `uv` for package management (not pip/poetry). Dev deps: pytest, ruff
-- **Node:** pnpm 10+, Node 24+ (LTS; Wrangler 4.92+ requires ≥22). Each top-level directory has its own `pnpm-lock.yaml`
+- **Node:** pnpm 11+, Node 24+ (LTS; Wrangler 4.92+ requires ≥22). Each top-level directory has its own `pnpm-lock.yaml`
 - **fashion_rec is a pnpm workspace** with packages: frontend, uniapp-v2, shared
 - **Frontend build order matters:** `shared` must be resolvable before `frontend` builds (workspace link handles this)
 - **No root-level lint/test/typecheck** — each service runs its own

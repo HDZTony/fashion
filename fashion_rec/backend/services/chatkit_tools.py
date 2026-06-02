@@ -449,14 +449,15 @@ async def extract_isolated_garment_pieces_for_try_on(
     user_intent_summary: str = "",
 ) -> str:
     """
-    **Step 2 (Qwen3-VL sub-pipeline):** For each source URL, either **pass through** the original URL or **run**
+    **Step 2 (bbox crop sub-pipeline):** For each source URL, either **pass through** the original URL or **run**
     bounding-box detection + PIL crop + R2 upload (one tile per detected garment), like clean showcase product images.
 
     - `source_urls_json`: JSON array of image URLs (same order as `assess_garment_try_on_sources` returned in `urls`).
-    - `extraction_mask_json`: JSON array of booleans, same length — `true` means run Qwen crop pipeline on that URL;
+    - `extraction_mask_json`: JSON array of booleans, same length — `true` means run the crop pipeline on that URL;
       `false` means keep the original URL as one garment input.
 
-    Pass `user_intent_summary` (English) to help Qwen disambiguate (e.g. tube top + pleated skirt only).
+    Pass `user_intent_summary` (English) to help the bbox crop model disambiguate
+    (e.g. tube top + pleated skirt only).
 
     Returns JSON with `garment_urls` (flat list for try-on collage) and `steps` (short log lines). Feed `garment_urls`
     into `generate_virtual_try_on` as `prepared_garment_urls_json`.

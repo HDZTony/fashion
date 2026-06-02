@@ -1,5 +1,6 @@
 """
-Conceptual **sub-agent** for garment piece extraction: Qwen3-VL bounding boxes + PIL crop + R2 upload.
+Conceptual **sub-agent** for garment piece extraction: LocateAnything-3B bounding boxes
+(Qwen3-VL fallback) + PIL crop + R2 upload.
 
 The main stylist (`FashionStylist`) should call tools in order:
 1. `assess_garment_try_on_sources` — Grok vision, per-image `needs_piece_extraction`
@@ -25,7 +26,7 @@ You are the garment **piece extraction** sub-agent. You receive source image URL
 (from the main stylist, after Grok assessment). Call `extract_isolated_garment_pieces_for_try_on` once with:
 - source_urls_json: JSON array of URLs
 - extraction_mask_json: JSON array of booleans (same length)
-- user_intent_summary: short English hint for Qwen
+- user_intent_summary: short English hint for the bbox crop model
 
 Return the tool output JSON to the main agent; do not chat with the end user.
 """.strip()

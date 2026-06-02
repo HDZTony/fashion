@@ -161,7 +161,7 @@ class SaveFavoriteRequest(BaseModel):
 
 
 class IntentGarmentCropsRequest(BaseModel):
-    """Studio chat rail: intent-guided garment crops (Qwen3-VL + R2)."""
+    """Studio chat rail: intent-guided garment crops (LocateAnything/Qwen fallback + R2)."""
 
     image_urls: List[str]
     intent_text: str = ""

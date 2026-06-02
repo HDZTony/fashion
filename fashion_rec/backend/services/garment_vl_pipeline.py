@@ -1,5 +1,6 @@
 """
-Grok 4.1 Fast vision (per-image scene / single-item) assessment + Qwen3-VL bounding boxes + PIL crop + R2 upload.
+Grok 4.1 Fast vision (per-image scene / single-item) assessment + LocateAnything-3B
+bounding boxes (Qwen3-VL fallback) + PIL crop + R2 upload.
 
 Default assess model: ``grok-4-1-fast-reasoning`` (xAI, text+image → text). Override with env
 ``GARMENT_ASSESS_GROK_MODEL`` (e.g. ``grok-4-1-fast-non-reasoning`` for lower latency).
@@ -9,14 +10,13 @@ similar to showcase product shots before POST /try-on.
 
 Studio **intent rail** (multi-upload): **Grok** plans which global image index supplies which garment
 (xAI documents no hard cap on image count per request; we send all user photos in one stateless Grok call).
-**Qwen-VL** does bbox in **multi-image batches of at most 3 images per HTTP request** (see
-``QWEN_VL_MAX_IMAGES_PER_CALL``): ``_execute_intent_assignments_qwen`` packs Grok ``assignments`` into
-chunks of ≤3 **distinct** ``image_index`` values, each chunk → ``_qwen_batch_bbox_chunk``; on failure,
-that chunk falls back to per-image single Qwen calls.
+**LocateAnything-3B** does bbox per assigned image through the local Tailscale service; if that
+service is disabled, unreachable, or returns unusable coordinates, the same per-image request falls
+back to Qwen3-VL.
 
 Developer doc: ``doc/grok-multimodal-and-qwen-batch.md`` (Grok Responses ``input_*`` parts, 20MiB limit,
-stateless recommendation, Qwen 3-image batching). Grok uses native ``AsyncOpenAI.responses``; Qwen uses
-``chat.completions`` on DashScope compatible endpoint.
+stateless recommendation, LocateAnything primary bbox with Qwen fallback). Grok uses native
+``AsyncOpenAI.responses``; Qwen fallback uses ``chat.completions`` on DashScope compatible endpoint.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import base64
 import ipaddress
 import json
 import logging
+import os
 import re
 import uuid
 from io import BytesIO
@@ -36,6 +37,12 @@ import httpx
 from PIL import Image
 
 from services.dashscope_openai_client import dashscope_chat_completions_text
+from services.locateanything_client import (
+    LocateAnythingError,
+    image_url_fetchable_by_locateanything,
+    locate_garment_boxes,
+    locateanything_enabled,
+)
 from services.xai_openai_client import get_xai_async_openai_client
 from services.xai_responses import xai_responses_output_text
 
@@ -118,17 +125,35 @@ async def _xai_vision_image_url_param(image_url: str) -> str:
 # DashScope chat.completions: "Exceeded limit on max bytes per data-uri item : 10485760"
 # Keep raw payload under ~7 MiB so base64 + `data:...;base64,` stays under the wire cap.
 _QWEN_VL_SAFE_DATA_URI_RAW_BYTES = 7 * 1024 * 1024
+_LOCATEANYTHING_DEFAULT_MAX_DIM = 1280
+_LOCATEANYTHING_DEFAULT_MAX_BYTES = 2 * 1024 * 1024
 
 
-def downscale_image_bytes_for_qwen_data_uri(data: bytes) -> bytes:
-    """
-    Shrink image bytes so Qwen-VL inline data URIs stay under provider limits.
+def _locateanything_max_image_dim() -> int:
+    import os
 
-    Callers must use the **returned** bytes for both ``qwen_detect_*`` (via data URL) and
-    ``crop_boxes_upload`` so bbox coordinates and PIL crops share the same dimensions.
-    """
-    if len(data) <= _QWEN_VL_SAFE_DATA_URI_RAW_BYTES:
-        return data
+    raw = (os.getenv("LOCATEANYTHING_MAX_IMAGE_DIM") or str(_LOCATEANYTHING_DEFAULT_MAX_DIM)).strip()
+    try:
+        return max(512, min(int(raw), 2048))
+    except ValueError:
+        return _LOCATEANYTHING_DEFAULT_MAX_DIM
+
+
+def _downscale_image_bytes(
+    data: bytes,
+    *,
+    max_dim: int,
+    max_bytes: int,
+    log_prefix: str,
+) -> bytes:
+    if len(data) <= max_bytes:
+        try:
+            im = Image.open(BytesIO(data))
+            im.load()
+            if max(im.size) <= max_dim:
+                return data
+        except Exception:
+            return data
     try:
         im = Image.open(BytesIO(data))
         im.load()
@@ -140,45 +165,72 @@ def downscale_image_bytes_for_qwen_data_uri(data: bytes) -> bytes:
         elif im.mode != "RGB":
             im = im.convert("RGB")
     except Exception as e:
-        logger.warning("downscale_image_bytes_for_qwen_data_uri: open failed (%s)", e)
+        logger.warning("%s: open failed (%s)", log_prefix, e)
         return data
 
-    max_dim = 4096
+    cur_dim = max_dim
     orig_len = len(data)
-    while max_dim >= 256:
+    while cur_dim >= 256:
         im2 = im
         w, h = im2.size
-        if max(w, h) > max_dim:
-            r = max_dim / max(w, h)
+        if max(w, h) > cur_dim:
+            r = cur_dim / max(w, h)
             im2 = im2.resize(
                 (max(1, int(w * r)), max(1, int(h * r))),
                 Image.Resampling.LANCZOS,
             )
-        for q in (88, 82, 75, 68, 60, 52, 45, 38, 32):
+        for q in (85, 78, 70, 62, 55, 48, 40, 32):
             buf = BytesIO()
             im2.save(buf, format="JPEG", quality=q, optimize=True)
             out = buf.getvalue()
-            if len(out) <= _QWEN_VL_SAFE_DATA_URI_RAW_BYTES:
-                logger.info(
-                    "downscale_image_bytes_for_qwen_data_uri: %d -> %d bytes (max_dim=%s q=%s)",
-                    orig_len,
-                    len(out),
-                    max_dim,
-                    q,
-                )
+            if len(out) <= max_bytes:
+                if orig_len != len(out) or max(im.size) > cur_dim:
+                    logger.info(
+                        "%s: %d -> %d bytes (max_dim=%s q=%s)",
+                        log_prefix,
+                        orig_len,
+                        len(out),
+                        cur_dim,
+                        q,
+                    )
                 return out
-        max_dim = int(max_dim * 0.72)
+        cur_dim = int(cur_dim * 0.72)
 
     tiny = im.resize((256, 256), Image.Resampling.LANCZOS)
     buf = BytesIO()
     tiny.save(buf, format="JPEG", quality=32, optimize=True)
     out = buf.getvalue()
-    logger.warning(
-        "downscale_image_bytes_for_qwen_data_uri: aggressive fallback %d -> %d bytes",
-        orig_len,
-        len(out),
-    )
+    logger.warning("%s: aggressive fallback %d -> %d bytes", log_prefix, orig_len, len(out))
     return out
+
+
+def downscale_image_bytes_for_locateanything(data: bytes) -> bytes:
+    """
+    Shrink for GPU ``/v1/locate_bytes`` (faster, avoids 30s timeouts).
+
+    Use the **same** returned bytes for ``crop_boxes_upload`` so bbox coords match.
+    """
+    return _downscale_image_bytes(
+        data,
+        max_dim=_locateanything_max_image_dim(),
+        max_bytes=_LOCATEANYTHING_DEFAULT_MAX_BYTES,
+        log_prefix="downscale_image_bytes_for_locateanything",
+    )
+
+
+def downscale_image_bytes_for_qwen_data_uri(data: bytes) -> bytes:
+    """
+    Shrink image bytes so Qwen-VL inline data URIs stay under provider limits.
+
+    Callers must use the **returned** bytes for both ``qwen_detect_*`` (via data URL) and
+    ``crop_boxes_upload`` so bbox coordinates and PIL crops share the same dimensions.
+    """
+    return _downscale_image_bytes(
+        data,
+        max_dim=4096,
+        max_bytes=_QWEN_VL_SAFE_DATA_URI_RAW_BYTES,
+        log_prefix="downscale_image_bytes_for_qwen_data_uri",
+    )
 
 
 def _bytes_to_data_url(data: bytes) -> str:
@@ -264,11 +316,6 @@ Output ONLY valid JSON (no markdown):
   "reason": "one short English sentence"
 }
 """
-
-# Qwen3-VL: max **images** per single multimodal request (batch bbox in `_qwen_batch_bbox_chunk`).
-# Assignments from Grok are packed into chunks of ≤ this many distinct image_index values; remainder
-# and failed batches use single-image Qwen calls. See doc/grok-multimodal-and-qwen-batch.md.
-QWEN_VL_MAX_IMAGES_PER_CALL = 3
 
 GROK_MULTI_IMAGE_PLAN_PROMPT = """You plan **garment crops** for virtual try-on. The user sent **all** photos below in order.
 
@@ -408,6 +455,101 @@ def _intent_bbox_instruction_text(intent_text: str, *, max_items: int = 10) -> s
     )
 
 
+def _locateanything_assignment_concurrency() -> int:
+    raw = (os.getenv("LOCATEANYTHING_MAX_CONCURRENCY") or "3").strip()
+    try:
+        return max(1, min(int(raw), 8))
+    except ValueError:
+        return 3
+
+
+def _locateanything_prompt(focus_text: str, *, max_items: int = 6) -> str:
+    focus = (focus_text or "").strip().replace("\\", "\\\\").replace('"', "'")[:900]
+    if not focus:
+        focus = "wearable garments for virtual try-on: tops, bottoms, dresses, or outerwear"
+    cap = max(1, min(int(max_items), 8))
+    return (
+        "Locate the requested wearable garment(s) in this fashion image. "
+        f"Target: {focus}. "
+        f"Return up to {cap} tight bounding box(es) only for real garments, not face, hair, "
+        "bare skin, background, or unrelated objects. "
+        "Use 0-1000 normalized coordinates in this exact format: "
+        "<box><x1><y1><x2><y2></box>."
+    )
+
+
+async def _resolve_locateanything_image_bytes(
+    image_url: str,
+    image_bytes: bytes | None,
+) -> bytes | None:
+    """Bytes for /v1/locate_bytes when the GPU cannot HTTP-fetch ``image_url``."""
+    if image_bytes is not None:
+        return image_bytes
+    if image_url_fetchable_by_locateanything(image_url):
+        return None
+    if not _url_needs_inline_image_for_vl_api(image_url):
+        return None
+    try:
+        blob = await fetch_image_bytes(image_url)
+        return downscale_image_bytes_for_locateanything(blob)
+    except Exception as e:
+        logger.warning(
+            "[LocateAnything] could not load local image bytes for %s: %s",
+            image_url[:80],
+            e,
+        )
+        return None
+
+
+async def _locateanything_detect_with_qwen_fallback(
+    image_url: str,
+    *,
+    locate_focus: str,
+    max_items: int,
+    image_bytes: bytes | None = None,
+    qwen_call,
+) -> list[dict[str, Any]]:
+    locate_blob = None
+    if locateanything_enabled():
+        locate_blob = await _resolve_locateanything_image_bytes(image_url, image_bytes)
+        use_locate = locate_blob is not None or image_url_fetchable_by_locateanything(
+            image_url
+        )
+        if use_locate:
+            try:
+                boxes = await locate_garment_boxes(
+                    image_url=image_url,
+                    image_bytes=locate_blob,
+                    prompt=_locateanything_prompt(locate_focus, max_items=max_items),
+                    max_items=max_items,
+                    label=(locate_focus or "garment")[:80],
+                )
+                mode = "bytes" if locate_blob is not None else "url"
+                logger.info(
+                    "[LocateAnything bbox] boxes=%d mode=%s source=%s",
+                    len(boxes),
+                    mode,
+                    image_url[:80],
+                )
+                return boxes
+            except LocateAnythingError as e:
+                logger.warning(
+                    "[LocateAnything bbox] failed; using Qwen fallback for %s: %s",
+                    image_url[:80],
+                    e,
+                )
+        else:
+            logger.info(
+                "[LocateAnything bbox] skipped unreachable URL; using Qwen fallback for %s",
+                image_url[:80],
+            )
+
+    boxes = await qwen_call()
+    if boxes:
+        logger.info("[Qwen bbox fallback] boxes=%d source=%s", len(boxes), image_url[:80])
+    return boxes
+
+
 async def qwen_detect_garment_boxes_for_intent(
     image_url: str,
     intent_text: str,
@@ -513,6 +655,60 @@ async def qwen_detect_garment_boxes(
     return out
 
 
+async def detect_garment_boxes_for_intent(
+    image_url: str,
+    intent_text: str,
+    *,
+    image_bytes: bytes | None = None,
+    max_items: int = 6,
+    instruction_override: str | None = None,
+    locate_focus: str | None = None,
+) -> list[dict[str, Any]]:
+    """Tight boxes with LocateAnything primary and Qwen3-VL fallback."""
+    cap = max(1, min(int(max_items), 8))
+
+    async def qwen_call() -> list[dict[str, Any]]:
+        return await qwen_detect_garment_boxes_for_intent(
+            image_url,
+            intent_text,
+            image_bytes=image_bytes,
+            max_items=cap,
+            instruction_override=instruction_override,
+        )
+
+    return await _locateanything_detect_with_qwen_fallback(
+        image_url,
+        locate_focus=locate_focus or intent_text,
+        max_items=cap,
+        image_bytes=image_bytes,
+        qwen_call=qwen_call,
+    )
+
+
+async def detect_garment_boxes(
+    image_url: str,
+    user_hint: str = "",
+    *,
+    image_bytes: bytes | None = None,
+) -> list[dict[str, Any]]:
+    """General garment boxes with LocateAnything primary and Qwen3-VL fallback."""
+
+    async def qwen_call() -> list[dict[str, Any]]:
+        return await qwen_detect_garment_boxes(
+            image_url,
+            user_hint,
+            image_bytes=image_bytes,
+        )
+
+    return await _locateanything_detect_with_qwen_fallback(
+        image_url,
+        locate_focus=user_hint or "distinct wearable garment pieces for virtual try-on",
+        max_items=6,
+        image_bytes=image_bytes,
+        qwen_call=qwen_call,
+    )
+
+
 async def crop_boxes_upload(
     image_bytes: bytes,
     boxes: list[dict[str, Any]],
@@ -586,13 +782,13 @@ async def extract_or_passthrough_urls(
             steps.append(f"passthrough: {u[:60]}...")
             continue
         try:
-            b = downscale_image_bytes_for_qwen_data_uri(await fetch_image_bytes(u))
-            boxes = await qwen_detect_garment_boxes(
+            b = downscale_image_bytes_for_locateanything(await fetch_image_bytes(u))
+            boxes = await detect_garment_boxes(
                 u, user_intent_summary, image_bytes=b
             )
             if not boxes:
                 out.append(u)
-                steps.append(f"qwen_no_boxes_fallback_original: {u[:60]}...")
+                steps.append(f"bbox_no_boxes_fallback_original: {u[:60]}...")
                 continue
             uploaded = await crop_boxes_upload(b, boxes)
             if not uploaded:
@@ -758,12 +954,13 @@ async def _run_single_assignment_crop(
     focus = str(a["focus"])
     blob = blobs[idx]
     instr = _per_image_instruction_after_plan(intent, idx, len(urls), focus, mc)
-    boxes = await qwen_detect_garment_boxes_for_intent(
+    boxes = await detect_garment_boxes_for_intent(
         src,
         intent,
         image_bytes=blob,
         max_items=mc,
         instruction_override=instr,
+        locate_focus=focus,
     )
     if not boxes:
         return []
@@ -771,164 +968,40 @@ async def _run_single_assignment_crop(
     return [{"url": u, "source_url": src} for u in uploaded]
 
 
-def _items_to_boxes(items: list[Any], max_items: int) -> list[dict[str, Any]]:
-    boxes: list[dict[str, Any]] = []
-    cap = max(1, min(int(max_items), 8))
-    for it in items[:cap]:
-        if not isinstance(it, dict):
-            continue
-        b = it.get("bbox_2d")
-        if not isinstance(b, list) or len(b) != 4:
-            continue
-        try:
-            _ = [float(x) for x in b]
-        except (TypeError, ValueError):
-            continue
-        boxes.append(
-            {
-                "role": str(it.get("role", "other")),
-                "label": str(it.get("label", "")),
-                "bbox_2d": b,
-            }
-        )
-    return boxes
-
-
-async def _qwen_batch_bbox_chunk(
-    chunk: list[dict[str, Any]],
-    urls: list[str],
-    blobs: dict[int, bytes],
-    intent: str,
-) -> list[dict[str, str]] | None:
-    """
-    **Multi-image Qwen-VL batch**: one ``chat.completions`` call with 1..QWEN_VL_MAX_IMAGES_PER_CALL images plus text,
-    JSON ``per_image[]`` aligned by slot order. Distinct ``image_index`` per slot required.
-    """
-    if not chunk or len(chunk) > QWEN_VL_MAX_IMAGES_PER_CALL:
-        return None
-    if len({int(a["image_index"]) for a in chunk}) != len(chunk):
-        return None
-
-    n_chunk = len(chunk)
-    intro = (
-        f'User request (context): "{intent[:600]}"\n\n'
-        f"The next **{n_chunk}** image(s) are sent **in the same order** as the descriptions below.\n"
-        "For each image, output tight boxes **only** for the garment described — not face, not bare skin only.\n\n"
-    )
-    lines: list[str] = []
-    ordered_idx: list[int] = []
-    for j, a in enumerate(chunk):
-        idx = int(a["image_index"])
-        mc = min(3, max(1, int(a["max_crops"])))
-        ordered_idx.append(idx)
-        lines.append(
-            f"**Slot {j + 1} / {n_chunk}** → global user photo **image_index {idx}**:\n"
-            f"Crop: {a['focus']}\nMax **{mc}** bounding box(es).\n"
-        )
-    footer = (
-        "\nReturn **only** JSON (no markdown):\n"
-        "{\n  \"per_image\": [\n"
-        "    {\"image_index\": <int>, \"items\": [{\"role\":\"top|bottom|dress|outerwear|other\","
-        "\"label\":\"short English\",\"bbox_2d\":[x0,y0,x1,y1]}]}\n"
-        "  ]\n}\n"
-        "- **0–1000** bbox scale; x0<x1, y0<y1.\n"
-        f"- Each `image_index` must be one of: {', '.join(str(x) for x in ordered_idx)}.\n"
-        "- Provide **exactly** one `per_image` object per slot, **in the same order** as the images below "
-        "(first JSON object = first image in this message).\n"
-        "- Use `\"items\": []` if nothing matches.\n"
-    )
-
-    full_text = intro + "\n".join(lines) + footer
-    content: list[dict[str, Any]] = [{"type": "text", "text": full_text}]
-    for a in chunk:
-        idx = int(a["image_index"])
-        content.append(
-            {"type": "image_url", "image_url": {"url": _bytes_to_data_url(blobs[idx])}}
-        )
-
-    try:
-        response_text = await _qwen_vl_completion(content)
-        raw = _strip_json_fence(response_text)
-        data = json.loads(raw)
-    except Exception as e:
-        logger.warning("[intent_preview] Qwen batch bbox invoke/parse failed: %s", e)
-        return None
-
-    per = data.get("per_image") if isinstance(data, dict) else None
-    if not isinstance(per, list) or len(per) != n_chunk:
-        logger.warning("[intent_preview] Qwen batch per_image len got %s want %s", len(per) if isinstance(per, list) else None, n_chunk)
-        return None
-
-    out: list[dict[str, str]] = []
-    for slot, a in enumerate(chunk):
-        idx = int(a["image_index"])
-        mc = min(3, max(1, int(a["max_crops"])))
-        row = per[slot]
-        if not isinstance(row, dict):
-            return None
-        try:
-            row_idx = int(row.get("image_index"))
-        except (TypeError, ValueError):
-            return None
-        if row_idx != idx:
-            logger.warning(
-                "[intent_preview] batch slot %s image_index mismatch model=%s expected=%s",
-                slot,
-                row_idx,
-                idx,
-            )
-            return None
-        items = row.get("items")
-        if not isinstance(items, list):
-            return None
-        boxes = _items_to_boxes(items, mc)
-        blob = blobs[idx]
-        uploaded = await crop_boxes_upload(blob, boxes, max_outputs=mc)
-        for u in uploaded:
-            out.append({"url": u, "source_url": urls[idx]})
-    return out
-
-
-async def _execute_intent_assignments_qwen(
+async def _execute_intent_assignments(
     assignments: list[dict[str, Any]],
     urls: list[str],
     intent: str,
 ) -> list[dict[str, str]]:
     """
-    **Slice Grok assignments into Qwen batches of ≤3 distinct photos** (see ``QWEN_VL_MAX_IMAGES_PER_CALL``).
-    Each batch → ``_qwen_batch_bbox_chunk``; on parse mismatch or errors, process that batch with
-    ``_run_single_assignment_crop`` (one image per Qwen call).
+    Run LocateAnything bbox per Grok assignment with bounded concurrency.
+    Each assignment falls back to one-image Qwen3-VL if LocateAnything is unavailable or unusable.
     """
     if not assignments:
         return []
     idx_set = {int(a["image_index"]) for a in assignments}
     blobs: dict[int, bytes] = {}
     for idx in sorted(idx_set):
-        blobs[idx] = downscale_image_bytes_for_qwen_data_uri(
+        blobs[idx] = downscale_image_bytes_for_locateanything(
             await fetch_image_bytes(urls[idx])
         )
 
-    out: list[dict[str, str]] = []
-    i = 0
-    lim = len(assignments)
-    while i < lim:
-        chunk: list[dict[str, Any]] = []
-        seen_idx: set[int] = set()
-        while i < lim and len(chunk) < QWEN_VL_MAX_IMAGES_PER_CALL:
-            a = assignments[i]
-            idx = int(a["image_index"])
-            if idx in seen_idx:
-                break
-            seen_idx.add(idx)
-            chunk.append(a)
-            i += 1
+    sem = asyncio.Semaphore(_locateanything_assignment_concurrency())
 
-        batch = await _qwen_batch_bbox_chunk(chunk, urls, blobs, intent)
-        if batch is not None:
-            out.extend(batch)
+    async def run_one(a: dict[str, Any]) -> list[dict[str, str]]:
+        async with sem:
+            return await _run_single_assignment_crop(a, urls, blobs, intent)
+
+    results = await asyncio.gather(
+        *(run_one(a) for a in assignments),
+        return_exceptions=True,
+    )
+    out: list[dict[str, str]] = []
+    for item in results:
+        if isinstance(item, Exception):
+            logger.warning("[intent_preview] assignment bbox failed: %s", item)
             continue
-        for a in chunk:
-            out.extend(await _run_single_assignment_crop(a, urls, blobs, intent))
+        out.extend(item)
     return out
 
 
@@ -937,7 +1010,7 @@ async def _intent_preview_crops_fallback_multi(
     intent_text: str,
     skip_indices: set[int] | None = None,
 ) -> list[dict[str, str]]:
-    """If planner fails or yields no crops: per-image Qwen with explicit cross-image disambiguation."""
+    """If planner fails or yields no crops: per-image bbox with explicit cross-image disambiguation."""
     out: list[dict[str, str]] = []
     n = len(image_urls)
     base = (intent_text or "").strip()
@@ -958,13 +1031,14 @@ async def _intent_preview_crops_fallback_multi(
             '"bbox_2d":[x0,y0,x1,y1]}]} — bbox 0–1000 scale.\n'
         )
         try:
-            blob = downscale_image_bytes_for_qwen_data_uri(await fetch_image_bytes(s))
-            boxes = await qwen_detect_garment_boxes_for_intent(
+            blob = downscale_image_bytes_for_locateanything(await fetch_image_bytes(s))
+            boxes = await detect_garment_boxes_for_intent(
                 s,
                 base,
                 image_bytes=blob,
                 max_items=2,
                 instruction_override=fb,
+                locate_focus=base,
             )
             if not boxes:
                 continue
@@ -983,7 +1057,8 @@ async def intent_preview_crops(
     """
     Studio chat rail: crop + R2 upload guided by user text.
     Multiple uploads: **Grok 4.1 fast reasoning** plans garment indices + optional ``scene_image_index``,
-    then Qwen bbox per assigned photo only. Second return value is 0-based scene frame index or null.
+    then LocateAnything bbox per assigned photo only (Qwen3-VL fallback). Second return value is
+    0-based scene frame index or null.
     """
     urls = [u.strip() for u in image_urls if isinstance(u, str) and u.strip()]
     if not urls:
@@ -999,8 +1074,8 @@ async def intent_preview_crops(
     if len(urls) == 1:
         src = urls[0]
         try:
-            blob = downscale_image_bytes_for_qwen_data_uri(await fetch_image_bytes(src))
-            boxes = await qwen_detect_garment_boxes_for_intent(
+            blob = downscale_image_bytes_for_locateanything(await fetch_image_bytes(src))
+            boxes = await detect_garment_boxes_for_intent(
                 src, intent, image_bytes=blob, max_items=3
             )
             if not boxes:
@@ -1028,9 +1103,9 @@ async def intent_preview_crops(
         return fb, scene_idx
 
     try:
-        out = await _execute_intent_assignments_qwen(assignments, urls, intent)
+        out = await _execute_intent_assignments(assignments, urls, intent)
     except Exception as e:
-        logger.exception("[intent_preview] Qwen execute plan failed: %s", e)
+        logger.exception("[intent_preview] bbox execute plan failed: %s", e)
         out = []
 
     if not out:

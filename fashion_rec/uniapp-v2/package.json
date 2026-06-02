@@ -25,9 +25,9 @@
     "postinstall": "node scripts/build-supabase-fork.cjs",
     "openapi": "openapi-ts",
     "init-baseFiles": "node ./scripts/create-base-files.js",
-    "predev": "pnpm init-baseFiles",
-    "predev:app": "pnpm init-baseFiles",
-    "predev:mp": "pnpm init-baseFiles",
+    "predev": "pnpm init-baseFiles && node ../scripts/copy-shared.mjs",
+    "predev:app": "pnpm init-baseFiles && node ../scripts/copy-shared.mjs",
+    "predev:mp": "pnpm init-baseFiles && node ../scripts/copy-shared.mjs",
     "uvm": "npx @dcloudio/uvm@latest",
     "uvm-rm": "node ./scripts/postupgrade.js",
     "postuvm": "echo upgrade uni-app success!",
@@ -180,5 +180,10 @@
   },
   "lint-staged": {
     "*": "eslint --fix"
+  },
+  "dependenciesMeta": {
+    "@fashion-rec/shared": {
+      "injected": true
+    }
   }
 }

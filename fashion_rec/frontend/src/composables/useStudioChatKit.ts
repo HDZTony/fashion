@@ -215,7 +215,7 @@ export function useStudioChatKit(
   const streamingText = ref('')
   const isStreaming = ref(false)
   const streamError = ref<string | null>(null)
-  /** Left rail: Qwen intent crops keyed by user message id */
+  /** Left rail: intent crops keyed by user message id */
   const intentCropUrlsByMessageId = ref<Record<string, string[]>>({})
   const intentCropLoading = ref<Record<string, boolean>>({})
   const intentCropFailed = ref<Record<string, boolean>>({})

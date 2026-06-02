@@ -68,3 +68,44 @@ VITE_SUPABASE_KEY=your-anon-key
 ```
 
 未设置时使用 `src/config/api.ts` 和 `src/lib/supabase.ts` 中的默认值。
+
+---
+
+## LocateAnything-3B（GPU bbox 服务）
+
+Studio 意图裁剪的主 bbox 路径，部署在 Tailscale 节点 **`100.73.75.78`**（`desktop-kdsvgm5`）。
+
+- 代码与脚本：仓库根目录 [`locateanything-service/`](../locateanything-service/)
+- 后端对接：`fashion_rec/backend/services/locateanything_client.py`（默认 `LOCATEANYTHING_BASE_URL=http://100.73.75.78:8000`）
+- 流水线说明：[`doc/grok-multimodal-and-qwen-batch.md`](grok-multimodal-and-qwen-batch.md)
+
+**Fly.io 后端**（Tailscale + secrets，一键脚本）：
+
+1. 在 [Tailscale Keys](https://login.tailscale.com/admin/settings/keys) 生成 **Reusable** 密钥（与 `desktop-kdsvgm5` 同一 tailnet）。
+2. 写入 `fashion_rec/backend/.env`：`TS_AUTHKEY=tskey-auth-...`
+3. 安装并登录 Fly CLI 后执行：
+
+```powershell
+cd fashion_rec/backend
+iwr https://fly.io/install.ps1 -useb | iex   # 首次
+fly auth login
+.\setup_locateanything_fly.ps1              # stable: fashion-rec-backend
+.\setup_locateanything_fly.ps1 -V2          # v2: fashion-rec-backend-v2
+fly deploy                                   # 或 fly deploy --config fly.v2.toml
+```
+
+4. 验证 Fly 机器能访问 GPU 服务：
+
+```powershell
+fly ssh console --app fashion-rec-backend -C "curl -s http://100.73.75.78:8000/health"
+```
+
+Docker 镜像内 `scripts/fly-start.sh` 会在有 `TS_AUTHKEY` 时以 userspace 模式启动 Tailscale，再启动 uvicorn。
+
+| Secret | 说明 |
+|--------|------|
+| `TS_AUTHKEY` | Tailscale 入网密钥（必需，否则 Fly 无法访问 100.x） |
+| `TS_HOSTNAME` | 节点名（脚本默认 `fashion-rec-backend` / `-v2` 应用名） |
+| `LOCATEANYTHING_BASE_URL` | `http://100.73.75.78:8000` |
+
+运维与重装步骤见 [`locateanything-service/README.md`](../locateanything-service/README.md)。

@@ -3,4 +3,3 @@ allowBuilds:
   workerd: true
   sharp: true
 nodeLinker: hoisted
-shamefullyHoist: true

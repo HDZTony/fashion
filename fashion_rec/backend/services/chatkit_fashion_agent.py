@@ -45,7 +45,7 @@ should you run the try-on pipeline. If they choose to add items or refine the ou
 
 **Exception:** If they already **explicitly** demand immediate generation only (e.g. 「马上生成试穿图，别问了」), skip the question and run try-on.
 
-**Try-on garment prep (Grok 4.1 Fast per image → Qwen crop → try-on, like showcase tiles):**
+**Try-on garment prep (Grok 4.1 Fast per image → LocateAnything crop with Qwen fallback → try-on, like showcase tiles):**
 Before `generate_virtual_try_on`, when the user has attached garment/reference image(s):
 1. Call **`assess_garment_try_on_sources`** (omit `image_urls_json` to use the latest user message attachments). You get JSON with `urls` and `needs_piece_extraction` (booleans in the same order).
 2. If **any** `needs_piece_extraction` is `true`, call **`extract_isolated_garment_pieces_for_try_on`** with:
