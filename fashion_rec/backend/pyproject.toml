@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Fashion Recommendation Backend API with image recognition and vector search"
 requires-python = ">=3.12"
 dependencies = [
-    "hdz-auth",
+    "hdz-auth @ git+https://github.com/HDZTony/hdz-auth.git@v0.1.1#subdirectory=python",
     "fastapi",
     "uvicorn",
     "python-multipart",
@@ -35,7 +35,4 @@ dev = [
     "pytest>=8.2.0",
     "ruff>=0.5.0",
 ]
-
-[tool.uv.sources]
-hdz-auth = { path = "../../../hdz-auth/python", editable = true }
 

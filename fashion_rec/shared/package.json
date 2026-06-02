@@ -13,10 +13,13 @@
     "./api/client": "./src/api/client.ts"
   },
   "dependencies": {
-    "@hdz/auth": "file:../../../hdz-auth/ts",
     "axios": "^1.16.1"
   },
+  "peerDependencies": {
+    "@hdz/auth": "^0.1.0"
+  },
   "devDependencies": {
+    "@hdz/auth": "github:HDZTony/hdz-auth#2349b84",
     "typescript": "^5.9.3"
   }
 }

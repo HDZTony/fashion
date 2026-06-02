@@ -478,7 +478,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.100.0" },
     { name = "google-auth-httplib2", specifier = ">=0.1.1" },
     { name = "google-auth-oauthlib", specifier = ">=1.1.0" },
-    { name = "hdz-auth", editable = "../../../hdz-auth/python" },
+    { name = "hdz-auth", git = "https://github.com/HDZTony/hdz-auth.git?subdirectory=python&rev=v0.1.1" },
     { name = "httpx" },
     { name = "openai", specifier = ">=1.40" },
     { name = "openai-chatkit", specifier = ">=1.4,<2" },
@@ -652,26 +652,12 @@ wheels = [
 [[package]]
 name = "hdz-auth"
 version = "0.1.0"
-source = { editable = "../../../hdz-auth/python" }
+source = { git = "https://github.com/HDZTony/hdz-auth.git?subdirectory=python&rev=v0.1.1#422b9ab831bd75d7e3ec5084f4cf4f48565bbcf5" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "supabase" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "supabase" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.2.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
 ]
 
 [[package]]
