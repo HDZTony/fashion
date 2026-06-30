@@ -426,6 +426,83 @@ function routeToBlogService(request: Request, blogServiceUrl: string): Request {
   })
 }
 
+const SUPABASE_AUTH_PROXY_PREFIX = '/supabase'
+
+function isSupabaseAuthProxyPath(path: string): boolean {
+  return path.startsWith(`${SUPABASE_AUTH_PROXY_PREFIX}/auth/v1/`)
+}
+
+function routeToSupabaseAuth(request: Request, supabaseUrl: string): Request {
+  const url = new URL(request.url)
+  const supabaseUrlObj = new URL(supabaseUrl)
+
+  let upstreamPath = url.pathname
+  if (upstreamPath.startsWith(SUPABASE_AUTH_PROXY_PREFIX)) {
+    upstreamPath = upstreamPath.substring(SUPABASE_AUTH_PROXY_PREFIX.length)
+    if (!upstreamPath) {
+      upstreamPath = '/'
+    }
+  }
+
+  url.protocol = supabaseUrlObj.protocol
+  url.hostname = supabaseUrlObj.hostname
+  url.port = supabaseUrlObj.port || ''
+  url.pathname = upstreamPath
+
+  const headers = new Headers(request.headers)
+  headers.set('Host', supabaseUrlObj.host)
+  headers.delete('X-Forwarded-Host')
+  headers.delete('X-Forwarded-Proto')
+
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+    redirect: 'manual',
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body != null) {
+    init.body = request.body
+  }
+
+  try {
+    return new Request(url.toString(), init)
+  } catch (e) {
+    console.warn('[Router] routeToSupabaseAuth: could not reuse body', e)
+    return new Request(url.toString(), {
+      method: request.method,
+      headers,
+      redirect: 'manual',
+    })
+  }
+}
+
+async function proxySupabaseAuth(
+  request: Request,
+  env: Env,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const supabaseUrl = env.SUPABASE_URL?.trim()
+  if (!supabaseUrl) {
+    return new Response(JSON.stringify({ error: 'Supabase proxy not configured' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    })
+  }
+
+  const upstreamRequest = routeToSupabaseAuth(request, supabaseUrl)
+  const upstreamResponse = await fetch(upstreamRequest)
+
+  const responseHeaders = new Headers(upstreamResponse.headers)
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    responseHeaders.set(key, value)
+  }
+
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: responseHeaders,
+  })
+}
+
 /**
  * Check if request is an API request
  * 
@@ -570,7 +647,7 @@ export default {
           'Access-Control-Allow-Origin': allowOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers':
-            'Content-Type, Authorization, creem-signature, x-fashion-rec-outfit-context',
+            'Content-Type, Authorization, apikey, x-client-info, x-supabase-api-version, prefer, creem-signature, x-fashion-rec-outfit-context',
           'Access-Control-Max-Age': '86400',
         }
         // Only add credentials header if we're using a specific origin (not wildcard)
@@ -598,6 +675,7 @@ export default {
                                        path.startsWith('/customers/')
       const isBlogServicePath = path.startsWith('/blog')
       const isSeoServicePath = path.startsWith('/seo')
+      const isSupabaseAuthPath = isSupabaseAuthProxyPath(path)
       
       // Handle OPTIONS preflight for all API endpoints
       if (request.method === 'OPTIONS' && (isApiForCors || 
@@ -608,12 +686,27 @@ export default {
           path === '/test-webhook' ||
           isSubscriptionServicePath ||
           isBlogServicePath ||
-          isSeoServicePath)) {
+          isSeoServicePath ||
+          isSupabaseAuthPath)) {
         const origin = request.headers.get('Origin')
         return new Response(null, {
           status: 204,
           headers: getCorsHeaders(origin)
         })
+      }
+
+      if (isSupabaseAuthPath) {
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+
+        if (path.startsWith('/supabase/auth/v1/admin/')) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          })
+        }
+
+        return proxySupabaseAuth(request, env, corsHeaders)
       }
 
       // Handle API endpoint for getting user version

@@ -50,7 +50,9 @@ pnpm run deploy
 需在仓库中配置：
 
 - **Secrets**：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
-- **Variables**：如 `VITE_API_URL`、`VITE_SUBSCRIPTION_API_URL`、`VITE_SUPABASE_URL`、`VITE_SUPABASE_KEY` 等（与 `.github/workflows/deploy.yml` 中 `deploy-frontend` 的 `env` 一致）
+- **Variables**：如 `VITE_API_URL`、`VITE_SUBSCRIPTION_API_URL`、`VITE_SUPABASE_URL`（应为 `https://fashion-rec.com/supabase`）、`VITE_SUPABASE_KEY`、`VITE_GOOGLE_CLIENT_ID` 等（与 `.github/workflows/deploy.yml` 中 `deploy-frontend` 的 `env` 一致）
+
+Supabase Auth 国内代理与 Dashboard 配置详见 [`doc/supabase-auth-proxy.md`](supabase-auth-proxy.md)。
 
 本地未配置 Cloudflare 时，可直接推代码触发上述流水线完成部署。
 
@@ -63,11 +65,12 @@ pnpm run deploy
 ```env
 VITE_API_URL=https://fashion-rec.com
 VITE_SUBSCRIPTION_API_URL=https://your-subscription.workers.dev
-VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_URL=https://fashion-rec.com/supabase
 VITE_SUPABASE_KEY=your-anon-key
+VITE_GOOGLE_CLIENT_ID=your-web-oauth-client-id.apps.googleusercontent.com
 ```
 
-未设置时使用 `src/config/api.ts` 和 `src/lib/supabase.ts` 中的默认值。
+未设置时使用 `src/config/api.ts` 和 `src/lib/supabase.ts` 中的默认值（Supabase URL 默认 `https://fashion-rec.com/supabase`）。
 
 ---
 
@@ -90,8 +93,8 @@ cd fashion_rec/backend
 iwr https://fly.io/install.ps1 -useb | iex   # 首次
 fly auth login
 .\setup_locateanything_fly.ps1              # stable: fashion-rec-backend
-.\setup_locateanything_fly.ps1 -V2          # v2: fashion-rec-backend-v2
-fly deploy                                   # 或 fly deploy --config fly.v2.toml
+fly deploy
+# v2 Fly 应用当前未部署；恢复测试时先 fly apps create fashion-rec-backend-v2，再 setup_locateanything_fly.ps1 -V2 与 fly deploy --config fly.v2.toml
 ```
 
 4. 验证 Fly 机器能访问 GPU 服务：

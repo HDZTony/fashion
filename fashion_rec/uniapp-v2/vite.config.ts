@@ -230,7 +230,7 @@ export default defineConfig(({ command, mode }) => {
     define: {
       __VITE_APP_PROXY__: JSON.stringify(VITE_APP_PROXY_ENABLE),
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
-        VITE_SUPABASE_URL || 'https://eufhccrelpucppognlym.supabase.co',
+        VITE_SUPABASE_URL || 'https://fashion-rec.com/supabase',
       ),
     },
     css: {

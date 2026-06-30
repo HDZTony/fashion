@@ -1,4 +1,5 @@
 # PowerShell script to set up Fly.io secrets for fashion-rec-backend-v2
+# The v2 Fly app is dormant by default; run after: fly apps create fashion-rec-backend-v2
 # This script reads from .env file and sets secrets for the V2 app
 
 $ErrorActionPreference = "Stop"

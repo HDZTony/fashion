@@ -1,10 +1,17 @@
-# PowerShell script to set FAL_KEY for both Fly.io apps
+# PowerShell script to set FAL_KEY for Fly.io backend
 # Run this script from the fashion_rec/backend directory
+
+param(
+    [switch]$IncludeV2
+)
 
 $ErrorActionPreference = "Stop"
 
 $ENV_FILE = ".env"
-$APPS = @("fashion-rec-backend", "fashion-rec-backend-v2")
+$APPS = @("fashion-rec-backend")
+if ($IncludeV2) {
+    $APPS += "fashion-rec-backend-v2"
+}
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Setting FAL_KEY for Fly.io Applications  " -ForegroundColor Cyan
@@ -89,9 +96,11 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  All done!                            " -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Both applications will automatically restart with the new secret." -ForegroundColor Green
+Write-Host "Applications will automatically restart with the new secret." -ForegroundColor Green
 Write-Host ""
 Write-Host "To verify secrets, run:" -ForegroundColor Cyan
 Write-Host "  fly secrets list --app fashion-rec-backend" -ForegroundColor Gray
-Write-Host "  fly secrets list --app fashion-rec-backend-v2" -ForegroundColor Gray
+if ($IncludeV2) {
+    Write-Host "  fly secrets list --app fashion-rec-backend-v2" -ForegroundColor Gray
+}
 Write-Host ""

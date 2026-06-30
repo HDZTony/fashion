@@ -72,7 +72,7 @@ DO UPDATE SET version = 'v2', updated_at = NOW();
 | `STABLE_FRONTEND_HOST` | 稳定版前端域名 | `fashion-rec-frontend.pages.dev` |
 | `V2_FRONTEND_HOST` | V2 版本前端域名 | `v2--fashion-rec-frontend.pages.dev` |
 | `STABLE_BACKEND_URL` | 稳定版后端 URL | `https://fashion-rec-backend.fly.dev` |
-| `V2_BACKEND_URL` | V2 版本后端 URL | `https://fashion-rec-backend-v2.fly.dev` |
+| `V2_BACKEND_URL` | V2 版本后端 URL（v2 Fly 未部署时与 stable 相同） | `https://fashion-rec-backend.fly.dev` |
 
 ## 常见问题
 

@@ -81,10 +81,10 @@ pnpm deploy                 # wrangler deploy (production)
 Single workflow: `.github/workflows/deploy.yml`
 - Triggers on push to `main` or `v2`
 - Path-based change detection per service
-- Backend deploys to Fly.io (stable = `fashion-rec-backend`, v2 = `fashion-rec-backend-v2`)
+- Backend deploys to Fly.io (`fashion-rec-backend` only; v2 Fly app dormant — `fly.v2.toml` kept for future testing)
 - Frontend deploys to Cloudflare Pages
 - Subscription service and router deploy to Cloudflare Workers
-- V2 branch deploys to separate `-v2` app names
+- `v2` branch CI can recreate `fashion-rec-backend-v2` when re-enabling canary backend tests
 - pnpm 11.5.0, Node 24, `--frozen-lockfile`
 
 ## Key Conventions

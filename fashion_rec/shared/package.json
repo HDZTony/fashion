@@ -16,7 +16,8 @@
     "axios": "^1.16.1"
   },
   "peerDependencies": {
-    "@hdz/auth": "^0.1.0"
+    "@hdz/auth": "^0.1.0",
+    "@supabase/supabase-js": "^2"
   },
   "devDependencies": {
     "@hdz/auth": "github:HDZTony/hdz-auth#2349b84",

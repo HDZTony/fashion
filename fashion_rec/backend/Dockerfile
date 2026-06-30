@@ -1,3 +1,6 @@
+# Wormhole iroh-relay sidecar binary (same Machine as FastAPI to save Fly VM cost)
+FROM n0computer/iroh-relay:latest AS iroh_relay
+
 # Multi-stage build to reduce image size
 FROM python:3.12-slim as builder
 
@@ -34,6 +37,9 @@ COPY --from=builder /root/.local /root/.local
 # Copy application code
 COPY . .
 
+COPY --from=iroh_relay /iroh-relay /usr/local/bin/iroh-relay
+COPY config/iroh-relay.toml /etc/wormhole/iroh-relay.toml
+
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
@@ -52,8 +58,8 @@ RUN apt-get update \
 # Verify uvicorn is installed and accessible
 RUN /root/.local/bin/uvicorn --version || python -m uvicorn --version || (echo "ERROR: uvicorn not found" && exit 1)
 
-# Expose port 8000
-EXPOSE 8000
+# FastAPI 8000; Wormhole iroh-relay 3340 (Fly [[services]] maps public 3340)
+EXPOSE 8000 3340 9090
 
 COPY scripts/fly-start.sh /fly-start.sh
 # Strip Windows CRLF so Linux init can exec the shebang (Fly logs: "No such file or directory")

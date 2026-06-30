@@ -1,0 +1,8 @@
+# Wormhole iroh relay (co-located with fashion-rec-backend on Fly).
+# Fly terminates TLS on port 3340; container listens HTTP (--dev).
+
+http_bind_addr = "0.0.0.0:3340"
+enable_quic_addr_discovery = false
+
+[metrics]
+bind_addr = "0.0.0.0:9090"

@@ -6,15 +6,13 @@ import type { User } from '@supabase/auth-js'
 import { createSupabaseAuthClient, uniTokenStorage } from '@hdz/auth'
 import { uniStorage } from './storage'
 
-const DEFAULT_SUPABASE_URL = 'https://eufhccrelpucppognlym.supabase.co'
+const DEFAULT_SUPABASE_URL = 'https://fashion-rec.com/supabase'
 
 function resolveSupabaseUrl(): string {
   const raw = (import.meta.env.VITE_SUPABASE_URL as string)?.trim()
   if (!raw || raw === 'undefined' || raw === 'null')
     return DEFAULT_SUPABASE_URL
-  if (raw.startsWith('https://') && raw.includes('.supabase.co'))
-    return raw.replace(/\/+$/, '')
-  return DEFAULT_SUPABASE_URL
+  return raw.replace(/\/+$/, '')
 }
 
 const SUPABASE_URL = resolveSupabaseUrl()

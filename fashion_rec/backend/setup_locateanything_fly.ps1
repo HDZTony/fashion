@@ -11,7 +11,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if ($V2) { $AppName = "fashion-rec-backend-v2" }
+if ($V2) {
+    $AppName = "fashion-rec-backend-v2"
+    Write-Host "Note: v2 Fly app is dormant by default. Run 'fly apps create fashion-rec-backend-v2' before -V2." -ForegroundColor Yellow
+}
 
 $LOCATE_BASE = "http://100.73.75.78:8000"
 

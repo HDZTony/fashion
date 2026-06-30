@@ -25,6 +25,14 @@ if [ -n "$TS_KEY" ]; then
 else
   echo "[fly-start] TAILSCALE_AUTHKEY not set; skipping Tailscale"
 fi
+
+if [ -x /usr/local/bin/iroh-relay ]; then
+  echo "[fly-start] Starting Wormhole iroh-relay on :3340..."
+  /usr/local/bin/iroh-relay --dev --config-path /etc/wormhole/iroh-relay.toml &
+else
+  echo "[fly-start] WARN: iroh-relay binary missing; Wormhole relay disabled"
+fi
+
 exec python -m uvicorn main:app \
   --host 0.0.0.0 \
   --port 8000 \

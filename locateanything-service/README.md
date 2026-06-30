@@ -13,6 +13,15 @@
 | 端口 | `8000` |
 | 开机任务 | `LocateAnything-3B-Service` |
 
+## 从开发机一键部署（SSH）
+
+```powershell
+# 在仓库根目录
+.\locateanything-service\scripts\deploy-to-kdsvgm5.ps1
+```
+
+Agent 技能（**全局，所有项目可用**）：`%USERPROFILE%\.cursor\skills\locateanything-ssh-deploy\SKILL.md`
+
 ## 运维命令（SSH）
 
 ```powershell

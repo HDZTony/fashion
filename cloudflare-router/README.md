@@ -19,7 +19,7 @@ Cloudflare Worker for routing users to different frontend and backend versions b
         │   └─→ v2 → v2.fashion-rec-frontend.pages.dev
         └─→ API 请求 (/api/*, /items, /outfit, etc.) →
             ├─→ stable → fashion-rec-backend.fly.dev
-            └─→ v2 → fashion-rec-backend-v2.fly.dev
+            └─→ v2 → same as stable (V2_BACKEND_URL aliases fashion-rec-backend.fly.dev until v2 Fly app is re-enabled)
 ```
 
 ## Features
@@ -86,7 +86,7 @@ pnpm exec wrangler secret put V2_BACKEND_URL
 - `STABLE_FRONTEND_HOST`: Stable version frontend hostname (e.g., `fashion-rec-frontend.pages.dev`)
 - `V2_FRONTEND_HOST`: V2 version frontend hostname (e.g., `v2.fashion-rec-frontend.pages.dev`)
 - `STABLE_BACKEND_URL`: Stable version backend URL (e.g., `https://fashion-rec-backend.fly.dev`)
-- `V2_BACKEND_URL`: V2 version backend URL (e.g., `https://fashion-rec-backend-v2.fly.dev`)
+- `V2_BACKEND_URL`: V2 backend URL for canary users. While the v2 Fly app is dormant, set this to the same value as `STABLE_BACKEND_URL`.
 
 ### 3. Setup KV Namespace
 
@@ -135,7 +135,23 @@ pnpm exec wrangler deploy
 - **Stable Frontend**: `fashion-rec-frontend.pages.dev`
 - **V2 Frontend**: `v2.fashion-rec-frontend.pages.dev`
 - **Stable Backend**: `https://fashion-rec-backend.fly.dev`
-- **V2 Backend**: `https://fashion-rec-backend-v2.fly.dev`
+- **V2 Backend (canary)**: aliases stable until `fashion-rec-backend-v2` Fly app is re-deployed
+
+## Supabase Auth Proxy (国内可达)
+
+浏览器 Auth 请求经同域 Worker 转发，不直连 `*.supabase.co`：
+
+- **路径**：`/supabase/auth/v1/*` → `SUPABASE_URL` Auth API
+- **禁止**：`/supabase/auth/v1/admin/*` 返回 403
+- **Google 登录**：Web/H5 使用 GIS + `/api/auth/google-native`，不用 Supabase OAuth 回调
+
+客户端：
+
+```env
+VITE_SUPABASE_URL=https://fashion-rec.com/supabase
+```
+
+Supabase Dashboard 邮件模板与 Redirect URLs 见 [`doc/supabase-auth-proxy.md`](../doc/supabase-auth-proxy.md)。
 
 ## How It Works
 
@@ -215,7 +231,7 @@ Cookie: sb-xxx-auth-token=...
 1. Push code to `v2` branch
 2. Auto-deploys:
    - Frontend → `v2.fashion-rec-frontend.pages.dev` (preview deployment)
-   - Backend → `fashion-rec-backend-v2.fly.dev`
+   - Backend → recreates `fashion-rec-backend-v2` on Fly when the v2 Fly app is re-enabled (currently dormant; API uses stable via Router)
 
 ### Worker
 
@@ -304,7 +320,7 @@ pnpm dev
    STABLE_FRONTEND_HOST=fashion-rec-frontend.pages.dev
    V2_FRONTEND_HOST=v2.fashion-rec-frontend.pages.dev
    STABLE_BACKEND_URL=https://fashion-rec-backend.fly.dev
-   V2_BACKEND_URL=https://fashion-rec-backend-v2.fly.dev
+   V2_BACKEND_URL=https://fashion-rec-backend.fly.dev
    ```
 
 2. Run `pnpm dev` and test with local requests
