@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - v2
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +19,6 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       subscription-service: ${{ steps.filter.outputs.subscription-service }}
       cloudflare-router: ${{ steps.filter.outputs.cloudflare-router }}
-      is_v2_branch: ${{ steps.check_v2.outputs.is_v2_branch }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v2
@@ -37,23 +35,14 @@ jobs:
             cloudflare-router:
               - 'cloudflare-router/**'
           list-files: shell
-      - name: Check if v2 branch
-        id: check_v2
-        run: |
-          if [ "${{ github.ref }}" == "refs/heads/v2" ]; then
-            echo "is_v2_branch=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_v2_branch=false" >> $GITHUB_OUTPUT
-          fi
 
   deploy-backend:
     name: Deploy Backend (Stable)
     needs: changes
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'workflow_dispatch' || 
-       needs.changes.outputs.backend == 'true') &&
-      github.ref != 'refs/heads/v2'
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.backend == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -88,54 +77,13 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-  deploy-backend-v2:
-    name: Deploy Backend (V2)
-    needs: changes
-    runs-on: ubuntu-latest
-    if: |
-      github.ref == 'refs/heads/v2'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Create V2 Fly.io app if not exists
-        run: |
-          flyctl apps create fashion-rec-backend-v2 || true
-        working-directory: ./fashion_rec/backend
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Deploy to V2 backend with retry
-        run: |
-          max_attempts=3
-          attempt=1
-          while [ $attempt -le $max_attempts ]; do
-            echo "Deployment attempt $attempt of $max_attempts"
-            if flyctl deploy --config fly.v2.toml --remote-only; then
-              echo "Deployment successful"
-              exit 0
-            else
-              exit_code=$?
-              if [ $attempt -lt $max_attempts ]; then
-                echo "Deployment failed, waiting 30 seconds before retry..."
-                sleep 30
-              else
-                echo "Deployment failed after $max_attempts attempts"
-                exit $exit_code
-              fi
-            fi
-            attempt=$((attempt + 1))
-          done
-        working-directory: ./fashion_rec/backend
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
   deploy-subscription-service:
     name: Deploy Subscription Service (Stable)
     needs: changes
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'workflow_dispatch' || 
-       needs.changes.outputs.subscription-service == 'true') &&
-      github.ref != 'refs/heads/v2'
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.subscription-service == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Setup pnpm
@@ -159,44 +107,34 @@ jobs:
           fi
           pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/backend/subscription-service
-      - name: Deploy to Cloudflare Workers (Stable)
-        run: pnpm exec wrangler deploy
+      - name: Apply card key database migration
+        run: |
+          if [ -z "$SUPABASE_DATABASE_URL" ]; then
+            echo "SUPABASE_DATABASE_URL secret is required"
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql "$SUPABASE_DATABASE_URL" -f sql/card-keys.sql
+        working-directory: ./fashion_rec/backend/subscription-service
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      - name: Configure card key Worker secrets
+        run: |
+          if [ -z "$ADMIN_API_KEY" ] || [ -z "$CARD_KEY_HASH_SECRET" ]; then
+            echo "ADMIN_API_KEY and CARD_KEY_HASH_SECRET secrets are required"
+            exit 1
+          fi
+          printf "%s" "$ADMIN_API_KEY" | pnpm exec wrangler secret put ADMIN_API_KEY
+          printf "%s" "$CARD_KEY_HASH_SECRET" | pnpm exec wrangler secret put CARD_KEY_HASH_SECRET
         working-directory: ./fashion_rec/backend/subscription-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-  deploy-subscription-service-v2:
-    name: Deploy Subscription Service (V2)
-    needs: changes
-    runs-on: ubuntu-latest
-    if: |
-      github.ref == 'refs/heads/v2'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: fashion_rec/backend/subscription-service/pnpm-lock.yaml
-      - name: Install Dependencies
-        run: |
-          # Clear any proxy settings that might interfere
-          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
-          # Remove proxy/registry overrides from .npmrc so CI uses default registry (no local proxy)
-          if [ -f .npmrc ]; then
-            sed -i.bak '/^proxy=/d; /^http-proxy=/d; /^https-proxy=/d' .npmrc || true
-            sed -i.bak 's|^registry=.*|registry=https://registry.npmjs.org/|' .npmrc || true
-          fi
-          pnpm install --frozen-lockfile
-        working-directory: ./fashion_rec/backend/subscription-service
-      - name: Deploy to Cloudflare Workers (V2)
-        run: pnpm exec wrangler deploy --name fashion-rec-subscription-service-v2
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          CARD_KEY_HASH_SECRET: ${{ secrets.CARD_KEY_HASH_SECRET }}
+      - name: Deploy to Cloudflare Workers (Stable)
+        run: pnpm exec wrangler deploy
         working-directory: ./fashion_rec/backend/subscription-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -263,68 +201,6 @@ jobs:
           projectName: fashion-rec-frontend
           directory: ./fashion_rec/frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
-  deploy-frontend-v2:
-    name: Deploy Frontend (V2)
-    needs: changes
-    runs-on: ubuntu-latest
-    if: |
-      github.ref == 'refs/heads/v2'
-    permissions:
-      contents: read
-      deployments: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: fashion_rec/pnpm-lock.yaml
-      - name: Install Dependencies
-        run: |
-          # Clear any proxy settings that might interfere
-          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy || true
-          # Temporarily remove proxy settings from .npmrc if they exist
-          if [ -f .npmrc ]; then
-            sed -i.bak '/^proxy=/d; /^https-proxy=/d' .npmrc || true
-          fi
-          # Only install frontend and its workspace dependencies (skip uniapp-v2)
-          pnpm install --frozen-lockfile --filter fashion-rec-frontend...
-        working-directory: ./fashion_rec
-      - name: Build
-        run: pnpm build
-        working-directory: ./fashion_rec/frontend
-        env:
-          # Set these in GitHub Repository Settings -> Secrets and Variables -> Variables
-          VITE_API_URL: ${{ vars.VITE_API_URL }} 
-          VITE_SUBSCRIPTION_API_URL: ${{ vars.VITE_SUBSCRIPTION_API_URL }}
-          # 环境切换：false = 生产环境，true = 测试环境
-          VITE_CREEM_TEST_MODE: ${{ vars.VITE_CREEM_TEST_MODE || 'false' }}
-          # Premium ($5) - 30次/月
-          VITE_CREEM_PRODUCT_ID_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_TEST }}
-          VITE_CREEM_PRODUCT_ID_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PROD }}
-          # Premium Plus ($15) - 100次/月
-          VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_TEST }}
-          VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PLUS_PROD }}
-          # Premium Pro ($29.9) - 250次/月
-          VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_TEST }}
-          VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD }}
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
-      - name: Deploy to Cloudflare Pages (V2 Branch)
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: fashion-rec-frontend
-          directory: ./fashion_rec/frontend/dist
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          branch: v2
 
   deploy-cloudflare-router:
     name: Deploy Cloudflare Router

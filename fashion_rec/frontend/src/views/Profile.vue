@@ -38,6 +38,9 @@ const creditsData = ref<Array<{
   credits: number
   currency: string
 }>>([])
+const cardKeyCode = ref('')
+const isRedeemingCardKey = ref(false)
+const cardKeyMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 // SEO-related state
 const isConnected = ref(false)
@@ -319,6 +322,55 @@ const purchaseCredits = async (creditProductId: string) => {
     error.value = e?.response?.data?.error || e?.message || 'Failed to purchase credits'
   } finally {
     isLoading.value = false
+  }
+}
+
+const getCardKeyErrorMessage = (e: any) => {
+  const code = e?.response?.data?.code || e?.response?.data?.error
+  const fallback = e?.response?.data?.message || e?.message || t('profile.cardKeyRedeemFailed')
+  const messageMap: Record<string, string> = {
+    invalid_format: t('profile.cardKeyInvalidFormat'),
+    invalid_card_key: t('profile.cardKeyInvalid'),
+    already_redeemed: t('profile.cardKeyAlreadyRedeemed'),
+    expired_card_key: t('profile.cardKeyExpired'),
+    disabled_card_key: t('profile.cardKeyDisabled'),
+    card_key_not_active: t('profile.cardKeyNotActive'),
+    auth_required: t('profile.cardKeyAuthRequired'),
+  }
+  return messageMap[code] || fallback
+}
+
+const redeemCardKey = async () => {
+  const code = cardKeyCode.value.trim()
+  cardKeyMessage.value = null
+
+  if (!code) {
+    cardKeyMessage.value = {
+      type: 'error',
+      text: t('profile.cardKeyRequired'),
+    }
+    return
+  }
+
+  try {
+    isRedeemingCardKey.value = true
+    error.value = null
+    const response = await subscriptionClient.post('/card-keys/redeem', { code })
+    const creditsAdded = Number(response.data?.creditsAdded || 0)
+    cardKeyCode.value = ''
+    await loadUserInfo()
+    cardKeyMessage.value = {
+      type: 'success',
+      text: t('profile.cardKeyRedeemSuccess', { credits: creditsAdded }),
+    }
+  } catch (e: any) {
+    console.error('Failed to redeem card key', e)
+    cardKeyMessage.value = {
+      type: 'error',
+      text: getCardKeyErrorMessage(e),
+    }
+  } finally {
+    isRedeemingCardKey.value = false
   }
 }
 
@@ -645,6 +697,33 @@ onMounted(async () => {
           <div class="flex items-center justify-between">
             <h3 class="text-xl font-semibold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{{ $t('profile.credits') }}</h3>
             <span class="text-sm text-pink-600 font-medium">{{ $t('profile.oneTimePurchase') }}</span>
+          </div>
+          <div class="rounded-xl border border-pink-200 bg-pink-50/60 p-4 space-y-3">
+            <div class="flex flex-col gap-3 sm:flex-row">
+              <input
+                v-model="cardKeyCode"
+                type="text"
+                class="flex-1 px-4 py-2 border border-pink-200 rounded-lg bg-white focus:ring-2 focus:ring-pink-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-60"
+                :placeholder="$t('profile.cardKeyPlaceholder')"
+                :disabled="isRedeemingCardKey"
+                autocomplete="off"
+                @keyup.enter="redeemCardKey"
+              />
+              <Button
+                class="sm:w-32 bg-gray-900 hover:bg-gray-800 text-white"
+                :disabled="isRedeemingCardKey || isLoading"
+                @click="redeemCardKey"
+              >
+                {{ isRedeemingCardKey ? $t('profile.processing') : $t('profile.redeemCardKey') }}
+              </Button>
+            </div>
+            <p
+              v-if="cardKeyMessage"
+              class="text-sm font-medium"
+              :class="cardKeyMessage.type === 'success' ? 'text-green-700' : 'text-red-600'"
+            >
+              {{ cardKeyMessage.text }}
+            </p>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
             <div
