@@ -565,6 +565,18 @@
     "creditsNeverExpire": "One-time purchase, credits never expire",
     "purchase": "Purchase",
     "processing": "Processing...",
+    "redeemCardKey": "Redeem code",
+    "cardKeyPlaceholder": "Enter card key",
+    "cardKeyRequired": "Please enter a card key.",
+    "cardKeyRedeemSuccess": "Redeemed successfully. Added {credits} credits.",
+    "cardKeyRedeemFailed": "Failed to redeem card key.",
+    "cardKeyInvalidFormat": "Invalid card key format. Use letters and digits only.",
+    "cardKeyInvalid": "Card key does not exist or is invalid.",
+    "cardKeyAlreadyRedeemed": "This card key has already been redeemed.",
+    "cardKeyExpired": "This card key has expired.",
+    "cardKeyDisabled": "This card key is disabled.",
+    "cardKeyNotActive": "This card key is not active yet.",
+    "cardKeyAuthRequired": "Please sign in before redeeming a card key.",
     "subscriptionUpdated": "Subscription updated successfully!"
   },
   "seo": {

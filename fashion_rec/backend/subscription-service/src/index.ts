@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { createCreem } from 'creem_io';
 import { createClient } from '@supabase/supabase-js';
 import { SubscriptionService } from './subscription-service';
+import { CardKeyError, CardKeyService } from './card-key-service';
 import { getPlanTypeFromProductId, PlanType, PRODUCT_ID_TO_PLAN_TYPE } from './plan-config';
 
 // Define environment variables interface for Cloudflare Workers
@@ -15,6 +16,8 @@ interface Env {
   CREEM_PROD_API_KEY?: string;
   CREEM_TEST_WEBHOOK_SECRET?: string;
   CREEM_PROD_WEBHOOK_SECRET?: string;
+  ADMIN_API_KEY?: string;
+  CARD_KEY_HASH_SECRET?: string;
   NODE_ENV?: string;
 }
 
@@ -79,6 +82,72 @@ function getServices(c: { env: Env }) {
       throw new Error(`Invalid SUPABASE_URL: "${SUPABASE_URL}". Error: ${error.message}. Please check your SUPABASE_URL secret value in Cloudflare Workers.`);
     }
     throw error;
+  }
+}
+
+function getCardKeyServices(c: { env: Env }) {
+  const SUPABASE_URL = c.env.SUPABASE_URL?.trim();
+  const SUPABASE_KEY = c.env.SUPABASE_KEY?.trim();
+  const CARD_KEY_HASH_SECRET = c.env.CARD_KEY_HASH_SECRET?.trim();
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('SUPABASE_URL and SUPABASE_KEY must be set');
+  }
+  if (!CARD_KEY_HASH_SECRET) {
+    throw new Error('CARD_KEY_HASH_SECRET must be set');
+  }
+
+  const subscriptionService = new SubscriptionService(SUPABASE_URL, SUPABASE_KEY);
+  const cardKeyService = new CardKeyService(
+    SUPABASE_URL,
+    SUPABASE_KEY,
+    CARD_KEY_HASH_SECRET,
+    subscriptionService
+  );
+  return { subscriptionService, cardKeyService };
+}
+
+function requireAdmin(c: { env: Env; req: any }) {
+  const expected = c.env.ADMIN_API_KEY?.trim();
+  const provided = c.req.header('X-Admin-Key') || c.req.header('x-admin-key');
+  if (!expected) {
+    throw new CardKeyError('admin_key_not_configured', 'ADMIN_API_KEY is not configured', 500);
+  }
+  if (!provided || provided !== expected) {
+    throw new CardKeyError('admin_forbidden', 'Invalid admin key', 403);
+  }
+}
+
+function cardKeyErrorResponse(c: any, error: any) {
+  if (error instanceof CardKeyError) {
+    return c.json(
+      {
+        error: error.code,
+        code: error.code,
+        message: error.message,
+      },
+      error.status
+    );
+  }
+  console.error('Card key endpoint error:', error);
+  return c.json(
+    {
+      error: 'card_key_request_failed',
+      message: error.message || 'Unknown error',
+    },
+    500
+  );
+}
+
+async function resolveProductName(c: { env: Env }, productId: string, fallback?: string | null) {
+  if (fallback) return fallback;
+  try {
+    const { creem } = getServices(c);
+    const product = await creem.products.get({ productId });
+    return product?.name || null;
+  } catch (error: any) {
+    console.warn(`Could not resolve product name for card key product ${productId}:`, error.message);
+    return null;
   }
 }
 
@@ -243,7 +312,7 @@ app.use(
   cors({
     origin: '*',
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowHeaders: ['Content-Type', 'Authorization', 'creem-signature'],
+    allowHeaders: ['Content-Type', 'Authorization', 'creem-signature', 'X-Admin-Key'],
   })
 );
 
@@ -403,6 +472,177 @@ app.get('/credits', async (c) => {
       },
       500
     );
+  }
+});
+
+// ==================== Card Key Routes ====================
+
+/**
+ * POST /card-keys/redeem
+ * 用户兑换卡密并增加 credits
+ */
+app.post('/card-keys/redeem', async (c) => {
+  try {
+    const user = await getUserFromToken(c);
+    if (!user?.id) {
+      throw new CardKeyError('auth_required', 'Authentication required', 401);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const code = body.code;
+    if (!code || typeof code !== 'string') {
+      throw new CardKeyError('invalid_format', 'Card key is required', 400);
+    }
+
+    const { cardKeyService } = getCardKeyServices(c);
+    const result = await cardKeyService.redeemCardKey(user.id, code);
+
+    return c.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    return cardKeyErrorResponse(c, error);
+  }
+});
+
+/**
+ * POST /admin/card-key-batches/generate
+ * 管理员按商品生成卡密
+ */
+app.post('/admin/card-key-batches/generate', async (c) => {
+  try {
+    requireAdmin(c);
+    const body = await c.req.json().catch(() => ({}));
+    const productName = await resolveProductName(c, body.productId, body.productName);
+    const { cardKeyService } = getCardKeyServices(c);
+
+    const result = await cardKeyService.generateCardKeys({
+      productId: body.productId,
+      productName,
+      count: body.count,
+      credits: body.credits,
+      faceValueCents: body.faceValueCents,
+      currency: body.currency,
+      validFrom: body.validFrom,
+      expiresAt: body.expiresAt,
+      codeLength: body.codeLength,
+    });
+
+    return c.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    return cardKeyErrorResponse(c, error);
+  }
+});
+
+/**
+ * POST /admin/card-key-batches/import
+ * 管理员按商品导入 TXT 内容，一行一个卡密
+ */
+app.post('/admin/card-key-batches/import', async (c) => {
+  try {
+    requireAdmin(c);
+    const body = await c.req.json().catch(() => ({}));
+    const productName = await resolveProductName(c, body.productId, body.productName);
+    const { cardKeyService } = getCardKeyServices(c);
+
+    const result = await cardKeyService.importCardKeys({
+      productId: body.productId,
+      productName,
+      text: body.text,
+      credits: body.credits,
+      faceValueCents: body.faceValueCents,
+      currency: body.currency,
+      validFrom: body.validFrom,
+      expiresAt: body.expiresAt,
+    });
+
+    return c.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    return cardKeyErrorResponse(c, error);
+  }
+});
+
+/**
+ * GET /admin/card-key-batches
+ * 管理员查询卡密批次
+ */
+app.get('/admin/card-key-batches', async (c) => {
+  try {
+    requireAdmin(c);
+    const productId = c.req.query('productId');
+
+    const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+    let batchQuery = supabase
+      .from('card_key_batches')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (productId) {
+      batchQuery = batchQuery.eq('product_id', productId);
+    }
+
+    const { data, error } = await batchQuery;
+    if (error) {
+      throw new CardKeyError('batch_lookup_failed', error.message, 500);
+    }
+
+    return c.json({ success: true, batches: data || [] });
+  } catch (error: any) {
+    return cardKeyErrorResponse(c, error);
+  }
+});
+
+/**
+ * GET /admin/card-key-batches/:batchId/keys
+ * 管理员查询批次下卡密状态，只返回尾号，不返回明文
+ */
+app.get('/admin/card-key-batches/:batchId/keys', async (c) => {
+  try {
+    requireAdmin(c);
+    const batchId = c.req.param('batchId');
+    if (!batchId) {
+      throw new CardKeyError('batch_id_required', 'batchId is required', 400);
+    }
+
+    const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+    const { data, error } = await supabase
+      .from('card_keys')
+      .select('id,batch_id,product_id,credits,face_value_cents,currency,code_last4,status,valid_from,expires_at,redeemed_by_user_id,redeemed_at,created_at')
+      .eq('batch_id', batchId)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      throw new CardKeyError('card_key_lookup_failed', error.message, 500);
+    }
+
+    return c.json({
+      success: true,
+      keys: (data || []).map((key: any) => ({
+        ...key,
+        maskedCode: `****${key.code_last4}`,
+      })),
+    });
+  } catch (error: any) {
+    return cardKeyErrorResponse(c, error);
   }
 });
 

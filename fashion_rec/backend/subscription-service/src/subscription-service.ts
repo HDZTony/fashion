@@ -516,7 +516,7 @@ export class SubscriptionService {
    * @param userId 用户ID
    * @param additionalTries 要增加的次数
    */
-  async addTries(userId: string, additionalTries: number): Promise<void> {
+  async addTries(userId: string, additionalTries: number): Promise<number> {
     try {
       console.log(`➕ Adding ${additionalTries} tries for user: ${userId}`);
       
@@ -541,7 +541,7 @@ export class SubscriptionService {
         const now = new Date().toISOString();
         const today = this.getTodayDateString();
 
-        await this.table.insert({
+        const { error: insertError } = await this.table.insert({
           user_id: userId,
           plan: 'member',
           status: 'active',
@@ -552,17 +552,24 @@ export class SubscriptionService {
           created_at: now,
           updated_at: now,
         });
+        if (insertError) {
+          throw insertError;
+        }
       } else {
         // 更新现有记录
-        await this.table
+        const { error: updateError } = await this.table
           .update({
             credits: newRemaining,
             updated_at: new Date().toISOString(),
           })
           .eq('user_id', userId);
+        if (updateError) {
+          throw updateError;
+        }
       }
 
       console.log(`✅ Successfully added ${additionalTries} credits for user: ${userId}, new total: ${newRemaining}`);
+      return newRemaining;
     } catch (error: any) {
       console.error('❌ Error adding tries:', error);
       throw error;

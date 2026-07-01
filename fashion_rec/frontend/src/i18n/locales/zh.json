@@ -547,6 +547,18 @@
     "creditsNeverExpire": "一次性购买，积分永不过期",
     "purchase": "购买",
     "processing": "处理中...",
+    "redeemCardKey": "兑换卡密",
+    "cardKeyPlaceholder": "输入卡密",
+    "cardKeyRequired": "请输入卡密。",
+    "cardKeyRedeemSuccess": "兑换成功，已增加 {credits} 积分。",
+    "cardKeyRedeemFailed": "卡密兑换失败。",
+    "cardKeyInvalidFormat": "卡密格式错误，只能包含数字和字母。",
+    "cardKeyInvalid": "卡密不存在或无效。",
+    "cardKeyAlreadyRedeemed": "该卡密已被兑换。",
+    "cardKeyExpired": "该卡密已过期。",
+    "cardKeyDisabled": "该卡密已停用。",
+    "cardKeyNotActive": "该卡密尚未生效。",
+    "cardKeyAuthRequired": "请先登录后再兑换卡密。",
     "subscriptionUpdated": "订阅更新成功！"
   },
   "seo": {

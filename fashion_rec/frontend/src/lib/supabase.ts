@@ -6,9 +6,18 @@ const supabaseKey =
   import.meta.env.VITE_SUPABASE_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1ZmhjY3JlbHB1Y3Bwb2dubHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMzU4NjQsImV4cCI6MjA3OTYxMTg2NH0.9xB3Peua7MeaRGYPsSrmHYbpWpQmyqpJSSNqyGjqdIo'
 
+const ssrStorage: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+}
+
 export const supabase = createSupabaseAuthClient({
   url: supabaseUrl,
   anonKey: supabaseKey,
-  storage: typeof window !== 'undefined' ? window.localStorage : ({} as Storage),
+  storage: typeof window !== 'undefined' ? window.localStorage : ssrStorage,
   detectSessionInUrl: typeof window !== 'undefined',
 })

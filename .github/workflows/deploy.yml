@@ -159,6 +159,32 @@ jobs:
           fi
           pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/backend/subscription-service
+      - name: Apply card key database migration
+        run: |
+          if [ -z "$SUPABASE_DATABASE_URL" ]; then
+            echo "SUPABASE_DATABASE_URL secret is required"
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql "$SUPABASE_DATABASE_URL" -f sql/card-keys.sql
+        working-directory: ./fashion_rec/backend/subscription-service
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      - name: Configure card key Worker secrets
+        run: |
+          if [ -z "$ADMIN_API_KEY" ] || [ -z "$CARD_KEY_HASH_SECRET" ]; then
+            echo "ADMIN_API_KEY and CARD_KEY_HASH_SECRET secrets are required"
+            exit 1
+          fi
+          printf "%s" "$ADMIN_API_KEY" | pnpm exec wrangler secret put ADMIN_API_KEY
+          printf "%s" "$CARD_KEY_HASH_SECRET" | pnpm exec wrangler secret put CARD_KEY_HASH_SECRET
+        working-directory: ./fashion_rec/backend/subscription-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          CARD_KEY_HASH_SECRET: ${{ secrets.CARD_KEY_HASH_SECRET }}
       - name: Deploy to Cloudflare Workers (Stable)
         run: pnpm exec wrangler deploy
         working-directory: ./fashion_rec/backend/subscription-service
@@ -195,6 +221,32 @@ jobs:
           fi
           pnpm install --frozen-lockfile
         working-directory: ./fashion_rec/backend/subscription-service
+      - name: Apply card key database migration
+        run: |
+          if [ -z "$SUPABASE_DATABASE_URL" ]; then
+            echo "SUPABASE_DATABASE_URL secret is required"
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql "$SUPABASE_DATABASE_URL" -f sql/card-keys.sql
+        working-directory: ./fashion_rec/backend/subscription-service
+        env:
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      - name: Configure card key Worker secrets
+        run: |
+          if [ -z "$ADMIN_API_KEY" ] || [ -z "$CARD_KEY_HASH_SECRET" ]; then
+            echo "ADMIN_API_KEY and CARD_KEY_HASH_SECRET secrets are required"
+            exit 1
+          fi
+          printf "%s" "$ADMIN_API_KEY" | pnpm exec wrangler secret put ADMIN_API_KEY --name fashion-rec-subscription-service-v2
+          printf "%s" "$CARD_KEY_HASH_SECRET" | pnpm exec wrangler secret put CARD_KEY_HASH_SECRET --name fashion-rec-subscription-service-v2
+        working-directory: ./fashion_rec/backend/subscription-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          CARD_KEY_HASH_SECRET: ${{ secrets.CARD_KEY_HASH_SECRET }}
       - name: Deploy to Cloudflare Workers (V2)
         run: pnpm exec wrangler deploy --name fashion-rec-subscription-service-v2
         working-directory: ./fashion_rec/backend/subscription-service
