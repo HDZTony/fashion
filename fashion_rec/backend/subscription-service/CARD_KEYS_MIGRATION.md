@@ -111,6 +111,24 @@ curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/admi
 
 不再支持把商城 TXT 反向导入 Worker；`POST /admin/card-key-batches/import` 已禁用。
 
+### 命令行生成 TXT
+
+在 `fashion_rec/backend/subscription-service` 目录运行：
+cd D:\source_code\fashion\fashion_rec\backend\subscription-service
+```powershell
+pnpm card-keys:txt
+```
+
+程序会依次提示输入卡密数量、金额、积分，并生成一份一行一个卡密的 TXT。金额按元/美元输入，例如 `9.99` 会保存为 `999` cents。
+
+也可以一次性传参：
+
+```powershell
+pnpm card-keys:txt -- --count 100 --amount 9.99 --credits 100 --out card-keys.txt
+```
+
+默认会从 `.dev.vars` 读取 `ADMIN_API_KEY`，并调用 stable Worker 的 `/admin/card-key-batches/generate-txt`，确保生成的卡密能被 Worker 验证。
+
 ## 用户兑换接口
 
 ```bash
