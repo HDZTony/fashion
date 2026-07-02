@@ -10,7 +10,7 @@ const MAX_CODE_LENGTH = 64;
 const MAX_GENERATE_COUNT = 5000;
 
 type CardKeyStatus = 'available' | 'redeemed' | 'disabled' | 'expired';
-type CardKeySource = 'generated' | 'txt_import';
+type CardKeySource = 'generated';
 
 interface CardKeyRecord {
   id: string;
@@ -38,23 +38,6 @@ export interface GenerateCardKeysInput {
   codeLength?: number;
 }
 
-export interface ImportCardKeysInput {
-  productId: string;
-  productName?: string | null;
-  text: string;
-  credits: number;
-  faceValueCents?: number | null;
-  currency?: string | null;
-  validFrom?: string | null;
-  expiresAt?: string | null;
-}
-
-export interface ImportedInvalidLine {
-  line: number;
-  code: string;
-  reason: string;
-}
-
 export interface CardKeyBatchResult {
   batchId: string;
   productId: string;
@@ -69,12 +52,6 @@ export interface CardKeyBatchResult {
 export interface GeneratedCardKeysResult extends CardKeyBatchResult {
   count: number;
   codes: string[];
-}
-
-export interface ImportedCardKeysResult extends CardKeyBatchResult {
-  inserted: number;
-  duplicates: number;
-  invalidLines: ImportedInvalidLine[];
 }
 
 export interface RedeemCardKeyResult {
@@ -150,46 +127,6 @@ export class CardKeyService {
       ...batch,
       count,
       codes: [...codes],
-    };
-  }
-
-  async importCardKeys(input: ImportCardKeysInput): Promise<ImportedCardKeysResult> {
-    const normalized = this.validateBatchInput(input);
-    const parsed = this.parseImportText(input.text);
-    if (parsed.validCodes.length === 0) {
-      throw new CardKeyError('no_valid_card_keys', 'No valid card keys found in import text', 400);
-    }
-
-    const hashedCodes = await Promise.all(
-      parsed.validCodes.map(async (code) => ({
-        code,
-        codeHash: await this.hashCardKey(code),
-      }))
-    );
-    const existingHashes = await this.findExistingHashes(hashedCodes.map((item) => item.codeHash));
-    const insertable = hashedCodes.filter((item) => !existingHashes.has(item.codeHash));
-
-    const batch = await this.createBatch({
-      ...normalized,
-      source: 'txt_import',
-      totalCount: insertable.length,
-    });
-
-    if (insertable.length > 0) {
-      const rows = insertable.map((item) =>
-        this.toCardKeyInsertRowFromHash(item.code, item.codeHash, batch.batchId, normalized)
-      );
-      const { error } = await this.client.from(CARD_KEYS_TABLE).insert(rows);
-      if (error) {
-        throw new CardKeyError('card_key_insert_failed', error.message, 500);
-      }
-    }
-
-    return {
-      ...batch,
-      inserted: insertable.length,
-      duplicates: parsed.duplicates + existingHashes.size,
-      invalidLines: parsed.invalidLines,
     };
   }
 
@@ -388,15 +325,6 @@ export class CardKeyService {
     batchId: string,
     input: ReturnType<CardKeyService['validateBatchInput']>
   ) {
-    return this.toCardKeyInsertRowFromHash(code, await this.hashCardKey(code), batchId, input);
-  }
-
-  private toCardKeyInsertRowFromHash(
-    code: string,
-    codeHash: string,
-    batchId: string,
-    input: ReturnType<CardKeyService['validateBatchInput']>
-  ) {
     const now = new Date().toISOString();
     return {
       batch_id: batchId,
@@ -404,7 +332,7 @@ export class CardKeyService {
       credits: input.credits,
       face_value_cents: input.faceValueCents,
       currency: input.currency,
-      code_hash: codeHash,
+      code_hash: await this.hashCardKey(code),
       code_last4: code.slice(-4),
       status: 'available',
       valid_from: input.validFrom,
@@ -412,61 +340,6 @@ export class CardKeyService {
       created_at: now,
       updated_at: now,
     };
-  }
-
-  private parseImportText(text: string) {
-    if (typeof text !== 'string' || text.trim().length === 0) {
-      throw new CardKeyError('import_text_required', 'text is required', 400);
-    }
-
-    const seen = new Set<string>();
-    const validCodes: string[] = [];
-    const invalidLines: ImportedInvalidLine[] = [];
-    let duplicates = 0;
-
-    text.split(/\r?\n/).forEach((line, index) => {
-      const raw = line.trim();
-      if (!raw) return;
-
-      const code = this.normalizeCode(raw);
-      if (!this.isValidCode(code)) {
-        invalidLines.push({
-          line: index + 1,
-          code: raw,
-          reason: `Only ${MIN_CODE_LENGTH}-${MAX_CODE_LENGTH} uppercase letters and digits are allowed`,
-        });
-        return;
-      }
-
-      if (seen.has(code)) {
-        duplicates += 1;
-        return;
-      }
-
-      seen.add(code);
-      validCodes.push(code);
-    });
-
-    return { validCodes, invalidLines, duplicates };
-  }
-
-  private async findExistingHashes(codeHashes: string[]): Promise<Set<string>> {
-    const existing = new Set<string>();
-    const chunkSize = 500;
-    for (let i = 0; i < codeHashes.length; i += chunkSize) {
-      const chunk = codeHashes.slice(i, i + chunkSize);
-      const { data, error } = await this.client
-        .from(CARD_KEYS_TABLE)
-        .select('code_hash')
-        .in('code_hash', chunk);
-      if (error) {
-        throw new CardKeyError('card_key_lookup_failed', error.message, 500);
-      }
-      for (const row of data || []) {
-        existing.add(row.code_hash);
-      }
-    }
-    return existing;
   }
 
   private assertRedeemable(record: CardKeyRecord): void {

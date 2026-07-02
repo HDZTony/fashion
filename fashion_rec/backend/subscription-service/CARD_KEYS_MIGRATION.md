@@ -73,7 +73,7 @@ X-Admin-Key: <ADMIN_API_KEY>
 ### 生成卡密
 
 ```bash
-curl -X POST https://fashion-rec.com/admin/card-key-batches/generate \
+curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/admin/card-key-batches/generate \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_API_KEY" \
   -d '{
@@ -88,27 +88,33 @@ curl -X POST https://fashion-rec.com/admin/card-key-batches/generate \
 
 响应中的 `codes` 是明文卡密，只返回一次。数据库只保存 hash 和尾号。
 
-### TXT 批量导入
+### 直接生成 TXT
 
-TXT 内容一行一个卡密，只能包含数字和字母。
+Worker 可以直接生成 TXT 文件，导入商城系统使用。TXT 内容只包含卡密本身，一行一个；金额、credits、有效期保存在 Worker 数据库中，用户兑换时通过 hash 验证出来。
 
 ```bash
-curl -X POST https://fashion-rec.com/admin/card-key-batches/import \
+curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/admin/card-key-batches/generate-txt \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_API_KEY" \
+  -o card-keys.txt \
   -d '{
     "productId": "prod_xxx",
+    "productName": "Product name",
+    "count": 100,
     "credits": 100,
     "faceValueCents": 999,
     "currency": "USD",
-    "text": "ABCD1234EFGH5678\nZXCV1234QWER5678"
+    "expiresAt": "2027-01-01T00:00:00Z",
+    "codeLength": 20
   }'
 ```
+
+不再支持把商城 TXT 反向导入 Worker；`POST /admin/card-key-batches/import` 已禁用。
 
 ## 用户兑换接口
 
 ```bash
-curl -X POST https://fashion-rec.com/card-keys/redeem \
+curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/card-keys/redeem \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <supabase-jwt>" \
   -d '{ "code": "ABCD1234EFGH5678" }'

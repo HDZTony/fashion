@@ -539,31 +539,37 @@ app.post('/admin/card-key-batches/generate', async (c) => {
 });
 
 /**
- * POST /admin/card-key-batches/import
- * 管理员按商品导入 TXT 内容，一行一个卡密
+ * POST /admin/card-key-batches/generate-txt
+ * 管理员按商品生成卡密并直接下载 TXT，一行一个卡密
  */
-app.post('/admin/card-key-batches/import', async (c) => {
+app.post('/admin/card-key-batches/generate-txt', async (c) => {
   try {
     requireAdmin(c);
     const body = await c.req.json().catch(() => ({}));
     const productName = await resolveProductName(c, body.productId, body.productName);
     const { cardKeyService } = getCardKeyServices(c);
 
-    const result = await cardKeyService.importCardKeys({
+    const result = await cardKeyService.generateCardKeys({
       productId: body.productId,
       productName,
-      text: body.text,
+      count: body.count,
       credits: body.credits,
       faceValueCents: body.faceValueCents,
       currency: body.currency,
       validFrom: body.validFrom,
       expiresAt: body.expiresAt,
+      codeLength: body.codeLength,
     });
 
-    return c.json({
-      success: true,
-      ...result,
-    });
+    const safeProductId = result.productId.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 80) || 'card-keys';
+    const filename = `card-keys-${safeProductId}-${result.batchId}.txt`;
+
+    c.header('Content-Type', 'text/plain; charset=utf-8');
+    c.header('Content-Disposition', `attachment; filename="${filename}"`);
+    c.header('X-Card-Key-Batch-Id', result.batchId);
+    c.header('X-Card-Key-Count', String(result.count));
+
+    return c.text(`${result.codes.join('\n')}\n`);
   } catch (error: any) {
     return cardKeyErrorResponse(c, error);
   }
