@@ -7,9 +7,11 @@
 ```env
 ADMIN_API_KEY=replace-with-a-long-random-admin-key
 CARD_KEY_HASH_SECRET=replace-with-a-long-random-hash-secret
+SUBSCRIPTION_SERVICE_INTERNAL_KEY=replace-with-a-shared-internal-key
 ```
 
 `SUPABASE_KEY` 需要具备写入 `card_key_batches`、`card_keys`、`user_subscriptions` 的权限。
+`SUBSCRIPTION_SERVICE_INTERNAL_KEY` 需要和 Wormhole `control-plane-worker` 上配置的同名密钥一致。
 
 ## Supabase SQL
 
@@ -73,7 +75,7 @@ X-Admin-Key: <ADMIN_API_KEY>
 ### 生成卡密
 
 ```bash
-curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/admin/card-key-batches/generate \
+curl -X POST https://subscription.hdz73.com/admin/card-key-batches/generate \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_API_KEY" \
   -d '{
@@ -93,7 +95,7 @@ curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/admi
 Worker 可以直接生成 TXT 文件，导入商城系统使用。TXT 内容只包含卡密本身，一行一个；金额、credits、有效期保存在 Worker 数据库中，用户兑换时通过 hash 验证出来。
 
 ```bash
-curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/admin/card-key-batches/generate-txt \
+curl -X POST https://subscription.hdz73.com/admin/card-key-batches/generate-txt \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_API_KEY" \
   -o card-keys.txt \
@@ -132,7 +134,7 @@ pnpm card-keys:txt -- --count 100 --amount 9.99 --credits 100 --out card-keys.tx
 ## 用户兑换接口
 
 ```bash
-curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/card-keys/redeem \
+curl -X POST https://subscription.hdz73.com/card-keys/redeem \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <supabase-jwt>" \
   -d '{ "code": "ABCD1234EFGH5678" }'
@@ -147,6 +149,34 @@ curl -X POST https://fashion-rec-subscription-service.954504788.workers.dev/card
   "credits": 300,
   "productId": "prod_xxx",
   "batchId": "...",
+  "redeemedAt": "2026-07-01T00:00:00.000Z"
+}
+```
+
+## Wormhole 内部兑换接口
+
+Wormhole `control-plane-worker` 使用该接口验证并占用卡密，然后把积分写入 Wormhole 自己的用户积分账本。此接口不会写入 `user_subscriptions.credits`。
+
+```bash
+curl -X POST https://subscription.hdz73.com/internal/card-keys/redeem-for-wormhole \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Key: $SUBSCRIPTION_SERVICE_INTERNAL_KEY" \
+  -d '{
+    "userId": "supabase-user-id",
+    "code": "ABCD1234EFGH5678",
+    "idempotencyKey": "optional-client-or-control-plane-key"
+  }'
+```
+
+成功响应：
+
+```json
+{
+  "success": true,
+  "creditsAdded": 100,
+  "productId": "prod_xxx",
+  "batchId": "...",
+  "cardKeyId": "...",
   "redeemedAt": "2026-07-01T00:00:00.000Z"
 }
 ```

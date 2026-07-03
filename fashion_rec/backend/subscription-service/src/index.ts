@@ -18,6 +18,7 @@ interface Env {
   CREEM_PROD_WEBHOOK_SECRET?: string;
   ADMIN_API_KEY?: string;
   CARD_KEY_HASH_SECRET?: string;
+  SUBSCRIPTION_SERVICE_INTERNAL_KEY?: string;
   NODE_ENV?: string;
 }
 
@@ -115,6 +116,21 @@ function requireAdmin(c: { env: Env; req: any }) {
   }
   if (!provided || provided !== expected) {
     throw new CardKeyError('admin_forbidden', 'Invalid admin key', 403);
+  }
+}
+
+function requireInternal(c: { env: Env; req: any }) {
+  const expected = c.env.SUBSCRIPTION_SERVICE_INTERNAL_KEY?.trim();
+  const provided = c.req.header('X-Internal-Key') || c.req.header('x-internal-key');
+  if (!expected) {
+    throw new CardKeyError(
+      'internal_key_not_configured',
+      'SUBSCRIPTION_SERVICE_INTERNAL_KEY is not configured',
+      500
+    );
+  }
+  if (!provided || provided !== expected) {
+    throw new CardKeyError('internal_forbidden', 'Invalid internal key', 403);
   }
 }
 
@@ -496,6 +512,35 @@ app.post('/card-keys/redeem', async (c) => {
 
     const { cardKeyService } = getCardKeyServices(c);
     const result = await cardKeyService.redeemCardKey(user.id, code);
+
+    return c.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    return cardKeyErrorResponse(c, error);
+  }
+});
+
+/**
+ * POST /internal/card-keys/redeem-for-wormhole
+ * Wormhole control-plane 内部兑换卡密，只验证并占用卡密，不写 fashion credits。
+ */
+app.post('/internal/card-keys/redeem-for-wormhole', async (c) => {
+  try {
+    requireInternal(c);
+    const body = await c.req.json().catch(() => ({}));
+    const userId = body.userId;
+    const code = body.code;
+    if (!userId || typeof userId !== 'string') {
+      throw new CardKeyError('user_id_required', 'userId is required', 400);
+    }
+    if (!code || typeof code !== 'string') {
+      throw new CardKeyError('invalid_format', 'Card key is required', 400);
+    }
+
+    const { cardKeyService } = getCardKeyServices(c);
+    const result = await cardKeyService.redeemCardKeyForWormhole(userId, code);
 
     return c.json({
       success: true,

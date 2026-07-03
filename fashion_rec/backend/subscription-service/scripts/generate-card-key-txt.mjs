@@ -5,7 +5,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-const DEFAULT_API_URL = 'https://fashion-rec-subscription-service.954504788.workers.dev';
+const DEFAULT_API_URL = 'https://subscription.hdz73.com';
 const DEFAULT_CURRENCY = 'USD';
 const DEFAULT_CODE_LENGTH = 20;
 const execFileAsync = promisify(execFile);

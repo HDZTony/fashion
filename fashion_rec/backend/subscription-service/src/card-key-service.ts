@@ -62,6 +62,14 @@ export interface RedeemCardKeyResult {
   redeemedAt: string;
 }
 
+export interface RedeemCardKeyForWormholeResult {
+  creditsAdded: number;
+  productId: string;
+  batchId: string | null;
+  cardKeyId: string;
+  redeemedAt: string;
+}
+
 export class CardKeyError extends Error {
   code: string;
   status: 400 | 401 | 403 | 404 | 409 | 410 | 500;
@@ -131,43 +139,10 @@ export class CardKeyService {
   }
 
   async redeemCardKey(userId: string, code: string): Promise<RedeemCardKeyResult> {
-    const normalizedCode = this.normalizeCode(code);
-    this.assertValidCode(normalizedCode);
-    const codeHash = await this.hashCardKey(normalizedCode);
-
-    const { data, error } = await this.client
-      .from(CARD_KEYS_TABLE)
-      .select('*')
-      .eq('code_hash', codeHash)
-      .single();
-
-    if (error || !data) {
-      if (error?.code !== 'PGRST116') {
-        console.warn('Card key lookup failed:', error);
-      }
-      throw new CardKeyError('invalid_card_key', 'Invalid card key', 404);
-    }
-
-    const record = data as CardKeyRecord;
+    const record = await this.lookupCardKey(code);
     this.assertRedeemable(record);
 
-    const redeemedAt = new Date().toISOString();
-    const { data: redeemedRecord, error: redeemError } = await this.client
-      .from(CARD_KEYS_TABLE)
-      .update({
-        status: 'redeemed',
-        redeemed_by_user_id: userId,
-        redeemed_at: redeemedAt,
-        updated_at: redeemedAt,
-      })
-      .eq('id', record.id)
-      .eq('status', 'available')
-      .select('*')
-      .single();
-
-    if (redeemError || !redeemedRecord) {
-      throw new CardKeyError('already_redeemed', 'Card key has already been redeemed', 409);
-    }
+    const { redeemedAt } = await this.markRedeemed(record.id, userId);
 
     let newCredits: number;
     try {
@@ -191,6 +166,31 @@ export class CardKeyService {
       credits: newCredits,
       productId: record.product_id,
       batchId: record.batch_id,
+      redeemedAt,
+    };
+  }
+
+  async redeemCardKeyForWormhole(
+    userId: string,
+    code: string
+  ): Promise<RedeemCardKeyForWormholeResult> {
+    const record = await this.lookupCardKey(code);
+    if (record.status === 'redeemed' && record.redeemed_by_user_id === userId) {
+      return {
+        creditsAdded: record.credits,
+        productId: record.product_id,
+        batchId: record.batch_id,
+        cardKeyId: record.id,
+        redeemedAt: record.redeemed_at || new Date().toISOString(),
+      };
+    }
+    this.assertRedeemable(record);
+    const { redeemedAt } = await this.markRedeemed(record.id, userId);
+    return {
+      creditsAdded: record.credits,
+      productId: record.product_id,
+      batchId: record.batch_id,
+      cardKeyId: record.id,
       redeemedAt,
     };
   }
@@ -367,6 +367,48 @@ export class CardKeyService {
     if (!Number.isInteger(record.credits) || record.credits <= 0) {
       throw new CardKeyError('invalid_card_key_value', 'Card key value is invalid', 500);
     }
+  }
+
+  private async lookupCardKey(code: string): Promise<CardKeyRecord> {
+    const normalizedCode = this.normalizeCode(code);
+    this.assertValidCode(normalizedCode);
+    const codeHash = await this.hashCardKey(normalizedCode);
+
+    const { data, error } = await this.client
+      .from(CARD_KEYS_TABLE)
+      .select('*')
+      .eq('code_hash', codeHash)
+      .single();
+
+    if (error || !data) {
+      if (error?.code !== 'PGRST116') {
+        console.warn('Card key lookup failed:', error);
+      }
+      throw new CardKeyError('invalid_card_key', 'Invalid card key', 404);
+    }
+
+    return data as CardKeyRecord;
+  }
+
+  private async markRedeemed(cardKeyId: string, userId: string): Promise<{ redeemedAt: string }> {
+    const redeemedAt = new Date().toISOString();
+    const { data: redeemedRecord, error: redeemError } = await this.client
+      .from(CARD_KEYS_TABLE)
+      .update({
+        status: 'redeemed',
+        redeemed_by_user_id: userId,
+        redeemed_at: redeemedAt,
+        updated_at: redeemedAt,
+      })
+      .eq('id', cardKeyId)
+      .eq('status', 'available')
+      .select('*')
+      .single();
+
+    if (redeemError || !redeemedRecord) {
+      throw new CardKeyError('already_redeemed', 'Card key has already been redeemed', 409);
+    }
+    return { redeemedAt };
   }
 
   private generateCode(length: number): string {

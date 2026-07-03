@@ -12,7 +12,7 @@ compatibility_date = "2024-01-01"
 # - V2_FRONTEND_HOST: V2 version frontend hostname (e.g., v2.fashion-rec-frontend.pages.dev)
 # - STABLE_BACKEND_URL: Stable version backend URL (e.g., https://fashion-rec-backend.fly.dev)
 # - V2_BACKEND_URL: V2 version backend URL (e.g., https://fashion-rec-backend-v2.fly.dev)
-# - STABLE_SUBSCRIPTION_SERVICE_URL: Stable version subscription service URL (e.g., https://fashion-rec-subscription-service.954504788.workers.dev)
+# - STABLE_SUBSCRIPTION_SERVICE_URL: Stable version subscription service URL (e.g., https://subscription.hdz73.com)
 # - V2_SUBSCRIPTION_SERVICE_URL: V2 version subscription service URL (e.g., https://fashion-rec-subscription-service-v2.workers.dev)
 # - BLOG_SERVICE_URL: Blog service URL (e.g., https://fashion-rec-blog.954504788.workers.dev)
 #

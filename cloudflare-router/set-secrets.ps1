@@ -49,7 +49,7 @@ if ($supabaseServiceRoleKey) {
 
 # 设置 STABLE_SUBSCRIPTION_SERVICE_URL
 Write-Host "Setting STABLE_SUBSCRIPTION_SERVICE_URL..." -ForegroundColor Yellow
-"https://fashion-rec-subscription-service.954504788.workers.dev" | pnpm exec wrangler secret put STABLE_SUBSCRIPTION_SERVICE_URL
+"https://subscription.hdz73.com" | pnpm exec wrangler secret put STABLE_SUBSCRIPTION_SERVICE_URL
 
 # 设置 V2_SUBSCRIPTION_SERVICE_URL
 Write-Host "Setting V2_SUBSCRIPTION_SERVICE_URL..." -ForegroundColor Yellow
