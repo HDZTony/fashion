@@ -219,7 +219,7 @@ export class CardKeyService {
     if (faceValueCents !== null && (!Number.isInteger(faceValueCents) || faceValueCents < 0)) {
       throw new CardKeyError('invalid_face_value', 'faceValueCents must be a non-negative integer', 400);
     }
-    const currency = String(input.currency || 'USD').trim().toUpperCase();
+    const currency = String(input.currency || 'CNY').trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new CardKeyError('invalid_currency', 'currency must be a 3-letter ISO code', 400);
     }

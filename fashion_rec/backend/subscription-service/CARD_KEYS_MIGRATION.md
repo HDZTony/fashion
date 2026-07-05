@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS card_key_batches (
   product_name TEXT,
   credits INTEGER NOT NULL CHECK (credits > 0),
   face_value_cents INTEGER CHECK (face_value_cents IS NULL OR face_value_cents >= 0),
-  currency TEXT NOT NULL DEFAULT 'USD',
+  currency TEXT NOT NULL DEFAULT 'CNY',
   valid_from TIMESTAMPTZ,
   expires_at TIMESTAMPTZ,
   source TEXT NOT NULL DEFAULT 'generated' CHECK (source IN ('generated', 'txt_import')),
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS card_keys (
   product_id TEXT NOT NULL,
   credits INTEGER NOT NULL CHECK (credits > 0),
   face_value_cents INTEGER CHECK (face_value_cents IS NULL OR face_value_cents >= 0),
-  currency TEXT NOT NULL DEFAULT 'USD',
+  currency TEXT NOT NULL DEFAULT 'CNY',
   code_hash TEXT NOT NULL UNIQUE,
   code_last4 TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'redeemed', 'disabled', 'expired')),
@@ -81,9 +81,9 @@ curl -X POST https://subscription.hdz73.com/admin/card-key-batches/generate \
   -d '{
     "productId": "prod_xxx",
     "count": 100,
-    "credits": 100,
-    "faceValueCents": 999,
-    "currency": "USD",
+    "credits": 5,
+    "faceValueCents": 500,
+    "currency": "CNY",
     "expiresAt": "2027-01-01T00:00:00Z"
   }'
 ```
@@ -92,7 +92,7 @@ curl -X POST https://subscription.hdz73.com/admin/card-key-batches/generate \
 
 ### 直接生成 TXT
 
-Worker 可以直接生成 TXT 文件，导入商城系统使用。TXT 内容只包含卡密本身，一行一个；金额、credits、有效期保存在 Worker 数据库中，用户兑换时通过 hash 验证出来。
+Worker 可以直接生成 TXT 文件，导入商城系统使用。TXT 内容只包含卡密本身，一行一个；`amount`/`faceValueCents` 是卡密购买金额，`credits` 是 Wormhole 账户入账金额，当前按元记录；有效期等信息保存在 Worker 数据库中，用户兑换时通过 hash 验证出来。
 
 ```bash
 curl -X POST https://subscription.hdz73.com/admin/card-key-batches/generate-txt \
@@ -103,9 +103,9 @@ curl -X POST https://subscription.hdz73.com/admin/card-key-batches/generate-txt 
     "productId": "prod_xxx",
     "productName": "Product name",
     "count": 100,
-    "credits": 100,
-    "faceValueCents": 999,
-    "currency": "USD",
+    "credits": 5,
+    "faceValueCents": 500,
+    "currency": "CNY",
     "expiresAt": "2027-01-01T00:00:00Z",
     "codeLength": 20
   }'
@@ -121,12 +121,12 @@ cd D:\source_code\fashion\fashion_rec\backend\subscription-service
 pnpm card-keys:txt
 ```
 
-程序会依次提示输入卡密数量、金额、积分，并生成一份一行一个卡密的 TXT。金额按元/美元输入，例如 `9.99` 会保存为 `999` cents。
+程序会依次提示输入卡密数量、购买金额和兑换金额 credits，并生成一份一行一个卡密的 TXT。5 元卡密通常同时写 `amount=5`、`credits=5`。
 
 也可以一次性传参：
 
 ```powershell
-pnpm card-keys:txt -- --count 100 --amount 9.99 --credits 100 --out card-keys.txt
+pnpm card-keys:txt -- --count 100 --amount 5 --credits 5 --out card-keys.txt
 ```
 
 默认会从 `.dev.vars` 读取 `ADMIN_API_KEY`，并调用 stable Worker 的 `/admin/card-key-batches/generate-txt`，确保生成的卡密能被 Worker 验证。
@@ -155,7 +155,7 @@ curl -X POST https://subscription.hdz73.com/card-keys/redeem \
 
 ## Wormhole 内部兑换接口
 
-Wormhole `control-plane-worker` 使用该接口验证并占用卡密，然后把积分写入 Wormhole 自己的用户积分账本。此接口不会写入 `user_subscriptions.credits`。
+Wormhole `control-plane-worker` 使用该接口验证并占用卡密，然后把 `credits` 当作真实金额写入 Wormhole 自己的用户账户余额。此接口不会写入 `user_subscriptions.credits`。
 
 ```bash
 curl -X POST https://subscription.hdz73.com/internal/card-keys/redeem-for-wormhole \
@@ -173,7 +173,7 @@ curl -X POST https://subscription.hdz73.com/internal/card-keys/redeem-for-wormho
 ```json
 {
   "success": true,
-  "creditsAdded": 100,
+  "creditsAdded": 5,
   "productId": "prod_xxx",
   "batchId": "...",
   "cardKeyId": "...",

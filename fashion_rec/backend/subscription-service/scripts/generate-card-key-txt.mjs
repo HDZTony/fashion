@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const DEFAULT_API_URL = 'https://subscription.hdz73.com';
-const DEFAULT_CURRENCY = 'USD';
+const DEFAULT_CURRENCY = 'CNY';
 const DEFAULT_CODE_LENGTH = 20;
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +28,7 @@ async function main() {
   const faceValueCents = amountToCents(answers.amount);
   const productId =
     answers.productId || buildProductId({ credits: answers.credits, faceValueCents, currency: answers.currency });
-  const productName = answers.productName || `${answers.credits} credits / ${formatAmount(answers.amount)} ${answers.currency}`;
+  const productName = answers.productName || `${formatAmount(answers.amount)} ${answers.currency}`;
   const outPath = resolve(
     answers.out ||
       `card-keys-${sanitizeFilename(productId)}-${new Date().toISOString().slice(0, 10)}.txt`
@@ -54,7 +54,7 @@ async function main() {
   console.log(`批次: ${meta.batchId}`);
   console.log(`数量: ${meta.count || answers.count}`);
   console.log(`金额: ${formatAmount(answers.amount)} ${answers.currency} (${faceValueCents} cents)`);
-  console.log(`积分: ${answers.credits}`);
+  console.log(`credits: ${answers.credits}（兑换后写入账户）`);
   if (meta.filename) {
     console.log(`Worker 文件名: ${meta.filename}`);
   }
@@ -125,14 +125,16 @@ function parseArgs(args) {
 async function collectOptions(options, devVars) {
   if (options.count !== undefined && options.amount !== undefined && options.credits !== undefined) {
     const currency = options.currency || DEFAULT_CURRENCY;
-    const faceValueCents = amountToCents(options.amount);
-    const productId = options.productId || buildProductId({ credits: options.credits, faceValueCents, currency });
+    const credits = options.credits;
+    const amount = options.amount;
+    const faceValueCents = amountToCents(amount);
+    const productId = options.productId || buildProductId({ credits, faceValueCents, currency });
     return {
       count: ensurePositiveInteger(options.count, 'count'),
-      amount: ensurePositiveNumber(options.amount, 'amount'),
-      credits: ensurePositiveInteger(options.credits, 'credits'),
+      amount: ensurePositiveNumber(amount, 'amount'),
+      credits: ensurePositiveInteger(credits, 'credits'),
       productId,
-      productName: options.productName || `${options.credits} credits / ${formatAmount(options.amount)} ${currency}`,
+      productName: options.productName || `${formatAmount(amount)} ${currency}`,
       currency,
       expiresAt: options.expiresAt,
       codeLength: options.codeLength || DEFAULT_CODE_LENGTH,
@@ -148,11 +150,11 @@ async function collectOptions(options, devVars) {
   try {
     const currency = await promptString(rl, '币种', options.currency || DEFAULT_CURRENCY);
     const count = await promptInteger(rl, '卡密数量', options.count);
-    const amount = await promptNumber(rl, '金额（元/美元，例如 9.99）', options.amount);
-    const credits = await promptInteger(rl, '积分', options.credits);
+    const amount = await promptNumber(rl, '购买金额（元，例如 5）', options.amount);
+    const credits = await promptInteger(rl, '兑换金额 credits（元，通常等于购买金额）', options.credits);
     const expiresAt = await promptString(rl, '过期时间 ISO，可留空', options.expiresAt || '');
     const productId = options.productId || buildProductId({ credits, faceValueCents: amountToCents(amount), currency });
-    const productName = options.productName || `${credits} credits / ${formatAmount(amount)} ${currency}`;
+    const productName = options.productName || `${formatAmount(amount)} ${currency}`;
     const out =
       options.out ||
       `card-keys-${sanitizeFilename(productId)}-${new Date().toISOString().slice(0, 10)}.txt`;
@@ -361,12 +363,12 @@ function printHelp() {
   pnpm card-keys:txt
 
 参数式:
-  pnpm card-keys:txt -- --count 100 --amount 9.99 --credits 100 --out card-keys.txt
+  pnpm card-keys:txt -- --count 100 --amount 5 --credits 5 --out card-keys.txt
 
 常用参数:
   --count, -n       卡密数量
-  --amount, -a      金额，单位为元/美元，会自动转 cents
-  --credits, -c     每张卡密兑换的积分
+  --amount, -a      购买金额，单位为元，会保存为卡密 faceValueCents
+  --credits, -c     兑换金额，单位为元；Wormhole 账户按此值入账
   --out, -o         输出 TXT 文件
   --product-id      商品 ID；不填则自动生成
   --product-name    商品名；不填则自动生成
