@@ -1,0 +1,8 @@
+# HTTP relay (--dev). Fly edge terminates TLS on :3340; container listens plain HTTP.
+# QUIC address discovery stays off.
+
+http_bind_addr = "0.0.0.0:3340"
+enable_quic_addr_discovery = false
+
+[metrics]
+bind_addr = "127.0.0.1:9090"

@@ -1,13 +1,25 @@
 #!/bin/sh
-# Start Tailscale (userspace, Fly-compatible) then FastAPI.
+# Optional Tailscale (userspace, Fly-compatible), iroh-relay sidecar, then FastAPI.
 # Do not use set -e before Tailscale: API must stay up if tailnet join fails.
 
-# Official Fly.io name: TAILSCALE_AUTHKEY (see tailscale.com/docs/install/cloud/flydotio)
+RELAY_PID=""
+API_PID=""
+
+shutdown() {
+  if [ -n "$RELAY_PID" ]; then
+    kill "$RELAY_PID" 2>/dev/null || true
+  fi
+  if [ -n "$API_PID" ]; then
+    kill "$API_PID" 2>/dev/null || true
+  fi
+}
+
+trap shutdown INT TERM
+
 TS_KEY="${TAILSCALE_AUTHKEY:-${TS_AUTHKEY:-${TS_AUTH_KEY:-}}}"
 if [ -n "$TS_KEY" ]; then
   echo "[fly-start] Starting Tailscale..."
   mkdir -p /var/run/tailscale /var/lib/tailscale
-  # userspace 模式需 SOCKS5，否则容器内普通 HTTP 不会走 tailnet
   tailscaled --tun=userspace-networking \
     --socks5-server=127.0.0.1:1055 \
     --state=/var/lib/tailscale/tailscaled.state &
@@ -26,18 +38,33 @@ else
   echo "[fly-start] TAILSCALE_AUTHKEY not set; skipping Tailscale"
 fi
 
-if [ -x /usr/local/bin/iroh-relay ]; then
+if [ -x /iroh-relay ]; then
   echo "[fly-start] Starting Wormhole iroh-relay on :3340..."
-  /usr/local/bin/iroh-relay --dev --config-path /etc/wormhole/iroh-relay.toml &
+  /iroh-relay --dev --config-path /config/iroh-relay.toml &
+  RELAY_PID=$!
 else
   echo "[fly-start] WARN: iroh-relay binary missing; Wormhole relay disabled"
 fi
 
-exec python -m uvicorn main:app \
+python -m uvicorn main:app \
   --host 0.0.0.0 \
   --port 8000 \
   --workers 1 \
   --log-level info \
   --timeout-keep-alive 300 \
   --timeout-graceful-shutdown 30 \
-  --access-log
+  --access-log &
+API_PID=$!
+
+while [ -n "$RELAY_PID" ] && kill -0 "$RELAY_PID" 2>/dev/null && kill -0 "$API_PID" 2>/dev/null; do
+  sleep 1
+done
+
+while [ -z "$RELAY_PID" ] && kill -0 "$API_PID" 2>/dev/null; do
+  sleep 1
+done
+
+echo "fly-start: iroh-relay or FastAPI exited; shutting down" >&2
+shutdown
+wait || true
+exit 1

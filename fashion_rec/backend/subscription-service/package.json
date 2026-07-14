@@ -9,6 +9,7 @@
     "build": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "type-check": "tsc --noEmit",
+    "card-keys:txt": "node scripts/generate-card-key-txt.mjs",
     "migrate": "tsx src/migrate-period-end.ts",
     "migrate:fill": "tsx src/migrate-fill-period-end.ts",
     "test:customers": "tsx test-customers.ts"

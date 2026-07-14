@@ -49,7 +49,7 @@ fi
 
 # 设置 STABLE_SUBSCRIPTION_SERVICE_URL
 echo "Setting STABLE_SUBSCRIPTION_SERVICE_URL..."
-echo "https://fashion-rec-subscription-service.954504788.workers.dev" | pnpm exec wrangler secret put STABLE_SUBSCRIPTION_SERVICE_URL
+echo "https://subscription.hdz73.com" | pnpm exec wrangler secret put STABLE_SUBSCRIPTION_SERVICE_URL
 
 # 设置 V2_SUBSCRIPTION_SERVICE_URL
 echo "Setting V2_SUBSCRIPTION_SERVICE_URL..."

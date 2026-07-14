@@ -11,6 +11,39 @@
         "mcp-remote",
         "https://registry.ai-elements-vue.com/mcp"
       ]
+    },
+    "cloudflare": {
+      "url": "https://mcp.cloudflare.com/mcp",
+      "transport": "streamable-http",
+      "description": "Cloudflare API MCP server (Code Mode)"
+    },
+    "cloudflare-docs": {
+      "url": "https://docs.mcp.cloudflare.com/mcp",
+      "transport": "streamable-http",
+      "description": "Get up to date reference information on Cloudflare"
+    },
+    "cloudflare-workers-bindings": {
+      "url": "https://bindings.mcp.cloudflare.com/mcp",
+      "transport": "streamable-http",
+      "description": "Build Workers applications with storage, AI, and compute primitives"
+    },
+    "cloudflare-workers-builds": {
+      "url": "https://builds.mcp.cloudflare.com/mcp",
+      "transport": "streamable-http",
+      "description": "Get insights and manage your Cloudflare Workers Builds"
+    },
+    "cloudflare-observability": {
+      "url": "https://observability.mcp.cloudflare.com/mcp",
+      "transport": "streamable-http",
+      "description": "Debug and get insight into your application's logs and analytics"
+    },
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=eufhccrelpucppognlym&features=storage%2Cbranching%2Cfunctions%2Cdevelopment%2Cdebugging%2Cdatabase%2Caccount%2Cdocs",
+      "headers": {}
+    },
+    "shadcnVue": {
+      "command": "pnpm",
+      "args": ["dlx", "shadcn-vue@latest", "mcp"]
     }
   }
 }

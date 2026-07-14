@@ -1,6 +1,7 @@
 __pycache__
 .venv
 .venv/
+venv
 node_modules
 subscription-service
 data/
@@ -23,6 +24,8 @@ uv.lock
 *.log
 chroma_db
 uploads
+data
+*.db
 *.json
 *.sqlite3
 .DS_Store
@@ -32,4 +35,3 @@ uploads
 *.sql
 *.md
 README.md
-
