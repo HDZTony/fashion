@@ -89,11 +89,11 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 11.5.0
+          version: 10
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: fashion_rec/backend/subscription-service/pnpm-lock.yaml
       - name: Install Dependencies
@@ -153,11 +153,11 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 11.5.0
+          version: 10
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: fashion_rec/pnpm-lock.yaml
       - name: Install Dependencies
@@ -183,7 +183,6 @@ jobs:
           VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD: ${{ vars.VITE_CREEM_PRODUCT_ID_PREMIUM_PRO_PROD }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
       - name: Deploy to Cloudflare Pages (Stable)
         uses: cloudflare/pages-action@v1
         with:
@@ -205,11 +204,11 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 11.5.0
+          version: 10
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: cloudflare-router/package.json
       - name: Install Dependencies

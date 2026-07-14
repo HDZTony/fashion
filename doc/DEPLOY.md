@@ -84,6 +84,8 @@ Studio 意图裁剪的主 bbox 路径，部署在 Tailscale 节点 **`100.73.75.
 
 **Fly.io 后端**（Tailscale + secrets，一键脚本）：
 
+> 不要用 Cloudflare Containers 替代本机：同机还跑 iroh relay（自定义端口、常驻），Containers 只接受经 Worker 的 HTTP 入站且磁盘 ephemeral。平台选型说明见 [`fashion_rec/backend/DEPLOYMENT.md`](../fashion_rec/backend/DEPLOYMENT.md#为何不用-cloudflare-containers-替代-fly)。
+
 1. 在 [Tailscale Keys](https://login.tailscale.com/admin/settings/keys) 生成 **Reusable** 密钥（与 `desktop-kdsvgm5` 同一 tailnet）。
 2. 写入 `fashion_rec/backend/.env`：`TS_AUTHKEY=tskey-auth-...`
 3. 安装并登录 Fly CLI 后执行：
