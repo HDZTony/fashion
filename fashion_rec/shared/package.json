@@ -12,11 +12,15 @@
     "./api/config": "./src/api/config.ts",
     "./api/client": "./src/api/client.ts"
   },
-  "scripts": {},
   "dependencies": {
-    "axios": "^1.13.2"
+    "axios": "^1.16.1"
+  },
+  "peerDependencies": {
+    "@hdz/auth": "^0.1.0",
+    "@supabase/supabase-js": "^2"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "@hdz/auth": "github:HDZTony/hdz-auth#2349b84",
+    "typescript": "^5.9.3"
   }
 }

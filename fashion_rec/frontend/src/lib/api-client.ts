@@ -25,7 +25,14 @@ export function createAuthenticatedApiClientWeb(baseURL: string, timeout?: numbe
 
   // SSR: skip; browser: wait for auth store then ensure token for protected requests
   // Guest-allowed paths: no token required (backend applies IP rate limit for try-on/outfit)
-  const guestAllowedPaths = ['/try-on', '/outfit', '/model-image', '/background-image', '/guest-quota']
+  const guestAllowedPaths = [
+    '/try-on',
+    '/outfit',
+    '/model-image',
+    '/background-image',
+    '/guest-quota',
+    '/chatkit',
+  ]
   const isGuestAllowed = (url: string) => guestAllowedPaths.some((p) => url.includes(p))
 
   client.interceptors.request.use(async (config) => {

@@ -1,13 +1,31 @@
 User-agent: *
 Allow: /
 Allow: /studio
-Disallow: /history
+Allow: /pricing
+Allow: /blog
+Allow: /privacy-policy
+Allow: /terms-of-service
+
+# Auth-required pages (redirect to /login for unauthenticated users)
 Disallow: /wardrobe
 Disallow: /lv-products
 Disallow: /favorites
 Disallow: /tryon-history
+Disallow: /multi-angle
+Disallow: /multiangle-history
+Disallow: /my-blog
 Disallow: /profile
+Disallow: /settings/
+Disallow: /blog/create
+Disallow: /blog/*/edit
+Disallow: /seo
+
+# Utility pages
+Disallow: /login
+Disallow: /callback
+Disallow: /reset-password
 Disallow: /undefined
+Disallow: /history
 
 Sitemap: https://fashion-rec.com/sitemap.xml
 

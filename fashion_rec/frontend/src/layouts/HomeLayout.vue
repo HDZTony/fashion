@@ -14,7 +14,7 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const handleGetStarted = () => {
   if (isAuthenticated.value) {
-    router.push('/studio')
+    router.push('/studio/chat')
   } else {
     router.push('/login')
   }
@@ -64,8 +64,8 @@ const buttonText = computed(() => {
       </div>
     </nav>
 
-    <!-- Main Content Area -->
-    <router-view />
+    <!-- 由 RootShellLayout 注入：营销页子路由 -->
+    <slot />
   </div>
 </template>
 

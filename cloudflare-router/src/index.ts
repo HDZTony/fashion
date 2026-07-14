@@ -28,7 +28,13 @@ interface Env {
   BLOG_SERVICE_URL: string
   /** Service Binding: 内部调用 Blog Worker，绕过 Cloudflare Access */
   BLOG_SERVICE: Fetcher
+  /** Service Binding: 内部调用 Subscription Worker，跳过公网 HTTP 栈 */
+  SUBSCRIPTION_SERVICE: Fetcher
   USER_VERSIONS: KVNamespace
+}
+
+function hasSupabaseCredentials(env: Env): boolean {
+  return !!(env.SUPABASE_URL?.trim() && env.SUPABASE_SERVICE_ROLE_KEY?.trim())
 }
 
 /**
@@ -55,16 +61,34 @@ function extractUserIdFromToken(token: string): string | null {
 }
 
 /**
+ * Read a cookie value by name from the Cookie header.
+ */
+function getCookieValue(cookieHeader: string, name: string): string | null {
+  const prefix = `${name}=`
+  for (const part of cookieHeader.split(';')) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(prefix)) {
+      const raw = trimmed.slice(prefix.length)
+      try {
+        return decodeURIComponent(raw)
+      } catch {
+        return raw
+      }
+    }
+  }
+  return null
+}
+
+/**
  * Extract user ID from request
- * Tries Authorization header first (Bearer token), then Cookie
+ * Tries Authorization header first (Bearer token), then auth cookies.
  */
 function extractUserIdFromCookie(request: Request): string | null {
-  // 1. Try Authorization header first (Bearer token)
+  // 1. Try Authorization header first (Bearer token) — used by apiClient XHR/fetch
   const authHeader = request.headers.get('Authorization') || request.headers.get('authorization')
   if (authHeader) {
-    // Extract token from "Bearer <token>" format
     const match = authHeader.match(/^Bearer\s+(.+)$/i)
-    if (match && match[1]) {
+    if (match?.[1]) {
       const userId = extractUserIdFromToken(match[1])
       if (userId) {
         return userId
@@ -72,24 +96,29 @@ function extractUserIdFromCookie(request: Request): string | null {
     }
   }
 
-  // 2. Fallback to Cookie header
+  // 2. Cookie header — sent on full page navigations (GET /studio, etc.)
   try {
     const cookies = request.headers.get('Cookie')
     if (!cookies) {
       return null
     }
 
-    // Match Supabase auth token cookie pattern
-    // Format: sb-<project-ref>-auth-token=<jwt-token>
-    const match = cookies.match(/sb-[^-]+-auth-token=([^;]+)/)
-    if (!match || !match[1]) {
-      return null
+    // Frontend stores JWT in auth_token (see fashion_rec/frontend/src/lib/cookie-storage.ts)
+    const authToken = getCookieValue(cookies, 'auth_token')
+    if (authToken) {
+      const userId = extractUserIdFromToken(authToken)
+      if (userId) {
+        return userId
+      }
     }
 
-    const token = match[1]
-    const userId = extractUserIdFromToken(token)
-    if (userId) {
-      return userId
+    // Supabase default cookie: sb-<project-ref>-auth-token=<jwt>
+    const sbMatch = cookies.match(/sb-[^-]+-auth-token=([^;]+)/)
+    if (sbMatch?.[1]) {
+      const userId = extractUserIdFromToken(sbMatch[1])
+      if (userId) {
+        return userId
+      }
     }
   } catch (error) {
     console.error('[Router] Error extracting user ID from cookie:', error)
@@ -130,6 +159,12 @@ async function cacheUserVersion(userId: string, version: string, env: Env): Prom
  */
 async function getUserFrontendVersionFromDB(userId: string, env: Env): Promise<string> {
   try {
+    if (!hasSupabaseCredentials(env)) {
+      console.warn(
+        '[Router] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing in .dev.vars — skipping DB version lookup (using stable)',
+      )
+      return 'stable'
+    }
     /**
      * Create Supabase client with explicit configuration.
      * 
@@ -198,6 +233,11 @@ async function setUserVersion(userId: string, version: string, env: Env): Promis
       return false
     }
 
+    if (!hasSupabaseCredentials(env)) {
+      console.warn('[Router] setUserVersion: Supabase not configured in .dev.vars')
+      return false
+    }
+
     // 1. Update database
     /**
      * Create Supabase client with explicit configuration.
@@ -247,28 +287,47 @@ async function setUserVersion(userId: string, version: string, env: Env): Promis
 /**
  * Route request to appropriate frontend deployment
  */
-function routeToFrontend(request: Request, hostname: string): Request {
+function routeToFrontend(request: Request, frontendHostOrUrl: string): Request {
   const url = new URL(request.url)
-  url.hostname = hostname
-  url.port = '' // Remove port if present
+  const target = frontendHostOrUrl.includes('://')
+    ? new URL(frontendHostOrUrl)
+    : new URL(`${url.protocol}//${frontendHostOrUrl}`)
+
+  url.protocol = target.protocol
+  url.hostname = target.hostname
+  url.port = target.port
 
   // Create new request with updated URL
   // Preserve original method, headers, and body
   const headers = new Headers(request.headers)
   
   // Update Host header
-  headers.set('Host', hostname)
+  headers.set('Host', target.host)
   
   // Remove X-Forwarded-* headers that might interfere
   headers.delete('X-Forwarded-Host')
   headers.delete('X-Forwarded-Proto')
 
-  return new Request(url.toString(), {
+  const init: RequestInit = {
     method: request.method,
     headers: headers,
-    body: request.body,
     redirect: request.redirect,
-  })
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body != null) {
+    init.body = request.body
+  }
+
+  try {
+    return new Request(url.toString(), init)
+  } catch (e) {
+    // Body may already be consumed (e.g. error fallback after a failed proxy fetch)
+    console.warn('[Router] routeToFrontend: could not reuse body, forwarding without body', e)
+    return new Request(url.toString(), {
+      method: request.method,
+      headers: headers,
+      redirect: request.redirect,
+    })
+  }
 }
 
 /**
@@ -300,12 +359,24 @@ function routeToBackend(request: Request, backendUrl: string): Request {
     headers.set('Authorization', authHeader)
   }
 
-  return new Request(url.toString(), {
+  const init: RequestInit = {
     method: request.method,
     headers: headers,
-    body: request.body,
     redirect: request.redirect,
-  })
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body != null) {
+    init.body = request.body
+  }
+  try {
+    return new Request(url.toString(), init)
+  } catch (e) {
+    console.warn('[Router] routeToBackend: could not reuse body', e)
+    return new Request(url.toString(), {
+      method: request.method,
+      headers: headers,
+      redirect: request.redirect,
+    })
+  }
 }
 
 /**
@@ -355,6 +426,83 @@ function routeToBlogService(request: Request, blogServiceUrl: string): Request {
   })
 }
 
+const SUPABASE_AUTH_PROXY_PREFIX = '/supabase'
+
+function isSupabaseAuthProxyPath(path: string): boolean {
+  return path.startsWith(`${SUPABASE_AUTH_PROXY_PREFIX}/auth/v1/`)
+}
+
+function routeToSupabaseAuth(request: Request, supabaseUrl: string): Request {
+  const url = new URL(request.url)
+  const supabaseUrlObj = new URL(supabaseUrl)
+
+  let upstreamPath = url.pathname
+  if (upstreamPath.startsWith(SUPABASE_AUTH_PROXY_PREFIX)) {
+    upstreamPath = upstreamPath.substring(SUPABASE_AUTH_PROXY_PREFIX.length)
+    if (!upstreamPath) {
+      upstreamPath = '/'
+    }
+  }
+
+  url.protocol = supabaseUrlObj.protocol
+  url.hostname = supabaseUrlObj.hostname
+  url.port = supabaseUrlObj.port || ''
+  url.pathname = upstreamPath
+
+  const headers = new Headers(request.headers)
+  headers.set('Host', supabaseUrlObj.host)
+  headers.delete('X-Forwarded-Host')
+  headers.delete('X-Forwarded-Proto')
+
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+    redirect: 'manual',
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body != null) {
+    init.body = request.body
+  }
+
+  try {
+    return new Request(url.toString(), init)
+  } catch (e) {
+    console.warn('[Router] routeToSupabaseAuth: could not reuse body', e)
+    return new Request(url.toString(), {
+      method: request.method,
+      headers,
+      redirect: 'manual',
+    })
+  }
+}
+
+async function proxySupabaseAuth(
+  request: Request,
+  env: Env,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const supabaseUrl = env.SUPABASE_URL?.trim()
+  if (!supabaseUrl) {
+    return new Response(JSON.stringify({ error: 'Supabase proxy not configured' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    })
+  }
+
+  const upstreamRequest = routeToSupabaseAuth(request, supabaseUrl)
+  const upstreamResponse = await fetch(upstreamRequest)
+
+  const responseHeaders = new Headers(upstreamResponse.headers)
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    responseHeaders.set(key, value)
+  }
+
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: responseHeaders,
+  })
+}
+
 /**
  * Check if request is an API request
  * 
@@ -369,7 +517,20 @@ function routeToBlogService(request: Request, blogServiceUrl: string): Request {
  */
 function isApiRequest(url: URL, request: Request): boolean {
   const path = url.pathname
-  
+
+  // ChatKit (OpenAI): POST/OPTIONS/upload/preview must hit FastAPI, never the Vite SPA
+  if (path === '/chatkit' || path.startsWith('/chatkit/')) {
+    console.log(`[Router] isApiRequest: true (ChatKit path ${path})`)
+    return true
+  }
+
+  // Studio chat: intent-conditioned garment crops (FastAPI). Do not use path.startsWith('/studio/') —
+  // the SPA serves /studio and /studio/chat and must stay on the frontend.
+  if (path === '/studio/intent-garment-crops') {
+    console.log(`[Router] isApiRequest: true (Studio API ${path})`)
+    return true
+  }
+
   // Check Accept header first (most reliable way to distinguish)
   const acceptHeader = request.headers.get('Accept') || ''
   const isHtmlRequest = acceptHeader.includes('text/html')
@@ -384,7 +545,7 @@ function isApiRequest(url: URL, request: Request): boolean {
   // List of all API endpoints from backend (main.py), subscription service, and blog service
   // This ensures all API requests are routed to backend, not frontend
   // NOTE: Root path '/' should route to frontend, not backend
-  const isApi = path.startsWith('/api/') || 
+  const isApi = path.startsWith('/api/') ||
          path.startsWith('/health') ||
          path.startsWith('/outfit') ||
          path.startsWith('/try-on') ||
@@ -394,6 +555,9 @@ function isApiRequest(url: URL, request: Request): boolean {
          path.startsWith('/favorites') ||
          path.startsWith('/model-image') ||
          path.startsWith('/user-images') ||
+         path.startsWith('/model-profile') ||
+         path === '/model-profiles' ||
+         path.startsWith('/proxy-image') ||
          path.startsWith('/background-image') ||
          path.startsWith('/tryon-history') ||
          path.startsWith('/multiangle-history') ||
@@ -482,7 +646,8 @@ export default {
         const headers: Record<string, string> = {
           'Access-Control-Allow-Origin': allowOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, creem-signature',
+          'Access-Control-Allow-Headers':
+            'Content-Type, Authorization, apikey, x-client-info, x-supabase-api-version, prefer, creem-signature, x-fashion-rec-outfit-context',
           'Access-Control-Max-Age': '86400',
         }
         // Only add credentials header if we're using a specific origin (not wildcard)
@@ -510,6 +675,7 @@ export default {
                                        path.startsWith('/customers/')
       const isBlogServicePath = path.startsWith('/blog')
       const isSeoServicePath = path.startsWith('/seo')
+      const isSupabaseAuthPath = isSupabaseAuthProxyPath(path)
       
       // Handle OPTIONS preflight for all API endpoints
       if (request.method === 'OPTIONS' && (isApiForCors || 
@@ -520,12 +686,27 @@ export default {
           path === '/test-webhook' ||
           isSubscriptionServicePath ||
           isBlogServicePath ||
-          isSeoServicePath)) {
+          isSeoServicePath ||
+          isSupabaseAuthPath)) {
         const origin = request.headers.get('Origin')
         return new Response(null, {
           status: 204,
           headers: getCorsHeaders(origin)
         })
+      }
+
+      if (isSupabaseAuthPath) {
+        const origin = request.headers.get('Origin')
+        const corsHeaders = getCorsHeaders(origin)
+
+        if (path.startsWith('/supabase/auth/v1/admin/')) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          })
+        }
+
+        return proxySupabaseAuth(request, env, corsHeaders)
       }
 
       // Handle API endpoint for getting user version
@@ -691,6 +872,19 @@ export default {
             })
           }
 
+          if (!hasSupabaseCredentials(env)) {
+            return new Response(
+              JSON.stringify({
+                error:
+                  'Router Supabase not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in cloudflare-router/.dev.vars (copy from .dev.vars.example)',
+              }),
+              {
+                status: 503,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              },
+            )
+          }
+
           // ── 通用流程：创建/查找用户 → 生成 OTP → 换取 session ──
           const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
             auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -796,6 +990,57 @@ export default {
       console.log(`[Router] Request ${request.method} ${path} - isApiRequest: ${isApi}, version: ${version}`)
       
       if (isApi) {
+        // 图片代理：Worker 直接拉取 R2 并返回，带 CORS，localhost 无跨域
+        if (path.startsWith('/proxy-image') && request.method === 'GET') {
+          const origin = request.headers.get('Origin')
+          const corsHeaders = getCorsHeaders(origin)
+          const proxyUrlParam = url.searchParams.get('url')
+          if (!proxyUrlParam) {
+            return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+          let parsed: URL
+          try {
+            parsed = new URL(proxyUrlParam)
+          } catch {
+            return new Response(JSON.stringify({ error: 'Invalid url' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+          if (parsed.protocol !== 'https:' || parsed.hostname !== 'r2.fashion-rec.com') {
+            return new Response(JSON.stringify({ error: 'Only r2.fashion-rec.com URLs allowed' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+          try {
+            const ac = new AbortController()
+            const timeoutId = setTimeout(() => ac.abort(), 15000)
+            const imgRes = await fetch(proxyUrlParam, { signal: ac.signal })
+            clearTimeout(timeoutId)
+            if (!imgRes.ok) {
+              return new Response(JSON.stringify({ error: 'Upstream image fetch failed' }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              })
+            }
+            const contentType = imgRes.headers.get('Content-Type') || 'image/jpeg'
+            const body = await imgRes.arrayBuffer()
+            return new Response(body, {
+              headers: { 'Content-Type': contentType, ...corsHeaders },
+            })
+          } catch (e) {
+            console.error('[Router] proxy-image fetch failed:', e)
+            return new Response(JSON.stringify({ error: 'Failed to fetch image' }), {
+              status: 502,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+          }
+        }
+
         // Check if this is a blog-service request
         const isBlogRequest = path.startsWith('/blog')
         
@@ -933,49 +1178,110 @@ export default {
             headers: responseHeaders,
           })
         } else if (isSubscriptionRequest) {
-          // Webhook routing: test-webhook -> v2, webhook -> stable
-          // Other subscription requests route based on user version
+          // Service Binding 优先，跳过公网 HTTP 栈
+          const usesServiceBinding = !!env.SUBSCRIPTION_SERVICE
+
+          if (usesServiceBinding) {
+            const internalUrl = new URL(path + url.search, 'https://subscription-internal')
+            const headers = new Headers(request.headers)
+            headers.set('Host', 'subscription-internal')
+
+            const subRequest = new Request(internalUrl.toString(), {
+              method: request.method,
+              headers,
+              body: request.body,
+              redirect: request.redirect,
+            })
+
+            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} via Service Binding`)
+
+            const fetchStartTime = Date.now()
+            const timeoutMs = 25000
+            const abortController = new AbortController()
+            const timeoutId = setTimeout(() => { abortController.abort() }, timeoutMs)
+
+            let response: Response
+            try {
+              response = await env.SUBSCRIPTION_SERVICE.fetch(
+                new Request(subRequest, { signal: abortController.signal })
+              )
+              clearTimeout(timeoutId)
+              console.log(`[Router] Subscription service response: status ${response.status} ${response.statusText} for ${path}`)
+            } catch (fetchError: any) {
+              clearTimeout(timeoutId)
+              const errorDuration = Date.now() - fetchStartTime
+              console.error(`[Router] Subscription service fetch failed after ${errorDuration}ms:`, fetchError)
+
+              const origin = request.headers.get('Origin')
+              const corsHeaders = getCorsHeaders(origin)
+
+              let errorDetail = fetchError.message || 'Request timeout or connection error'
+              if (fetchError.name === 'AbortError') {
+                errorDetail = errorDuration < 1000
+                  ? 'Connection refused - Subscription service may not be running'
+                  : `Request timeout after ${errorDuration}ms`
+              }
+
+              return new Response(JSON.stringify({
+                error: 'Subscription service request failed',
+                detail: errorDetail,
+                path: path,
+                duration_ms: errorDuration,
+              }), {
+                status: 502,
+                statusText: 'Bad Gateway',
+                headers: { 'Content-Type': 'application/json', ...corsHeaders }
+              })
+            }
+
+            const fetchDuration = Date.now() - fetchStartTime
+            console.log(`[Router] Subscription service response received: status ${response.status} in ${fetchDuration}ms for ${path}`)
+
+            const origin = request.headers.get('Origin')
+            const corsHeaders = getCorsHeaders(origin)
+            const responseHeaders = new Headers(response.headers)
+            for (const [key, value] of Object.entries(corsHeaders)) {
+              responseHeaders.set(key, value)
+            }
+
+            return new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: responseHeaders,
+            })
+          }
+
+          // Fallback: 无 Service Binding 时走公网 HTTP fetch
           if (path === '/test-webhook') {
             backendUrl = env.V2_SUBSCRIPTION_SERVICE_URL
-            console.log(`[Router] Routing test-webhook to v2 subscription-service: ${backendUrl}`)
+            console.log(`[Router] Routing test-webhook to v2 subscription-service (HTTP fallback): ${backendUrl}`)
           } else if (path === '/webhook') {
             backendUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
-            console.log(`[Router] Routing webhook to stable subscription-service: ${backendUrl}`)
+            console.log(`[Router] Routing webhook to stable subscription-service (HTTP fallback): ${backendUrl}`)
           } else {
-            // Route subscription requests based on user version (stable/v2)
-            // Debug: Log environment variables
-            console.log(`[Router] 🔍 [${path}] Environment check - V2_SUBSCRIPTION_SERVICE_URL: ${env.V2_SUBSCRIPTION_SERVICE_URL}, STABLE_SUBSCRIPTION_SERVICE_URL: ${env.STABLE_SUBSCRIPTION_SERVICE_URL}, version: ${version}`)
-            
             backendUrl = version === 'v2'
               ? env.V2_SUBSCRIPTION_SERVICE_URL
               : env.STABLE_SUBSCRIPTION_SERVICE_URL
-            
-            // Fallback: if URL is undefined, return error instead of using localhost
-            // Cloudflare Workers cannot connect to localhost, so we should fail fast with clear error
+
             if (!backendUrl) {
-              console.error(`[Router] ❌ [${path}] ${version} subscription service URL is undefined`)
-              console.error(`[Router] Environment variables check: V2_SUBSCRIPTION_SERVICE_URL=${env.V2_SUBSCRIPTION_SERVICE_URL || 'NOT SET'}, STABLE_SUBSCRIPTION_SERVICE_URL=${env.STABLE_SUBSCRIPTION_SERVICE_URL || 'NOT SET'}`)
-              
+              console.error(`[Router] ❌ [${path}] ${version} subscription service URL is undefined (no Service Binding and no URL)`)
+
               const origin = request.headers.get('Origin')
               const corsHeaders = getCorsHeaders(origin)
-              
+
               return new Response(JSON.stringify({
                 error: 'Configuration error',
-                detail: `Subscription service URL is not configured for version '${version}'. Please set ${version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'} environment variable.\n\nFor local development:\n1. Ensure .dev.vars file exists in cloudflare-router directory\n2. Restart wrangler dev after adding environment variables\n3. Check that subscription service is running on the configured port`,
+                detail: `Subscription service is not configured. Please add a Service Binding (SUBSCRIPTION_SERVICE) in wrangler.toml or set ${version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'} environment variable.`,
                 path: path,
                 version: version,
-                missingEnvVar: version === 'v2' ? 'V2_SUBSCRIPTION_SERVICE_URL' : 'STABLE_SUBSCRIPTION_SERVICE_URL'
               }), {
                 status: 500,
                 statusText: 'Internal Server Error',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...corsHeaders
-                }
+                headers: { 'Content-Type': 'application/json', ...corsHeaders }
               })
             }
-            
-            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} to: ${backendUrl} (version: ${version}, userId: ${userId || 'null'})`)
+
+            console.log(`[Router] ✅ [${path}] Routing subscription request ${request.method} to: ${backendUrl} (HTTP fallback, version: ${version})`)
           }
         } else {
           backendUrl = version === 'v2' 
@@ -1001,19 +1307,39 @@ export default {
         }
         
         // Add timeout to backend fetch using AbortController
-        // generate-angles: 6 minutes (fal queue + poll + download + R2 + userinfo + Supabase; observed ~4.5 min)
-        // try-on, upload, outfit: 4 minutes (to be under frontend's 5min timeout)
-        // PUT/DELETE: 60 seconds; others: 25 seconds
+        // upload/model-image/background-image: 10 min (R2 直连慢，需要充足时间)
+        // generate-angles: 6 min; try-on/outfit: 4 min
+        // model-profiles / user-images: cold DB or busy uvicorn can exceed 25s (parallel loads)
+        // studio/intent-garment-crops: Qwen + R2 may approach 25s under load
+        // PUT/DELETE: 60s; default GET/POST: 25s
         const isTryOnRequest = path === '/try-on'
-        const isUploadRequest = path === '/upload'
+        const isChatKitUploadPath = path === '/chatkit/upload'
+        const isChatKitProtocolPath = path === '/chatkit'
+        const isUploadRequest =
+          path === '/upload' ||
+          path === '/model-image' ||
+          path === '/background-image' ||
+          isChatKitUploadPath
         const isOutfitRequest = path === '/outfit'
         const isGenerateAnglesRequest = path === '/generate-angles'
+        const isStudioIntentGarmentCrops = path === '/studio/intent-garment-crops'
+        // Cold DB / large lists can exceed 120s locally; align with other slow API buckets
+        const isSlowModelLibraryRead =
+          path === '/model-profiles' || path === '/user-images'
         const isPutOrDeleteRequest = request.method === 'PUT' || request.method === 'DELETE'
-        const timeoutMs = isGenerateAnglesRequest
-          ? 360000
-          : (isTryOnRequest || isUploadRequest || isOutfitRequest)
-            ? 240000
-            : (isPutOrDeleteRequest ? 60000 : 25000)
+        const timeoutMs = isUploadRequest
+          ? 600000
+          : isGenerateAnglesRequest
+            ? 360000
+            : isChatKitProtocolPath
+              ? 600000
+              : (isTryOnRequest || isOutfitRequest)
+                ? 240000
+                : isStudioIntentGarmentCrops
+                  ? 240000
+                  : isSlowModelLibraryRead
+                    ? 240000
+                    : (isPutOrDeleteRequest ? 60000 : 25000)
         
         const backendRequest = routeToBackend(request, backendUrl)
         console.log(`[Router] Backend request URL: ${backendRequest.url}, method: ${backendRequest.method}, hasAuth: ${!!backendRequest.headers.get('Authorization')}`)
@@ -1172,17 +1498,21 @@ Error reference: ${fetchError.message}`
                                         path === '/userinfo' ||
                                         path === '/webhook' || 
                                         path === '/test-webhook'
+          if (isSubscriptionRequest && env.SUBSCRIPTION_SERVICE) {
+            const internalUrl = new URL(path + url.search, 'https://subscription-internal')
+            const headers = new Headers(request.headers)
+            headers.set('Host', 'subscription-internal')
+            return env.SUBSCRIPTION_SERVICE.fetch(new Request(internalUrl.toString(), {
+              method: request.method,
+              headers,
+              body: request.body,
+              redirect: request.redirect,
+            }))
+          }
+
           let fallbackUrl: string
           if (isSubscriptionRequest) {
-            // Webhook routing: test-webhook -> v2, webhook -> stable
-            if (path === '/test-webhook') {
-              fallbackUrl = env.V2_SUBSCRIPTION_SERVICE_URL
-            } else if (path === '/webhook') {
-              fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
-            } else {
-              // Other subscription requests fallback to stable
-              fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
-            }
+            fallbackUrl = env.STABLE_SUBSCRIPTION_SERVICE_URL
           } else {
             fallbackUrl = env.STABLE_BACKEND_URL
           }

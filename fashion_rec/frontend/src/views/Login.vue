@@ -1,9 +1,11 @@
 <script setup lang="ts">
 defineOptions({ name: 'Login' })
 import { supabase } from '../lib/supabase'
+import { signInWithGoogleWeb } from '@fashion-rec/shared'
 import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { API_URL } from '../config/api'
 
 const { t } = useI18n()
 
@@ -245,20 +247,24 @@ const handleGoogleLogin = async () => {
   message.value = ''
 
   try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/callback`
-      }
+    const googleClientId =
+      import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+      '729541469608-idf9oamqmk1pg81tl7akt7vns94da57a.apps.googleusercontent.com'
+
+    const session = await signInWithGoogleWeb({
+      supabase,
+      apiBaseUrl: API_URL,
+      googleClientId,
     })
 
-    if (error) {
-      throw error
-    }
-    // User will be redirected to Google, so we don't need to handle success here
+    localStorage.setItem('auth_token', session.access_token)
+    const { setTokenInCookie } = await import('../lib/cookie-storage')
+    setTokenInCookie(session.access_token)
+    router.push('/wardrobe')
   } catch (error: any) {
     console.error('Google login error:', error)
     message.value = error.message || t('login.googleLoginFailed')
+  } finally {
     isLoading.value = false
   }
 }

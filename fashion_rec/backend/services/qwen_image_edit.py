@@ -20,14 +20,23 @@ Usage (CLI - Multi-Image Fusion):
 
 Make sure the `DASHSCOPE_API_KEY` environment variable is set to your DashScope API key
 before running the CLI or using the client programmatically.
+
+Env (optional):
+  QWEN_IMAGE_EDIT_TIMEOUT_SECONDS   read timeout for API + downloads (default 600; 2K / multi-image often needs minutes)
+  QWEN_IMAGE_EDIT_CONNECT_TIMEOUT_SECONDS  connect timeout (default 90)
+  QWEN_IMAGE_EDIT_TRUST_ENV         false to ignore HTTP(S)_PROXY for this client (DashScope direct; avoids proxy read timeouts)
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import io
+import ipaddress
 import json
+import logging
 import os
+import uuid
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +45,10 @@ from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
+
+from services.garment_vl_pipeline import attachment_id_from_chatkit_preview_url
+
+logger = logging.getLogger(__name__)
 
 # Suppress RuntimeWarning about module import when running as __main__
 warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*found in sys.modules.*")
@@ -46,8 +59,26 @@ BEIJING_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimod
 SINGAPORE_ENDPOINT = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
 DEFAULT_ENV_PREFIX = "QWEN_IMAGE_EDIT_"
-DEFAULT_MODEL = "qwen-image-edit-plus-2025-12-15"
+DEFAULT_MODEL = "qwen-image-2.0-pro"
 DEFAULT_REGION = "singapore"  # Default to Singapore region
+
+# DashScope 侧对单张输入图有 10MB 上限；略小于 10MB 作为压缩目标，避免边界再编码略超
+DASHSCOPE_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+DASHSCOPE_SAFE_IMAGE_BYTES = 9 * 1024 * 1024
+
+# DashScope 图像编辑 API 支持的 model 示例（CLI 校验用；程序内可通过 QWEN_IMAGE_EDIT_MODEL 传入任意字符串）
+CLI_MODEL_CHOICES = (
+    "qwen-image-2.0-pro",
+    "qwen-image-2.0-pro-2026-03-03",
+    "qwen-image-2.0",
+    "qwen-image-2.0-2026-03-03",
+    "qwen-image-edit-plus",
+    "qwen-image-edit-plus-2025-12-15",
+    "qwen-image-edit-plus-2025-10-30",
+    "qwen-image-edit-max",
+    "qwen-image-edit-max-2026-01-16",
+    "qwen-image-edit",
+)
 
 
 class QwenImageEditError(RuntimeError):
@@ -63,21 +94,217 @@ def _is_url(path_or_url: str) -> bool:
         return False
 
 
+def _url_is_unreachable_by_dashscope_servers(url: str) -> bool:
+    """
+    DashScope fetches image URLs from Alibaba's side; localhost / private IPs / link-local
+    cannot be reached → must re-upload to a public URL (e.g. R2) first.
+    """
+    try:
+        p = urlparse(url)
+        if (p.scheme or "").lower() not in ("http", "https"):
+            return True
+        host = p.hostname
+        if not host:
+            return True
+        h = host.lower()
+        if h in ("localhost", "127.0.0.1", "::1") or h.startswith("127."):
+            return True
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_link_local or ip.is_loopback:
+                return True
+        except ValueError:
+            pass
+        return False
+    except Exception:
+        return True
+
+
+async def _fetch_image_bytes_for_qwen_input_url(url: str) -> bytes:
+    """
+    Resolve bytes for an image URL: ChatKit in-memory store first, then HTTP GET
+    (loopback uses trust_env=False so SOCKS/HTTP proxy does not break 127.0.0.1).
+    """
+    aid = attachment_id_from_chatkit_preview_url(url)
+    if aid:
+        try:
+            from services.chatkit_fashion_server import fashion_chatkit_server
+
+            blob = fashion_chatkit_server.store.get_attachment_blob(aid)
+            if blob:
+                return blob
+        except Exception as e:
+            logger.warning("[QwenImageEdit] ChatKit blob miss aid=%s: %s", aid, e)
+    trust_env = not _url_is_unreachable_by_dashscope_servers(url)
+    async with httpx.AsyncClient(
+        trust_env=trust_env,
+        timeout=httpx.Timeout(90.0, connect=30.0),
+        follow_redirects=True,
+    ) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.content
+
+
+def _compress_image_bytes_to_dashscope_limit(
+    data: bytes, max_bytes: int = DASHSCOPE_SAFE_IMAGE_BYTES
+) -> tuple[bytes, str]:
+    """Shrink JPEG bytes until under max_bytes (DashScope 10MB cap)."""
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise QwenImageEditError("Pillow is required to compress oversized images.") from e
+
+    try:
+        im = Image.open(io.BytesIO(data))
+    except Exception as e:
+        raise QwenImageEditError(f"Cannot decode image for size reduction: {e}") from e
+
+    if im.mode in ("RGBA", "LA"):
+        background = Image.new("RGB", im.size, (255, 255, 255))
+        background.paste(im, mask=im.split()[-1])
+        im = background
+    elif im.mode == "P":
+        im = im.convert("RGBA")
+        background = Image.new("RGB", im.size, (255, 255, 255))
+        if "A" in im.getbands():
+            background.paste(im, mask=im.split()[3])
+        else:
+            background.paste(im)
+        im = background
+    else:
+        im = im.convert("RGB")
+
+    try:
+        resample = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample = Image.LANCZOS
+
+    img = im
+    for _ in range(16):
+        for quality in (92, 88, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40):
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            out = buf.getvalue()
+            if len(out) <= max_bytes:
+                return out, "image/jpeg"
+        w, h = img.size
+        if min(w, h) <= 256:
+            break
+        img = img.resize(
+            (max(1, int(w * 0.88)), max(1, int(h * 0.88))),
+            resample,
+        )
+
+    raise QwenImageEditError(
+        f"Unable to compress image under {max_bytes} bytes (DashScope {DASHSCOPE_IMAGE_MAX_BYTES // (1024 * 1024)}MB limit)."
+    )
+
+
+async def _http_head_content_length(url: str) -> Optional[int]:
+    """Return Content-Length from HEAD if the server provides a reliable length."""
+    trust_env = not _url_is_unreachable_by_dashscope_servers(url)
+    try:
+        async with httpx.AsyncClient(
+            trust_env=trust_env,
+            timeout=httpx.Timeout(30.0, connect=15.0),
+            follow_redirects=True,
+        ) as client:
+            r = await client.head(url)
+            if r.status_code >= 400:
+                return None
+            cl = r.headers.get("content-length")
+            if cl and str(cl).isdigit():
+                return int(cl)
+    except Exception:
+        return None
+    return None
+
+
+async def _ensure_image_url_fits_dashscope_limit(
+    url: str, expires_in_days: Optional[int] = None
+) -> str:
+    """
+    DashScope 会自行拉取 URL；若原图超过 10MB 会直接 400。
+    若 HEAD 表明体积已安全则沿用原 URL；否则下载并在超限时压缩后上传到 R2。
+    """
+    head_len = await _http_head_content_length(url)
+    if head_len is not None and head_len <= DASHSCOPE_SAFE_IMAGE_BYTES:
+        return url
+
+    blob = await _fetch_image_bytes_for_qwen_input_url(url)
+    if len(blob) <= DASHSCOPE_SAFE_IMAGE_BYTES:
+        return url
+
+    compressed, mime = _compress_image_bytes_to_dashscope_limit(blob)
+    try:
+        from services.storage import upload_file_to_r2
+
+        name = f"qwen_ds_shrunk_{uuid.uuid4().hex[:16]}.jpg"
+        public_url = await upload_file_to_r2(
+            io.BytesIO(compressed),
+            name,
+            mime,
+            expires_in_days=expires_in_days,
+        )
+    except Exception as e:
+        raise QwenImageEditError(f"Failed to upload compressed image to R2: {e}") from e
+
+    logger.info(
+        "[QwenImageEdit] Compressed image for DashScope limit: %s bytes -> %s bytes",
+        len(blob),
+        len(compressed),
+    )
+    return public_url
+
+
 async def _prepare_image_content(image_input: Union[str, Path], expires_in_days: int = None) -> Dict[str, str]:
     """
     Prepare image content for API request.
     Supports both local file paths and URLs.
     For local files, uploads to R2 first to get a public URL (instead of using base64).
-    
+    URLs that DashScope cannot fetch (localhost, private IP, etc.) are downloaded here and uploaded to R2.
+
     Args:
         image_input: Image path or URL
         expires_in_days: Optional number of days after which the file should be deleted from R2
     """
     image_str = str(image_input)
-    
+
     if _is_url(image_str):
-        # For URLs, use the URL directly
-        return {"image": image_str}
+        if _url_is_unreachable_by_dashscope_servers(image_str):
+            try:
+                blob = await _fetch_image_bytes_for_qwen_input_url(image_str)
+            except Exception as e:
+                raise QwenImageEditError(
+                    f"Cannot load image for Qwen (needed public URL); URL={image_str[:200]}: {e}"
+                ) from e
+            if not blob:
+                raise QwenImageEditError(f"Empty image bytes after fetch: {image_str[:120]}")
+            upload_bytes = blob
+            upload_mime = "image/png"
+            upload_name = f"qwen_ds_inline_{uuid.uuid4().hex[:16]}.png"
+            if len(blob) > DASHSCOPE_SAFE_IMAGE_BYTES:
+                upload_bytes, upload_mime = _compress_image_bytes_to_dashscope_limit(blob)
+                upload_name = f"qwen_ds_inline_{uuid.uuid4().hex[:16]}.jpg"
+            try:
+                from services.storage import upload_file_to_r2
+
+                public_url = await upload_file_to_r2(
+                    io.BytesIO(upload_bytes),
+                    upload_name,
+                    upload_mime,
+                    expires_in_days=expires_in_days,
+                )
+                logger.info(
+                    "[QwenImageEdit] Re-uploaded unreachable URL to R2 for DashScope: %s -> %s",
+                    image_str[:100],
+                    public_url[:100],
+                )
+                return {"image": public_url}
+            except Exception as e:
+                raise QwenImageEditError(f"Failed to upload inlined image to R2: {e}") from e
+        return {"image": await _ensure_image_url_fits_dashscope_limit(image_str, expires_in_days)}
     else:
         # For local files, upload to R2 to get a public URL
         image_path = Path(image_str).expanduser().resolve()
@@ -88,18 +315,16 @@ async def _prepare_image_content(image_input: Union[str, Path], expires_in_days:
         if not image_path.is_file():
             raise QwenImageEditError(f"Path is not a file: {image_path}")
         
-        # Validate file size (not too large, not empty)
+        # Validate file size (not empty)
         file_size = image_path.stat().st_size
         if file_size == 0:
             raise QwenImageEditError(f"Image file is empty: {image_path}")
-        if file_size > 10 * 1024 * 1024:  # 10MB limit
-            raise QwenImageEditError(f"Image file too large ({file_size} bytes): {image_path}")
-        
-        # Upload to R2 to get public URL
+
+        # Upload to R2 to get public URL (oversized files are JPEG-compressed for DashScope 10MB cap)
         try:
             from services.storage import upload_file_to_r2
-            
-            # Determine MIME type from file extension
+
+            raw = image_path.read_bytes()
             suffix = image_path.suffix.lower()
             mime_type = {
                 ".jpg": "image/jpeg",
@@ -108,10 +333,14 @@ async def _prepare_image_content(image_input: Union[str, Path], expires_in_days:
                 ".webp": "image/webp",
                 ".avif": "image/avif",
             }.get(suffix, "image/jpeg")
-            
-            # Read file and upload to R2
-            with image_path.open("rb") as f:
-                public_url = await upload_file_to_r2(f, image_path.name, mime_type, expires_in_days=expires_in_days)
+            upload_name = image_path.name
+            if len(raw) > DASHSCOPE_SAFE_IMAGE_BYTES:
+                raw, mime_type = _compress_image_bytes_to_dashscope_limit(raw)
+                upload_name = f"{image_path.stem}_shrunk.jpg"
+
+            public_url = await upload_file_to_r2(
+                io.BytesIO(raw), upload_name, mime_type, expires_in_days=expires_in_days
+            )
             
             if expires_in_days:
                 print(f"[QwenImageEdit] Uploaded local file to R2 (expires in {expires_in_days} days): {image_path} -> {public_url}")
@@ -140,13 +369,13 @@ async def _prepare_payload(
     Args:
         prompt: Text instructions describing the desired edit.
         image_inputs: List of image paths (local files or URLs).
-        model: Model name (default: qwen-image-edit-plus).
+        model: Model name (default: qwen-image-2.0-pro).
         n: Number of images to generate (default: 1).
         negative_prompt: Negative prompt to avoid certain elements.
         prompt_extend: Whether to extend the prompt automatically.
         watermark: Whether to add watermark.
         garment_collage_index: Optional index of the garment collage image (will be set to expire in 7 days).
-        size: Optional output image size (e.g., "2048x2048" for 2K resolution).
+        size: Optional output image size (e.g. "2048*2048" per DashScope docs).
     """
     # Prepare content array with images and text
     content: List[Dict[str, str]] = []
@@ -191,12 +420,20 @@ async def _prepare_payload(
 
 @dataclass
 class QwenImageEditClient:
-    """Minimal client wrapper around the Qwen Image Edit API."""
+    """Minimal client for DashScope multimodal image generation/editing (e.g. Qwen Image 2.0)."""
 
     api_key: str
     endpoint: str = SINGAPORE_ENDPOINT  # Default to Singapore endpoint
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = 600.0
+    connect_timeout_seconds: float = 90.0
+    trust_env: bool = True
     model: str = DEFAULT_MODEL
+
+    def _httpx_timeout(self) -> httpx.Timeout:
+        read = self.timeout_seconds
+        conn = self.connect_timeout_seconds
+        write_cap = min(300.0, max(60.0, read))
+        return httpx.Timeout(connect=conn, read=read, write=write_cap, pool=conn)
 
     async def edit_image(
         self,
@@ -225,7 +462,7 @@ class QwenImageEditClient:
             output_path: Optional explicit path where the edited image(s) should be saved.
                          If n > 1, this will be used as a prefix with index suffix.
             debug: Whether to print debug information.
-            size: Optional output image size (e.g., "2048x2048" for 2K resolution).
+            size: Optional output image size (e.g. "2048*2048" per DashScope docs).
 
         Returns:
             Path to the saved edited image, or list of paths if n > 1.
@@ -279,7 +516,7 @@ class QwenImageEditClient:
                                     pass
 
         print("\n" + "="*80)
-        print("=== Qwen-Image-Edit Model Request (Try-On) ===")
+        print("=== Qwen Image (try-on / multimodal generation) ===")
         print("="*80)
         print(f"\n[Model]: {self.model}")
         print(f"\n[Prompt]: {prompt}")
@@ -302,7 +539,10 @@ class QwenImageEditClient:
         if debug:
             print(f"[QwenImageEdit] Request payload: {payload}")
 
-        with httpx.Client(timeout=self.timeout_seconds) as client:
+        with httpx.Client(
+            timeout=self._httpx_timeout(),
+            trust_env=self.trust_env,
+        ) as client:
             try:
                 # Validate payload before sending (all images should be URLs now)
                 import json as json_module
@@ -331,8 +571,14 @@ class QwenImageEditClient:
                 
                 response = client.post(self.endpoint, headers=headers, json=payload)
             except httpx.HTTPError as exc:
+                hint = ""
+                if isinstance(exc, httpx.ReadTimeout):
+                    hint = (
+                        " [Read timeout: try QWEN_IMAGE_EDIT_TIMEOUT_SECONDS=900; "
+                        "if you use a system HTTP proxy, try QWEN_IMAGE_EDIT_TRUST_ENV=false for direct DashScope.]"
+                    )
                 raise QwenImageEditError(
-                    f"Failed to reach Qwen Image Edit API: {exc}"
+                    f"Failed to reach DashScope Qwen Image API: {exc}{hint}"
                 ) from exc
 
             if response.status_code >= 400:
@@ -341,7 +587,7 @@ class QwenImageEditClient:
                     error_json = response.json()
                     error_text = str(error_json)
                     # Print detailed error info
-                    print(f"\n[Qwen Image Edit API Error]")
+                    print(f"\n[DashScope Qwen Image API Error]")
                     print(f"Status Code: {response.status_code}")
                     print(f"Error Response: {error_json}")
                     if isinstance(error_json, dict):
@@ -351,14 +597,14 @@ class QwenImageEditClient:
                 except ValueError:
                     pass
                 raise QwenImageEditError(
-                    f"Qwen Image Edit API responded with {response.status_code}: {error_text}"
+                    f"DashScope Qwen Image API responded with {response.status_code}: {error_text}"
                 )
 
             try:
                 result = response.json()
             except ValueError as exc:
                 raise QwenImageEditError(
-                    "Qwen Image Edit API returned invalid JSON."
+                    "DashScope Qwen Image API returned invalid JSON."
                 ) from exc
 
             if debug:
@@ -369,7 +615,7 @@ class QwenImageEditClient:
             choices = output.get("choices", [])
             if not choices:
                 raise QwenImageEditError(
-                    "Qwen Image Edit API response missing 'output.choices'."
+                    "DashScope Qwen Image API response missing 'output.choices'."
                 )
 
             message = choices[0].get("message", {})
@@ -382,7 +628,7 @@ class QwenImageEditClient:
 
             if not image_urls:
                 raise QwenImageEditError(
-                    "Qwen Image Edit API response missing image URLs."
+                    "DashScope Qwen Image API response missing image URLs."
                 )
 
             # Determine base path for output naming (before loop)
@@ -404,10 +650,13 @@ class QwenImageEditClient:
             saved_paths: List[Path] = []
             for idx, image_url in enumerate(image_urls):
                 try:
-                    download_response = client.get(image_url, timeout=self.timeout_seconds)
+                    download_response = client.get(image_url)
                 except httpx.HTTPError as exc:
+                    hint = ""
+                    if isinstance(exc, httpx.ReadTimeout):
+                        hint = " [Increase QWEN_IMAGE_EDIT_TIMEOUT_SECONDS or set TRUST_ENV=false if proxy stalls downloads.]"
                     raise QwenImageEditError(
-                        f"Failed to download edited image {idx + 1}: {exc}"
+                        f"Failed to download edited image {idx + 1}: {exc}{hint}"
                     ) from exc
 
                 if download_response.status_code >= 400:
@@ -472,8 +721,8 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        choices=["qwen-image-edit-plus", "qwen-image-edit-plus-2025-12-15", "qwen-image-edit"],
-        help="Model name to use (default: qwen-image-edit-plus).",
+        choices=list(CLI_MODEL_CHOICES),
+        help=f"Model name (default: {DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--n",
@@ -527,9 +776,9 @@ def _load_env_config() -> dict[str, Any]:
             )
         config["api_key"] = api_key
         if os.getenv("DASHSCOPE_API_KEY_SG"):
-            print("[Qwen-Image-Edit] Using Singapore endpoint with Singapore API key")
+            print("[Qwen Image] Using Singapore endpoint with Singapore API key")
         else:
-            print("[Qwen-Image-Edit] Using Singapore endpoint with custom API key")
+            print("[Qwen Image] Using Singapore endpoint with custom API key")
     else:
         config["endpoint"] = BEIJING_ENDPOINT
         # For Beijing endpoint, must use Beijing API key (not Singapore key)
@@ -541,7 +790,7 @@ def _load_env_config() -> dict[str, Any]:
                 "fly secrets set DASHSCOPE_API_KEY=your_beijing_key_here"
             )
         config["api_key"] = api_key
-        print("[Qwen-Image-Edit] Using Beijing endpoint with Beijing API key")
+        print("[Qwen Image] Using Beijing endpoint with Beijing API key")
 
     model = os.getenv(f"{DEFAULT_ENV_PREFIX}MODEL")
     if model:
@@ -550,11 +799,26 @@ def _load_env_config() -> dict[str, Any]:
     timeout = os.getenv(f"{DEFAULT_ENV_PREFIX}TIMEOUT_SECONDS")
     if timeout:
         try:
-            config["timeout_seconds"] = float(timeout)
+            config["timeout_seconds"] = float(timeout.strip())
         except ValueError as exc:
             raise QwenImageEditError(
                 f"Invalid {DEFAULT_ENV_PREFIX}TIMEOUT_SECONDS value: {timeout}"
             ) from exc
+
+    ct = os.getenv(f"{DEFAULT_ENV_PREFIX}CONNECT_TIMEOUT_SECONDS") or os.getenv(
+        f"{DEFAULT_ENV_PREFIX}CONNECT_TIMEOUT"
+    )
+    if ct:
+        try:
+            config["connect_timeout_seconds"] = float(ct.strip())
+        except ValueError as exc:
+            raise QwenImageEditError(
+                f"Invalid {DEFAULT_ENV_PREFIX}CONNECT_TIMEOUT_SECONDS value: {ct}"
+            ) from exc
+
+    trust_raw = os.getenv(f"{DEFAULT_ENV_PREFIX}TRUST_ENV")
+    if trust_raw is not None:
+        config["trust_env"] = trust_raw.strip().lower() in ("1", "true", "yes", "on")
 
     return config
 

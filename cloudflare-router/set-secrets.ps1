@@ -27,9 +27,10 @@ if (Test-Path $backendEnvFile) {
 
 # 配置值
 $stableFrontendHost = "fashion-rec-frontend.pages.dev"  # 前端 hostname（stable 和 v2 共用同一个 Pages 项目）
-$v2FrontendHost = "fashion-rec-frontend.pages.dev"      # 前端 hostname（stable 和 v2 共用同一个 Pages 项目）
+$v2FrontendHost = "v2.fashion-rec-frontend.pages.dev"   # V2 分支预览 hostname
 $stableBackendUrl = "https://fashion-rec-backend.fly.dev"       # 稳定版后端 URL
-$v2BackendUrl = "https://fashion-rec-backend-v2.fly.dev"        # v2 后端 URL
+# v2 Fly 应用已下线，V2_BACKEND_URL 暂与 stable 相同；恢复 v2 测试时改回独立 Fly 应用 URL
+$v2BackendUrl = $stableBackendUrl
 
 # 设置 SUPABASE_URL
 if ($supabaseUrl) {

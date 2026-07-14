@@ -49,9 +49,10 @@ const handleGetStarted = async () => {
     } finally {
       isSettingVersion.value = false
     }
+    router.push('/studio/chat')
+  } else {
+    router.push('/login')
   }
-  // Studio is available without login (guest: 3 try-on/day, 100 outfit/day by IP)
-  router.push('/studio')
 }
 
 const buttonText = computed(() => {

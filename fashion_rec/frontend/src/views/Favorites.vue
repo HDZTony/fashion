@@ -1,18 +1,22 @@
 <script setup lang="ts">
 defineOptions({ name: 'Favorites' })
-import { onMounted, onUnmounted, onActivated, ref } from 'vue'
+import { computed, onMounted, onUnmounted, onActivated, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useStudioStore } from '../stores/studio'
 import { Heart, X, RotateCcw } from 'lucide-vue-next'
 import ImageViewer from '@/components/ImageViewer.vue'
 import { apiClient } from '../lib/api-client'
 import { getThumbnailUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { MODEL_SCOPE_QUERY_KEY, resolveModelScopeId } from '@/lib/model-scope'
 
 const { t } = useI18n()
 
 const router = useRouter()
 const authStore = useAuthStore()
+const studioStore = useStudioStore()
+const modelScopeId = computed(() => resolveModelScopeId(studioStore.activeModelId))
 
 // Ensure token is synced when component is activated (for keep-alive scenarios)
 onActivated(async () => {
@@ -45,10 +49,12 @@ const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
 const imageViewerImages = ref<string[]>([])
 
+const favoritesCacheKey = computed(() => `favorites_cache:${modelScopeId.value}`)
+
 // Cache management for page refresh
 const saveFavoritesToCache = () => {
   try {
-    sessionStorage.setItem('favorites_cache', JSON.stringify(favorites.value))
+    sessionStorage.setItem(favoritesCacheKey.value, JSON.stringify(favorites.value))
   } catch (e) {
     console.warn('[Favorites] Failed to save favorites to cache:', e)
   }
@@ -56,7 +62,7 @@ const saveFavoritesToCache = () => {
 
 const restoreFavoritesFromCache = () => {
   try {
-    const cached = sessionStorage.getItem('favorites_cache')
+    const cached = sessionStorage.getItem(favoritesCacheKey.value)
     if (cached) {
       const items = JSON.parse(cached)
       if (Array.isArray(items) && items.length > 0) {
@@ -83,7 +89,9 @@ const loadFavorites = async () => {
   isLoading.value = true
   error.value = ''
   try {
-    const response = await apiClient.get<{ favorites: Favorite[] }>('/favorites')
+    const response = await apiClient.get<{ favorites: Favorite[] }>('/favorites', {
+      params: { [MODEL_SCOPE_QUERY_KEY]: modelScopeId.value },
+    })
     favorites.value = response.data.favorites || []
     // Save to cache for next page refresh
     saveFavoritesToCache()
@@ -151,6 +159,10 @@ onMounted(async () => {
   await loadFavorites()
 })
 
+watch(modelScopeId, async () => {
+  await loadFavorites()
+})
+
 const formatDate = (dateString: string) => {
   try {
     const date = new Date(dateString)
@@ -202,7 +214,7 @@ const restoreFavorite = async (favorite: Favorite) => {
     
     // Navigate to Studio page with query parameter
     router.push({
-      path: '/studio',
+      path: '/studio/chat',
       query: { tryonHistoryId: favorite.id }
     })
   } catch (error: any) {

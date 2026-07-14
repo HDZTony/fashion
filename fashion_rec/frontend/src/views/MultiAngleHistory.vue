@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'MultiAngleHistory' })
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { 
@@ -10,9 +10,13 @@ import {
 import ImageViewer from '@/components/ImageViewer.vue'
 import { apiClient } from '../lib/api-client'
 import { getMediumImageUrl, getLargeImageUrl } from '../lib/imageOptimizer'
+import { useStudioStore } from '@/stores/studio'
+import { MODEL_SCOPE_QUERY_KEY, resolveModelScopeId } from '@/lib/model-scope'
 
 const { t } = useI18n()
 const router = useRouter()
+const studioStore = useStudioStore()
+const modelScopeId = computed(() => resolveModelScopeId(studioStore.activeModelId))
 
 // History state
 const historyItems = ref<Array<{
@@ -47,6 +51,7 @@ const loadHistory = async (page: number = 1) => {
       params: {
         page,
         limit: pageSize,
+        [MODEL_SCOPE_QUERY_KEY]: modelScopeId.value,
       }
     })
     
@@ -132,6 +137,10 @@ const goToPage = (page: number) => {
 
 onMounted(() => {
   loadHistory()
+})
+
+watch(modelScopeId, () => {
+  void loadHistory(1)
 })
 </script>
 

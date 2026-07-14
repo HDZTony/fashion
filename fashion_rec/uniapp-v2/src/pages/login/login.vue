@@ -80,6 +80,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
+import { signInWithGoogleWeb } from '@fashion-rec/shared'
 import { supabase } from '@/lib/supabase'
 
 const { t } = useI18n()
@@ -355,13 +356,19 @@ async function handleGoogleLogin() {
     // #endif
 
     // #ifdef H5
-    // H5 端：使用 OAuth 重定向流程
-    const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: getCallbackUrl() },
+    const apiUrl = (import.meta.env.VITE_API_URL as string) || 'https://fashion-rec.com'
+    const googleClientId =
+      (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) ||
+      '729541469608-idf9oamqmk1pg81tl7akt7vns94da57a.apps.googleusercontent.com'
+
+    const session = await signInWithGoogleWeb({
+      supabase,
+      apiBaseUrl: apiUrl,
+      googleClientId,
     })
-    if (oauthErr) throw oauthErr
-    // 页面会重定向到 Google，无需后续处理
+
+    uni.setStorageSync('auth_token', session.access_token)
+    afterLogin()
     return
     // #endif
   } catch (e: unknown) {

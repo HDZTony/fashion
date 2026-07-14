@@ -1,6 +1,9 @@
 name = "fashion-rec-blog"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-11-17"
+compatibility_flags = ["nodejs_compat"]
+
+# @supabase/supabase-js、@aws-sdk/client-s3 等依赖 Node.js 内置模块映射时需要 nodejs_compat
 
 # Environment variables (set via wrangler secret put or Cloudflare Dashboard)
 # These should be set as secrets, not in this file

@@ -1,8 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
+import time
 import requests
 import urllib3
 from io import BytesIO
@@ -38,6 +40,27 @@ from services.guest_quota import (
     get_guest_quota,
     get_client_ip as get_guest_client_ip,
 )
+from chatkit.server import StreamingResult
+from chatkit.store import NotFoundError as ChatKitNotFoundError
+from chatkit.store import default_generate_id as chatkit_default_generate_id
+from chatkit.types import FileAttachment, ImageAttachment
+from services.chatkit_fashion_server import fashion_chatkit_server
+from services.chatkit_outfit_context import parse_outfit_context_from_request
+from services.chatkit_session_api import (
+    filter_visible_items,
+    first_user_message_preview,
+    thread_owned_by_user,
+)
+from services.chatkit_tools import garment_url_kind_for_tryon_log
+
+MODEL_SCOPE_HEADER = "X-Fashion-Rec-Model-Id"
+
+
+def _normalize_model_id(raw: Optional[str]) -> Optional[str]:
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return value or None
 
 app = FastAPI(title="Fashion Recommendation API")
 app.include_router(auth_router)
@@ -89,6 +112,7 @@ class OutfitAgentRequest(BaseModel):
     model_image_url: Optional[str] = None  # Model image URL (person) for personalized suggestions
     # Map of wardrobe_id to role for already selected items (to avoid regenerating them)
     selected_items_roles: Optional[Dict[str, str]] = None
+    model: Optional[str] = "qwen"  # "qwen" or "grok" — which VL model to use for outfit generation
 
 
 class OutfitItem(BaseModel):
@@ -133,6 +157,14 @@ class SaveFavoriteRequest(BaseModel):
     prompt: Optional[str] = None  # User's custom prompt
     model_image_url: Optional[str] = None  # Model image URL
     model_image_id: Optional[str] = None  # Model image ID
+    model_id: Optional[str] = None  # Explicit model scope ID
+
+
+class IntentGarmentCropsRequest(BaseModel):
+    """Studio chat rail: intent-guided garment crops (LocateAnything/Qwen fallback + R2)."""
+
+    image_urls: List[str]
+    intent_text: str = ""
 
 
 @app.get("/")
@@ -151,6 +183,44 @@ async def health_check():
     # Fly.io health check just needs to know the app is listening
     # No need to check components on every health check (reduces overhead)
     return {"status": "ok"}
+
+
+# Allowed host for image proxy (avoid open proxy)
+_PROXY_IMAGE_ALLOWED_HOST = "r2.fashion-rec.com"
+
+
+@app.get("/proxy-image", response_class=Response)
+async def proxy_image(url: str = Query(..., description="Image URL (must be r2.fashion-rec.com)")):
+    """
+    开发环境下前端通过此接口代理 R2 图片，避免直连 R2 的 CORS 问题。
+    仅允许 r2.fashion-rec.com 域名。
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="Invalid url")
+        if parsed.scheme != "https" or parsed.netloc != _PROXY_IMAGE_ALLOWED_HOST:
+            raise HTTPException(status_code=400, detail="Only r2.fashion-rec.com URLs are allowed")
+
+        # 直连 R2，避免代理导致 SSL 问题
+        _proxy_keys = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+        _saved = {k: os.environ.pop(k, None) for k in _proxy_keys if k in os.environ}
+        try:
+            resp = requests.get(url, timeout=30, stream=True)
+            resp.raise_for_status()
+            content = resp.content
+            content_type = resp.headers.get("Content-Type") or "image/jpeg"
+        finally:
+            os.environ.update(_saved)
+
+        return Response(content=content, media_type=content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"[proxy-image] Failed to fetch {url[:80]}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch image")
 
 
 def _convert_unsupported_format(image_path: Path) -> Path:
@@ -687,6 +757,7 @@ async def _download_and_upload_image(image_url: str) -> str:
 @app.post("/items")
 async def add_item(
     file: UploadFile = File(...),
+    model_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -717,7 +788,13 @@ async def add_item(
         # Add to vector database
         # Extract gender from features if present
         gender = features.get("gender") if isinstance(features, dict) else None
-        item_id = await add_to_wardrobe(url, features, user_id, gender=gender)
+        item_id = await add_to_wardrobe(
+            url,
+            features,
+            user_id,
+            gender=gender,
+            model_id=_normalize_model_id(model_id),
+        )
 
         # Clean up temp file
         temp_path.unlink()
@@ -736,6 +813,7 @@ async def add_item(
 async def upload_image(
     file: Optional[UploadFile] = File(None),
     image_url: Optional[str] = Form(None),
+    model_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1038,7 +1116,13 @@ async def upload_image(
             logger.info("Adding item to wardrobe database...")
             # Extract gender from features if present
             gender = features.get("gender")
-            item_id = await add_to_wardrobe(final_url, features, user_id, gender=gender)
+            item_id = await add_to_wardrobe(
+                final_url,
+                features,
+                user_id,
+                gender=gender,
+                model_id=_normalize_model_id(model_id),
+            )
             logger.info(f"Step 4/4: Item added to wardrobe with ID: {item_id}")
             logger.info("===== URL upload process completed successfully =====")
             
@@ -1080,6 +1164,7 @@ async def upload_image(
 @app.post("/items/batch")
 async def batch_add_items(
     items: List[Dict[str, Any]],
+    model_id: Optional[str] = Query(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1088,6 +1173,7 @@ async def batch_add_items(
     """
     try:
         added_items = []
+        scoped_model_id = _normalize_model_id(model_id)
         for item_data in items:
             if "error" in item_data.get("features", {}):
                 continue  # Skip items with errors
@@ -1101,6 +1187,7 @@ async def batch_add_items(
                 features,
                 user_id,
                 gender=gender,
+                model_id=_normalize_model_id(item_data.get("model_id")) or scoped_model_id,
             )
             added_items.append(
                 {
@@ -1118,12 +1205,15 @@ async def batch_add_items(
 
 
 @app.get("/items")
-async def get_items(user_id: str = Depends(get_current_user)):
+async def get_items(
+    model_id: Optional[str] = Query(None),
+    user_id: str = Depends(get_current_user),
+):
     """
     Get all items belonging to the current user.
     """
     try:
-        items = get_user_items(user_id)
+        items = get_user_items(user_id, model_id=_normalize_model_id(model_id))
         return {"items": items}
     except Exception as e:
         import traceback
@@ -1134,6 +1224,43 @@ async def get_items(user_id: str = Depends(get_current_user)):
             status_code=500, 
             detail=f"Failed to get wardrobe data: {str(e)}"
         )
+
+
+@app.get("/items/{item_id}/image")
+async def download_wardrobe_item_image(
+    item_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Stream wardrobe image bytes for the owner (avoids browser CORS on R2).
+    Used when attaching closet items to ChatKit as composer files.
+    """
+    from services.vector_db import get_wardrobe_item_image_url_for_user
+    import httpx
+
+    url = get_wardrobe_item_image_url_for_user(user_id, item_id)
+    if not url:
+        raise HTTPException(status_code=404, detail="Wardrobe item not found")
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Image upstream returned HTTP {e.response.status_code}",
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e!s}")
+
+    content = resp.content
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image too large")
+
+    raw_ct = (resp.headers.get("content-type") or "image/jpeg").split(";")[0].strip()
+    media_type = raw_ct if raw_ct.startswith("image/") else "image/jpeg"
+    return Response(content=content, media_type=media_type)
 
 
 class DeleteItemsRequest(BaseModel):
@@ -1292,6 +1419,7 @@ async def delete_items(
 @app.post("/items/import-examples")
 async def import_example_items(
     gender: str = Form(...),  # "male", "female", or "both"
+    model_id: Optional[str] = Form(None),
     user_id: str = Depends(get_current_user),
 ):
     """
@@ -1339,7 +1467,8 @@ async def import_example_items(
         logger.info(f"[Import Examples] Filtered to {len(filtered_items)} items matching gender {gender}")
         
         # 4. Check if current user already has items with same image_url (deduplication)
-        existing_items = get_user_items(user_id)
+        scoped_model_id = _normalize_model_id(model_id)
+        existing_items = get_user_items(user_id, model_id=scoped_model_id)
         existing_urls = {item.get("path") or item.get("image_url") for item in existing_items if item.get("path") or item.get("image_url")}
         
         logger.info(f"[Import Examples] Found {len(existing_urls)} existing items in target user's wardrobe")
@@ -1378,6 +1507,7 @@ async def import_example_items(
                     features=features,
                     user_id=user_id,
                     gender=item.get("gender", "Unisex"),
+                    model_id=scoped_model_id,
                     embedding=embedding  # Use original embedding
                 )
                 imported_count += 1
@@ -1408,6 +1538,197 @@ async def import_example_items(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+@app.post("/studio/intent-garment-crops")
+async def studio_intent_garment_crops(body: IntentGarmentCropsRequest):
+    """
+    Return R2 URLs of **cropped** garment tiles guided by the user's message (e.g. 裙子 vs 抹胸).
+    Used by the Studio chat left rail — not raw uploads.
+    """
+    from services.garment_vl_pipeline import intent_preview_crops
+
+    urls = [u.strip() for u in body.image_urls if isinstance(u, str) and u.strip()][:5]
+    if not urls:
+        return {"crops": []}
+    intent = (body.intent_text or "").strip()
+    if not intent:
+        intent = (
+            "Identify garment pieces in the image for virtual try-on; "
+            "one box per distinct top, bottom, or dress."
+        )
+    try:
+        crops, scene_image_index = await intent_preview_crops(urls, intent)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("[studio/intent-garment-crops] failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"crops": crops, "scene_image_index": scene_image_index}
+
+
+@app.post("/chatkit")
+async def chatkit_endpoint(
+    request: Request,
+    auth: tuple = Depends(get_optional_user_and_token),
+):
+    """
+    OpenAI ChatKit protocol endpoint: multi-turn chat with Agents SDK orchestration.
+    The chat model decides when to call server tools (e.g. outfit generation); optional
+    `X-Fashion-Rec-Outfit-Context` supplies Studio-aligned fields when tools run.
+    Response shape matches the ChatKit starter POST /chatkit (StreamingResult, JSON body, etc.).
+    """
+    user_id, access_token = auth
+    payload = await request.body()
+    outfit_ctx = parse_outfit_context_from_request(request)
+    scoped_model_id = _normalize_model_id(request.headers.get(MODEL_SCOPE_HEADER))
+    ctx: Dict[str, Any] = {
+        "request": request,
+        "user_id": user_id,
+        # Cookie auth has no Authorization header; tools calling /try-on, /generate-angles need this.
+        "access_token": access_token,
+    }
+    if scoped_model_id:
+        ctx["model_id"] = scoped_model_id
+    if outfit_ctx:
+        ctx["outfit_context"] = outfit_ctx
+    result = await fashion_chatkit_server.process(payload, ctx)
+    if isinstance(result, StreamingResult):
+        return StreamingResponse(result, media_type="text/event-stream")
+    if hasattr(result, "json"):
+        return Response(content=result.json, media_type="application/json")
+    return JSONResponse(result)
+
+
+_MAX_CHATKIT_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+@app.post("/chatkit/upload")
+async def chatkit_direct_upload(
+    request: Request,
+    auth: tuple = Depends(get_optional_user_and_token),
+):
+    """
+    ChatKit direct upload strategy: multipart/form-data field `file`.
+    See https://github.com/openai/chatkit-python/blob/main/docs/guides/accept-rich-user-input.md
+    """
+    _user_id, _ = auth
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None:
+        raise HTTPException(status_code=400, detail="Missing file field")
+    if not hasattr(upload, "read"):
+        raise HTTPException(status_code=400, detail="Invalid file field")
+    content = await upload.read()
+    if len(content) > _MAX_CHATKIT_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
+    filename = getattr(upload, "filename", None) or "upload"
+    content_type = getattr(upload, "content_type", None) or "application/octet-stream"
+
+    aid = chatkit_default_generate_id("attachment")
+    base = str(request.base_url).rstrip("/")
+    store = fashion_chatkit_server.store
+    store.put_attachment_blob(aid, content)
+
+    if content_type.startswith("image/"):
+        preview_url = f"{base}/chatkit/attachments/{aid}/preview"
+        att = ImageAttachment(
+            id=aid,
+            name=filename,
+            mime_type=content_type,
+            preview_url=preview_url,
+        )
+    else:
+        att = FileAttachment(id=aid, name=filename, mime_type=content_type)
+
+    await store.save_attachment(att, {})
+    return Response(content=att.model_dump_json(), media_type="application/json")
+
+
+@app.get("/chatkit/attachments/{attachment_id}/preview")
+async def chatkit_attachment_preview(attachment_id: str):
+    """Image preview for ChatKit; used as img src (typically no Authorization header)."""
+    store = fashion_chatkit_server.store
+    try:
+        meta = await store.load_attachment(attachment_id, {})
+    except ChatKitNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if meta.type != "image":
+        raise HTTPException(status_code=404, detail="Not an image")
+    blob = store.get_attachment_blob(attachment_id)
+    if not blob:
+        raise HTTPException(status_code=404, detail="Empty attachment")
+    return Response(content=blob, media_type=meta.mime_type)
+
+
+@app.get("/chatkit/sessions")
+async def chatkit_sessions_list(
+    limit: int = Query(20, ge=1, le=100),
+    after: str | None = None,
+    model_id: str | None = Query(None),
+    user_id: str = Depends(get_current_user),
+):
+    """List ChatKit threads for the current user (metadata.user_id), for Studio history UI."""
+    store = fashion_chatkit_server.store
+    ctx: Dict[str, Any] = {"user_id": user_id}
+    scoped_model_id = _normalize_model_id(model_id)
+    if scoped_model_id:
+        ctx["model_id"] = scoped_model_id
+    page = await store.load_threads(limit=limit, after=after, order="desc", context=ctx)
+    threads_out: list[Dict[str, Any]] = []
+    for t in page.data:
+        title = t.title
+        if not title:
+            title = await first_user_message_preview(store, t.id, context=ctx)
+        threads_out.append(
+            {
+                "thread_id": t.id,
+                "created_at": t.created_at.isoformat(),
+                "title": title or "—",
+            }
+        )
+    return {"threads": threads_out, "has_more": page.has_more, "after": page.after}
+
+
+@app.get("/chatkit/sessions/{thread_id}/items")
+async def chatkit_session_items(
+    thread_id: str,
+    model_id: str | None = Query(None),
+    user_id: str = Depends(get_current_user),
+):
+    """Thread items for hydrating the UI; same store as Agents/Grok multi-turn context."""
+    store = fashion_chatkit_server.store
+    scoped_model_id = _normalize_model_id(model_id)
+    ctx: Dict[str, Any] = {"user_id": user_id}
+    if scoped_model_id:
+        ctx["model_id"] = scoped_model_id
+    try:
+        meta = await store.load_thread(thread_id, ctx)
+    except ChatKitNotFoundError:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    if not thread_owned_by_user(meta, user_id, model_id=scoped_model_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    page = await store.load_thread_items(thread_id, None, 500, "asc", ctx)
+    visible = filter_visible_items(list(page.data))
+    bg_map = (meta.metadata or {}).get("fashion_rec_message_backgrounds") or {}
+    items_out: list[Dict[str, Any]] = []
+    for i in visible:
+        d = i.model_dump(mode="json")
+        if d.get("type") == "user_message" and isinstance(bg_map, dict):
+            extra = bg_map.get(str(d.get("id")))
+            if isinstance(extra, dict):
+                bu = (extra.get("background_image_url") or "").strip()
+                if bu:
+                    bp = (extra.get("background_action_prompt") or "").strip()
+                    d["metadata"] = {
+                        "background_image_url": bu,
+                        "background_action_prompt": bp,
+                    }
+        items_out.append(d)
+    return {
+        "thread_id": thread_id,
+        "items": items_out,
+    }
 
 
 @app.post("/outfit")
@@ -1450,6 +1771,7 @@ async def generate_outfit(
             model_image_url=optimized_model_url,
             client_ip=get_guest_client_ip(http_request),
             selected_items_roles=request.selected_items_roles,
+            model=request.model or "qwen",
         )
         
         # #region agent log
@@ -1484,6 +1806,46 @@ async def generate_outfit(
         raise HTTPException(status_code=500, detail=f"Failed to generate outfit: {e}")
 
 
+def _http_url_targets_loopback(url: str) -> bool:
+    """True when host is loopback. System HTTP/SOCKS proxy must not be used (requests honors env even if session.proxies is None)."""
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(url).hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1"):
+            return True
+        if host.startswith("127."):
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _chatkit_attachment_id_from_preview_url(url: str) -> str | None:
+    """Parse .../chatkit/attachments/{id}/preview → attachment id."""
+    try:
+        from urllib.parse import urlparse
+
+        parts = [p for p in urlparse(url).path.split("/") if p]
+        if len(parts) >= 4 and parts[0] == "chatkit" and parts[1] == "attachments" and parts[-1] == "preview":
+            return parts[2]
+    except Exception:
+        pass
+    return None
+
+
+def _try_load_tryon_image_bytes_from_local_chatkit(url: str) -> bytes | None:
+    """
+    /try-on may receive ChatKit preview URLs pointing at this same uvicorn process.
+    build_garment_collage uses synchronous requests.get; inside async try_on that blocks the event loop,
+    so the GET is never served → ReadTimeout. Read bytes from MemoryStore instead.
+    """
+    aid = _chatkit_attachment_id_from_preview_url(url)
+    if not aid:
+        return None
+    return fashion_chatkit_server.store.get_attachment_blob(aid)
+
+
 @app.post("/try-on")
 async def try_on(
     request: Request,
@@ -1494,6 +1856,7 @@ async def try_on(
     background_image_url: Optional[str] = Form(None),
     background_action_prompt: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
+    model_id: Optional[str] = Form(None),
     auth: tuple = Depends(get_optional_user_and_token),
 ):
     """
@@ -1507,7 +1870,17 @@ async def try_on(
     At least one of person_image or person_image_url must be provided.
     Guest (no auth): allowed with IP-based limit of 3/day. No history saved.
     """
-    from services.qwen_image_edit import QwenImageEditClient, _load_env_config
+    from services.qwen_image_edit import (
+        QwenImageEditClient,
+        QwenImageEditError,
+        _load_env_config,
+    )
+    from services.xai_tryon_fallback import (
+        looks_like_dashscope_content_block,
+        tryon_xai_fallback_enabled,
+        tryon_xai_fallback_on_any_qwen_error,
+        virtual_tryon_via_xai_imagine,
+    )
     from services.storage import upload_file_to_r2
     import httpx
 
@@ -1565,6 +1938,21 @@ async def try_on(
             raise ValueError("garment_urls must be a JSON list of URLs")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid garment_urls: {e}")
+
+    _kinds = [garment_url_kind_for_tryon_log(u) for u in garment_list]
+    _chatkit_n = sum(1 for k in _kinds if k == "chatkit_preview_full_frame")
+    logger.info(
+        "[Try-On][Qwen Image 2.0] garment collage input (Image 1): n=%s chatkit_preview_full_frame=%s "
+        "kinds=%s urls=%s",
+        len(garment_list),
+        _chatkit_n,
+        _kinds,
+        json.dumps(garment_list, ensure_ascii=False),
+    )
+    print(
+        f"[Try-On][Qwen Image 2.0] garment tile URLs ({len(garment_list)}): "
+        f"{json.dumps(garment_list, ensure_ascii=False)}"
+    )
 
     # Parse unmatched_descriptions (items with no wardrobe image; use text in prompt)
     parsed_unmatched: List[Dict[str, str]] = []
@@ -1641,7 +2029,10 @@ async def try_on(
         elif person_image_url:
             # Get dimensions from URL
             try:
-                async with httpx.AsyncClient() as client:
+                client_kw: Dict[str, Any] = {}
+                if _http_url_targets_loopback(person_image_url):
+                    client_kw["trust_env"] = False
+                async with httpx.AsyncClient(**client_kw) as client:
                     resp = await client.get(person_image_url, timeout=10.0)
                     if resp.status_code == 200:
                         img = Image.open(BytesIO(resp.content))
@@ -1758,7 +2149,7 @@ async def try_on(
                 # Use system proxy (requests will auto-detect)
                 print(f"[Try-On] Using system proxy for R2 URLs (auto-detected)")
         else:
-            # Production environment or non-R2 URL: do not use proxy (direct connection)
+            # Non-R2: no explicit session proxies; requests may still use HTTP_PROXY from env (see loopback branch).
             session.proxies = None
             if is_r2_url:
                 print(f"[Try-On] R2_USE_PROXY not enabled, using direct connection for R2 URLs")
@@ -1768,7 +2159,29 @@ async def try_on(
         for idx, url in enumerate(urls):
             try:
                 print(f"[Try-On] Downloading garment image {idx + 1}/{len(urls)}: {url[:80]}...")
-                resp = session.get(url, timeout=15, verify=False)
+                local_blob = _try_load_tryon_image_bytes_from_local_chatkit(url)
+                if local_blob:
+                    img = Image.open(BytesIO(local_blob)).convert("RGBA")
+                    if img.size[0] == 0 or img.size[1] == 0:
+                        raise ValueError("Invalid image dimensions")
+                    images.append(img)
+                    print(
+                        f"[Try-On] Loaded garment image {idx + 1}/{len(urls)} from in-process ChatKit store (no HTTP)"
+                    )
+                    continue
+                if _http_url_targets_loopback(url):
+                    # Bypass HTTP_PROXY/ALL_PROXY — SOCKS to 127.0.0.1:8001 often hangs/timeouts.
+                    # trust_env is a Session attribute, not a request() kwarg.
+                    with requests.Session() as lb_sess:
+                        lb_sess.trust_env = False
+                        resp = lb_sess.get(
+                            url,
+                            timeout=30,
+                            verify=False,
+                            proxies={"http": None, "https": None},
+                        )
+                else:
+                    resp = session.get(url, timeout=15, verify=False)
                 resp.raise_for_status()
                 
                 # Check if response has content
@@ -1811,8 +2224,9 @@ async def try_on(
         if failed_urls:
             print(f"[Try-On] Warning: {len(failed_urls)} images failed to download")
 
-        # Normalize size: resize all to same thumbnail size
-        thumb_w, thumb_h = 256, 256
+        # Normalize size: slightly larger tiles when only a few garments so skirts/details stay visible to the edit model
+        n_imgs = len(images)
+        thumb_w, thumb_h = (384, 384) if n_imgs <= 2 else (256, 256)
         thumbs = [img.resize((thumb_w, thumb_h), Image.LANCZOS) for img in images]
 
         # Simple grid: up to 3 columns
@@ -1857,6 +2271,44 @@ async def try_on(
                 + "\n"
             )
 
+    multi_garment_section = ""
+    if len(garment_list) > 1:
+        multi_garment_section = (
+            "\nMULTI-GARMENT: Image 1 is a collage of separate garment or reference photos in a grid. "
+            "Each region may show a different item (top, skirt, pants, dress, etc.). "
+            "Apply **every** distinct garment visible in Image 1 onto the model in Image 2: "
+            "replace upper-body clothing with tops from the collage, and **fully replace** lower-body clothing "
+            "(trousers, shorts, or an existing skirt) with any bottom garment clearly shown in Image 1. "
+            "Do not stop after changing only the top — if both a top and a bottom appear in Image 1, the output must show both.\n"
+        )
+
+    # Qwen often "pastes" a new skirt/shorts on top of old long pants; force true replacement, not stacking.
+    replace_clothing_section = ""
+    if garment_list or parsed_unmatched:
+        replace_clothing_section = (
+            "\nCLOTHING REPLACEMENT (critical): Remove the model's **original** garment in each body region before drawing the new one. "
+            "New bottoms from Image 1 must **replace** prior pants/skirts/shorts — the old lower-body fabric must disappear, "
+            "not remain visible under a new skirt or shorts (no trousers-under-skirt, no double-layer legs). "
+            "Same for tops: replace the prior shirt/top unless Image 1 explicitly shows intentional layering. "
+            "The final outfit must look like a single coherent layer, not stacked or pasted clothing.\n"
+        )
+
+    user_hint_section = ""
+    if user_custom_prompt and str(user_custom_prompt).strip():
+        user_hint_section = (
+            "\nUser request (must honor): " + str(user_custom_prompt).strip() + "\n"
+        )
+
+    tryon_extra_text = (
+        multi_garment_section + replace_clothing_section + user_hint_section
+    )
+
+    _tryon_layering_negative = (
+        "Prohibit long pants or jeans visible under a skirt, dress, or new shorts; "
+        "prohibit stacked duplicate bottoms; prohibit the model's original trousers showing beneath new lower-body garments; "
+        "prohibit pasted or floating clothing layers."
+    )
+
     action_description_section = ""
     if background_action_prompt:
         action_description_section = f"Image 2 Action/Pose: The model should be performing this action: \"{background_action_prompt}\". The person's pose and body position should match this activity description."
@@ -1873,6 +2325,15 @@ async def try_on(
         if garment_list:
             garments_collage_path = UPLOAD_DIR / "tryon" / f"garments_{effective_user_id}_collage.png"
             garments_collage_path = build_garment_collage(garment_list, garments_collage_path)
+            logger.info(
+                "[Try-On][Qwen Image 2.0] stitched garment collage (Image 1) path=%s from %d tile(s)",
+                garments_collage_path,
+                len(garment_list),
+            )
+            print(
+                f"[Try-On][Qwen Image 2.0] stitched garment collage (Image 1): {garments_collage_path} "
+                f"(from {len(garment_list)} tile URL(s))"
+            )
 
             garment_items = get_items_by_urls(garment_list, effective_user_id) if user_id is not None else []
             garment_descriptions = []
@@ -1905,8 +2366,16 @@ async def try_on(
                     "Avoid perspective distortion - the model should appear naturally integrated into the background scene with correct foreshortening and spatial relationships. "
                     "Overall image should be harmonious, natural, with consistent lighting, proper perspective alignment, and all items should fit the human body correctly."
                     + garment_desc_text
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."
+                negative_prompt = (
+                    "Prohibit person from Image 1, prohibit person from Image 3. Prohibit items floating in the air. "
+                    "Prohibit shoes, glasses, accessories scattered on the ground or in the air. "
+                    "All items must be correctly worn on the model. "
+                    "Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, "
+                    "inconsistent depth perception, warped backgrounds, unnatural spatial relationships. "
+                    + _tryon_layering_negative
+                )
             else:
                 prompt = (
                     "Person from Image 2 wearing all clothes and accessories from Image 1, keep person identity and original background natural and reasonable, "
@@ -1922,8 +2391,16 @@ async def try_on(
                     "Avoid any perspective distortion - the model should appear naturally integrated with the original background, maintaining harmonious spatial consistency. "
                     "All items must fit the human body, with accurate and natural positioning, consistent lighting, and proper perspective alignment."
                     + garment_desc_text
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit person from Image 1. Prohibit items floating in the air. Prohibit shoes, glasses, accessories scattered on the ground or in the air. All items must be correctly worn on the model. Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, inconsistent depth perception, warped backgrounds, unnatural spatial relationships."
+                negative_prompt = (
+                    "Prohibit person from Image 1. Prohibit items floating in the air. "
+                    "Prohibit shoes, glasses, accessories scattered on the ground or in the air. "
+                    "All items must be correctly worn on the model. "
+                    "Prohibit perspective distortion, mismatched scale, incorrect vanishing points, model floating above ground, "
+                    "inconsistent depth perception, warped backgrounds, unnatural spatial relationships. "
+                    + _tryon_layering_negative
+                )
             garment_collage_index = 0
         else:
             # Text-only garments: no collage; person is Image 1, optional background is Image 2
@@ -1947,8 +2424,13 @@ async def try_on(
                     "All items must be correctly worn on the model (tops on torso, bottoms on legs, shoes on feet, outerwear as outer layer, accessories in place). "
                     "CRITICAL: Preserve perspective and spatial consistency; the model must fit naturally into Image 2's scene. "
                     "Result should be harmonious, natural, with consistent lighting and correct perspective alignment."
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit items floating in the air or scattered on the ground. Prohibit perspective distortion, mismatched scale, model floating above ground, warped backgrounds."
+                negative_prompt = (
+                    "Prohibit items floating in the air or scattered on the ground. "
+                    "Prohibit perspective distortion, mismatched scale, model floating above ground, warped backgrounds. "
+                    + _tryon_layering_negative
+                )
             else:
                 prompt = (
                     "Keep the person and original background of Image 1. "
@@ -1959,8 +2441,13 @@ async def try_on(
                     "All items must be correctly worn on the model (tops on torso, bottoms on legs, shoes on feet, outerwear as outer layer, accessories in place). "
                     "CRITICAL: Maintain the original perspective and spatial relationships from Image 1. "
                     "Result should be harmonious, natural, with consistent lighting and correct perspective alignment."
+                    + tryon_extra_text
                 )
-                negative_prompt = "Prohibit items floating in the air or scattered on the ground. Prohibit perspective distortion, mismatched scale, warped backgrounds."
+                negative_prompt = (
+                    "Prohibit items floating in the air or scattered on the ground. "
+                    "Prohibit perspective distortion, mismatched scale, warped backgrounds. "
+                    + _tryon_layering_negative
+                )
             garment_collage_index = None
     except Exception as e:
         print(f"Failed to build try-on inputs: {e}")
@@ -1968,6 +2455,13 @@ async def try_on(
 
     logger.info(f"[Try-On] Final prompt length: {len(prompt)} characters")
     logger.info(f"[Try-On] Full prompt sent to API:\n{prompt}")
+
+    _inputs_log = [str(x) for x in image_inputs]
+    logger.info(
+        "[Try-On][Qwen Image 2.0] edit_image sequence (collage=R2 URL after upload inside client): %s",
+        json.dumps(_inputs_log, ensure_ascii=False),
+    )
+    print(f"[Try-On][Qwen Image 2.0] edit_image raw inputs ({len(_inputs_log)}): {_inputs_log}")
 
     try:
         edited_path = await client.edit_image(
@@ -1979,6 +2473,60 @@ async def try_on(
             garment_collage_index=garment_collage_index,
             size=output_size,
         )
+    except QwenImageEditError as e:
+        use_xai = tryon_xai_fallback_enabled() and (
+            tryon_xai_fallback_on_any_qwen_error()
+            or looks_like_dashscope_content_block(str(e))
+        )
+        if use_xai:
+            logger.warning(
+                "[Try-On] Qwen Image failed; attempting xAI Grok Imagine fallback: %s",
+                e,
+            )
+            try:
+                img_bytes = await virtual_tryon_via_xai_imagine(
+                    image_inputs=image_inputs,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                )
+                out_path = (
+                    output_path
+                    if isinstance(output_path, Path)
+                    else Path(output_path)
+                )
+                out_path.write_bytes(img_bytes)
+                edited_path = out_path
+                logger.info(
+                    "[Try-On] xAI Grok Imagine fallback succeeded (saved %s bytes)",
+                    len(img_bytes),
+                )
+            except Exception as xai_e:
+                import traceback
+
+                error_trace = traceback.format_exc()
+                print(f"\n{'='*80}")
+                print("=== Qwen Image Error + xAI Fallback Failed ===")
+                print(f"Qwen: {e}")
+                print(f"xAI: {xai_e}")
+                print(f"Traceback:\n{error_trace}")
+                print(f"{'='*80}\n")
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        f"Qwen Image failed: {e}; "
+                        f"xAI Imagine fallback failed: {xai_e}"
+                    ),
+                ) from xai_e
+        else:
+            import traceback
+
+            error_trace = traceback.format_exc()
+            print(f"\n{'='*80}")
+            print("=== Qwen Image Edit Error ===")
+            print(f"Error: {e}")
+            print(f"Traceback:\n{error_trace}")
+            print(f"{'='*80}\n")
+            raise HTTPException(status_code=500, detail=f"Qwen Image Edit failed: {e}")
     except Exception as e:
         import traceback
 
@@ -1999,6 +2547,10 @@ async def try_on(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload try-on image: {e}")
 
+    scoped_model_id = _normalize_model_id(model_id) or _normalize_model_id(
+        request.headers.get(MODEL_SCOPE_HEADER)
+    )
+
     # Save try-on history only for logged-in users (retention by subscription plan)
     if user_id is not None:
         try:
@@ -2009,7 +2561,7 @@ async def try_on(
                 "background_image_url": background_image_url,
                 "prompt": user_custom_prompt,
                 "model_image_url": person_image_url,
-            }, user_token)
+            }, user_token, model_id=scoped_model_id)
         except Exception as e:
             import traceback
             print(f"[Try-On History] Failed to save history: {e}")
@@ -2028,6 +2580,7 @@ async def guest_quota(request: Request):
 
 @app.post("/generate-angles")
 async def generate_angles(
+    request: Request,
     image_url: str = Form(...),
     preset: Optional[str] = Form(None),
     horizontal_angle: Optional[float] = Form(None),
@@ -2035,6 +2588,7 @@ async def generate_angles(
     zoom: Optional[float] = Form(5.0),
     additional_prompt: Optional[str] = Form(None),
     parent_tryon_id: Optional[str] = Form(None),
+    model_id: Optional[str] = Form(None),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
 ):
     """
@@ -2173,6 +2727,9 @@ async def generate_angles(
     
     try:
         from services.multiangle_history import save_multiangle_history
+        scoped_model_id = _normalize_model_id(model_id) or _normalize_model_id(
+            request.headers.get(MODEL_SCOPE_HEADER)
+        )
         save_multiangle_history(
             user_id=user_id,
             source_tryon_url=image_url,
@@ -2180,6 +2737,7 @@ async def generate_angles(
             angle_type=angle_type,
             angle_params=angle_params_dict,
             user_token=user_token,
+            model_id=scoped_model_id,
         )
     except Exception as e:
         logger.warning(f"[Multi-Angle] Failed to save history: {e}")
@@ -2203,6 +2761,7 @@ async def get_angle_presets():
 @app.get("/multiangle-history")
 async def get_multiangle_history(
     source_url: Optional[str] = Query(None),
+    model_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     auth: tuple[str, str] = Depends(get_current_user_and_token),
@@ -2221,13 +2780,15 @@ async def get_multiangle_history(
     offset = (page - 1) * limit
     
     try:
-        total = count_multiangle_history(user_id, user_token)
+        scoped_model_id = _normalize_model_id(model_id)
+        total = count_multiangle_history(user_id, user_token, model_id=scoped_model_id)
         history = list_multiangle_history(
             user_id=user_id,
             user_token=user_token,
             source_url=source_url,
             limit=limit,
             offset=offset,
+            model_id=scoped_model_id,
         )
         
         total_pages = (total + limit - 1) // limit if total > 0 else 0
@@ -2348,6 +2909,41 @@ async def upload_model_image(
         raise HTTPException(status_code=500, detail=f"Failed to upload model image: {e}")
 
 
+@app.put("/model-image/{model_id}")
+async def replace_model_image(
+    model_id: str,
+    file: UploadFile = File(...),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """
+    Replace an existing model's photo. Uploads new file to R2,
+    updates the existing user_images row so the model ID is preserved.
+    """
+    from services.storage import upload_file_to_r2
+    from services.user_images import update_user_image_url
+
+    user_id, user_token = auth
+    try:
+        public_url = await upload_file_to_r2(
+            file.file, file.filename, file.content_type or "image/jpeg", expires_in_days=None
+        )
+        import os
+        r2_public_url = os.getenv("R2_PUBLIC_URL", "")
+        if r2_public_url and public_url.startswith(r2_public_url):
+            r2_filename = public_url.replace(r2_public_url + '/', '')
+        else:
+            r2_filename = public_url.split('/')[-1]
+
+        updated = update_user_image_url(user_id, model_id, public_url, r2_filename, user_token)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Model not found or not owned by user")
+        return {"url": public_url, "model": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to replace model image: {e}")
+
+
 @app.get("/user-images")
 async def get_user_images(
     image_type: Optional[str] = None,
@@ -2390,6 +2986,72 @@ async def delete_user_image(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete user image: {e}")
+
+
+# ── Model profile (身高/体重/出生年份) ──
+
+
+class ModelProfileUpdate(BaseModel):
+    nickname: Optional[str] = None
+    height: Optional[float] = None
+    weight: Optional[float] = None
+    birth_year: Optional[int] = None
+
+
+@app.get("/model-profiles")
+async def list_model_profiles(
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Get all model profiles (nickname etc.) for the current user."""
+    from services.model_profiles import list_model_profiles as _list
+
+    user_id, user_token = auth
+    try:
+        profiles = _list(user_id, user_token)
+        return {"profiles": profiles}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list model profiles: {e}")
+
+
+@app.get("/model-profile/{model_id}")
+async def get_model_profile(
+    model_id: str,
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Get profile for a model."""
+    from services.model_profiles import get_model_profile as _get
+
+    user_id, user_token = auth
+    try:
+        profile = _get(user_id, model_id, user_token)
+        return {"profile": profile}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get model profile: {e}")
+
+
+@app.put("/model-profile/{model_id}")
+async def update_model_profile(
+    model_id: str,
+    body: ModelProfileUpdate,
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
+    """Create or update profile for a model."""
+    from services.model_profiles import upsert_model_profile
+
+    user_id, user_token = auth
+    try:
+        profile = upsert_model_profile(
+            user_id=user_id,
+            model_id=model_id,
+            user_token=user_token,
+            nickname=body.nickname,
+            height=body.height,
+            weight=body.weight,
+            birth_year=body.birth_year,
+        )
+        return {"profile": profile}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update model profile: {e}")
 
 
 @app.get("/looks")
@@ -2535,7 +3197,10 @@ async def cleanup_expired_files(background_tasks: BackgroundTasks):
 
 
 @app.get("/favorites")
-async def get_favorites(auth: tuple[str, str] = Depends(get_current_user_and_token)):
+async def get_favorites(
+    model_id: Optional[str] = Query(None),
+    auth: tuple[str, str] = Depends(get_current_user_and_token),
+):
     """
     Get all saved favorites for the current user.
     """
@@ -2544,7 +3209,7 @@ async def get_favorites(auth: tuple[str, str] = Depends(get_current_user_and_tok
     user_id, user_token = auth
 
     try:
-        favorites = list_favorites(user_id, user_token)
+        favorites = list_favorites(user_id, user_token, model_id=_normalize_model_id(model_id))
         # Sort by created_at descending (newest first)
         favorites.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return {"favorites": favorites}
@@ -2567,6 +3232,10 @@ async def save_favorite(
 
     try:
         favorite_dict = favorite.model_dump()
+        favorite_dict["model_id"] = (
+            _normalize_model_id(favorite.model_id)
+            or _normalize_model_id(favorite.model_image_id)
+        )
         saved_favorite = save_favorite_service(user_id, favorite_dict, user_token)
         return saved_favorite
     except Exception as e:
@@ -2600,6 +3269,7 @@ async def delete_favorite(
 async def get_tryon_history(
     page: int = 1,
     limit: int = 20,
+    model_id: Optional[str] = Query(None),
     user_id: str = Depends(get_current_user),
     user_token: str = Depends(get_current_user_token),
 ):
@@ -2623,8 +3293,15 @@ async def get_tryon_history(
         logger.info(f"[API] /tryon-history endpoint called for user_id: {user_id}, page: {page}, limit: {limit}")
         
         # Get total count and paginated history
-        total = count_tryon_history(user_id, user_token)
-        history = list_tryon_history(user_id, user_token, limit=limit, offset=offset)
+        scoped_model_id = _normalize_model_id(model_id)
+        total = count_tryon_history(user_id, user_token, model_id=scoped_model_id)
+        history = list_tryon_history(
+            user_id,
+            user_token,
+            limit=limit,
+            offset=offset,
+            model_id=scoped_model_id,
+        )
         
         # Log query result count
         logger.info(f"[API] /tryon-history returned {len(history)} record(s) for user_id: {user_id} (total: {total})")
@@ -2713,6 +3390,13 @@ async def startup_event():
     from services.storage import delete_expired_files_from_r2, delete_file_from_r2_by_url
     from services.looks import cleanup_expired_looks
     
+    try:
+        from services.chatkit_fashion_server import configure_chatkit_agent_debug_logging
+
+        configure_chatkit_agent_debug_logging()
+    except Exception as e:
+        logger.warning("configure_chatkit_agent_debug_logging failed: %s", e)
+
     # Log that the application is starting up
     logger.info("=" * 60)
     logger.info("Fashion Recommendation API - Starting up...")

@@ -2,13 +2,32 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AgentOutfit, Item } from '@/types'
 
+const DEFAULT_MODEL_SCOPE_ID = 'example-IMG_9953'
+
+type ModelScopedStudioState = {
+  customPrompt: string
+  backgroundImageUrl: string | null
+  backgroundImagePreviewUrl: string | null
+  backgroundActionPrompt: string
+  tryOnImageUrl: string | null
+  selectedItemIds: string[]
+  uploadedItems: Item[]
+  agentOutfits: AgentOutfit[]
+  activeWardrobeIds: string[]
+  activeWardrobeRoleMapEntries: [string, string][]
+  originalAppliedOutfit: AgentOutfit | null
+  favoriteSaved: boolean
+  currentFavoriteId: string | null
+  backgroundTabValue: string
+}
+
 export const useStudioStore = defineStore('studio', () => {
   // State that should be persisted across page navigation
   const customPrompt = ref('')
   const backgroundImageUrl = ref<string | null>(null)
   const backgroundImagePreviewUrl = ref<string | null>(null)
   const backgroundActionPrompt = ref<string>('')
-  const modelImagePreviewUrl = ref<string | null>(null)
+  const activeModelId = ref<string | null>(null)
   const tryOnImageUrl = ref<string | null>(null)
   const agentOutfits = ref<AgentOutfit[]>([])
   const activeWardrobeIds = ref<string[]>([])
@@ -20,6 +39,69 @@ export const useStudioStore = defineStore('studio', () => {
   const favoriteSaved = ref(false)
   const currentFavoriteId = ref<string | null>(null)
   const backgroundTabValue = ref<string>('no-background')
+  const selectedModel = ref<'qwen' | 'grok'>('qwen')
+  const modelScopedState = ref<Record<string, ModelScopedStudioState>>({})
+
+  const modelScopeKey = (id: string | null) => {
+    const t = (id || '').trim()
+    return t || DEFAULT_MODEL_SCOPE_ID
+  }
+
+  const snapshotCurrentModelScope = () => {
+    const key = modelScopeKey(activeModelId.value)
+    modelScopedState.value[key] = {
+      customPrompt: customPrompt.value,
+      backgroundImageUrl: backgroundImageUrl.value,
+      backgroundImagePreviewUrl: backgroundImagePreviewUrl.value,
+      backgroundActionPrompt: backgroundActionPrompt.value,
+      tryOnImageUrl: tryOnImageUrl.value,
+      selectedItemIds: [...selectedItemIds.value],
+      uploadedItems: [...uploadedItems.value],
+      agentOutfits: [...agentOutfits.value],
+      activeWardrobeIds: [...activeWardrobeIds.value],
+      activeWardrobeRoleMapEntries: [...activeWardrobeRoleMapEntries.value],
+      originalAppliedOutfit: originalAppliedOutfit.value,
+      favoriteSaved: favoriteSaved.value,
+      currentFavoriteId: currentFavoriteId.value,
+      backgroundTabValue: backgroundTabValue.value,
+    }
+  }
+
+  const hydrateModelScopeState = (id: string | null) => {
+    const key = modelScopeKey(id)
+    const scoped = modelScopedState.value[key]
+    if (!scoped) {
+      customPrompt.value = ''
+      backgroundImageUrl.value = null
+      backgroundImagePreviewUrl.value = null
+      backgroundActionPrompt.value = ''
+      tryOnImageUrl.value = null
+      selectedItemIds.value = []
+      uploadedItems.value = []
+      agentOutfits.value = []
+      activeWardrobeIds.value = []
+      activeWardrobeRoleMapEntries.value = []
+      originalAppliedOutfit.value = null
+      favoriteSaved.value = false
+      currentFavoriteId.value = null
+      backgroundTabValue.value = 'no-background'
+      return
+    }
+    customPrompt.value = scoped.customPrompt
+    backgroundImageUrl.value = scoped.backgroundImageUrl
+    backgroundImagePreviewUrl.value = scoped.backgroundImagePreviewUrl
+    backgroundActionPrompt.value = scoped.backgroundActionPrompt
+    tryOnImageUrl.value = scoped.tryOnImageUrl
+    selectedItemIds.value = [...scoped.selectedItemIds]
+    uploadedItems.value = [...scoped.uploadedItems]
+    agentOutfits.value = [...scoped.agentOutfits]
+    activeWardrobeIds.value = [...scoped.activeWardrobeIds]
+    activeWardrobeRoleMapEntries.value = [...scoped.activeWardrobeRoleMapEntries]
+    originalAppliedOutfit.value = scoped.originalAppliedOutfit
+    favoriteSaved.value = scoped.favoriteSaved
+    currentFavoriteId.value = scoped.currentFavoriteId
+    backgroundTabValue.value = scoped.backgroundTabValue
+  }
 
   // Helper to convert role map entries to Map
   const getActiveWardrobeRoleMap = () => {
@@ -45,8 +127,13 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundActionPrompt.value = prompt
   }
 
-  const setModelImage = (url: string | null) => {
-    modelImagePreviewUrl.value = url
+  const setActiveModelId = (id: string | null) => {
+    const nextId = id?.trim() || null
+    if (nextId === activeModelId.value)
+      return
+    snapshotCurrentModelScope()
+    activeModelId.value = nextId
+    hydrateModelScopeState(nextId)
   }
 
   const setTryOnImage = (url: string | null) => {
@@ -104,6 +191,10 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundTabValue.value = value
   }
 
+  const setSelectedModel = (value: 'qwen' | 'grok') => {
+    selectedModel.value = value
+  }
+
   // Stepper getters (for layout nav: try-on flow progress)
   const activeWardrobeItems = computed(() =>
     activeWardrobeIds.value
@@ -124,11 +215,11 @@ export const useStudioStore = defineStore('studio', () => {
     () => activeWardrobeItems.value.length > 0 || unmatchedOutfitDescriptions.value.length > 0,
   )
   const stepperStep = computed(() => {
-    if (!modelImagePreviewUrl.value) return 1
+    if (!activeModelId.value) return 1
     if (!hasTryOnInput.value) return 2
     return 3
   })
-  const step1Completed = computed(() => !!modelImagePreviewUrl.value)
+  const step1Completed = computed(() => !!activeModelId.value)
   const step2Completed = computed(() => hasTryOnInput.value)
   const step3Completed = computed(() => !!tryOnImageUrl.value)
 
@@ -137,7 +228,7 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundImageUrl.value = null
     backgroundImagePreviewUrl.value = null
     backgroundActionPrompt.value = ''
-    modelImagePreviewUrl.value = null
+    activeModelId.value = null
     tryOnImageUrl.value = null
     uploadedItems.value = []
     agentOutfits.value = []
@@ -148,6 +239,8 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved.value = false
     currentFavoriteId.value = null
     backgroundTabValue.value = 'no-background'
+    selectedModel.value = 'qwen'
+    modelScopedState.value = {}
   }
 
   return {
@@ -156,7 +249,7 @@ export const useStudioStore = defineStore('studio', () => {
     backgroundImageUrl,
     backgroundImagePreviewUrl,
     backgroundActionPrompt,
-    modelImagePreviewUrl,
+    activeModelId,
     tryOnImageUrl,
     selectedItemIds,
     uploadedItems,
@@ -167,11 +260,13 @@ export const useStudioStore = defineStore('studio', () => {
     favoriteSaved,
     currentFavoriteId,
     backgroundTabValue,
+    selectedModel,
     // Stepper (for layout)
     stepperStep,
     step1Completed,
     step2Completed,
     step3Completed,
+    activeWardrobeItems,
     // Helpers
     getActiveWardrobeRoleMap,
     setActiveWardrobeRoleMap,
@@ -179,7 +274,7 @@ export const useStudioStore = defineStore('studio', () => {
     setCustomPrompt,
     setBackgroundImage,
     setBackgroundActionPrompt,
-    setModelImage,
+    setActiveModelId,
     setTryOnImage,
     setSelectedItemIds,
     addSelectedItemId,
@@ -192,6 +287,7 @@ export const useStudioStore = defineStore('studio', () => {
     setOriginalAppliedOutfit,
     setFavoriteStatus,
     setBackgroundTabValue,
+    setSelectedModel,
     clearState,
   }
 }, {

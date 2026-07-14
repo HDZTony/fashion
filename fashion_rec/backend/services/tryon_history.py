@@ -199,7 +199,12 @@ def _cleanup_expired(user_id: Optional[str] = None) -> int:
         return 0
 
 
-def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Optional[str] = None) -> Dict[str, Any]:
+def save_tryon_history(
+    user_id: str,
+    history: Dict[str, Any],
+    user_token: Optional[str] = None,
+    model_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Persist a single try-on history record for a user.
     Automatically cleans up expired records before saving.
@@ -255,6 +260,7 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
         created_at = datetime.utcnow()
         expires_at = created_at + timedelta(days=retention_days)
         
+        scoped_model_id = str(model_id).strip() if model_id else None
         record = {
             "id": history_id,
             "user_id": str(user_id),  # Ensure it's a string
@@ -263,6 +269,7 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
             "background_image_url": history.get("background_image_url"),
             "prompt": history.get("prompt"),  # User's custom prompt (optional)
             "model_image_url": history.get("model_image_url"),  # Model image URL for restoration
+            "model_id": scoped_model_id,
             "created_at": created_at.isoformat() + "Z",
             "expires_at": expires_at.isoformat() + "Z",
             # Note: Multi-angle generation is now stored in separate multiangle_history table
@@ -286,7 +293,11 @@ def save_tryon_history(user_id: str, history: Dict[str, Any], user_token: Option
         raise
 
 
-def count_tryon_history(user_id: str, user_token: Optional[str] = None) -> int:
+def count_tryon_history(
+    user_id: str,
+    user_token: Optional[str] = None,
+    model_id: Optional[str] = None,
+) -> int:
     """
     Count total try-on history records for a user.
     
@@ -317,8 +328,14 @@ def count_tryon_history(user_id: str, user_token: Optional[str] = None) -> int:
         _ensure_table_exists()
         query_user_id = str(user_id).strip()
         
+        query = table.select("id", count="exact").eq("user_id", query_user_id)
+        scoped_model_id = str(model_id).strip() if model_id else ""
+        if scoped_model_id:
+            query = query.or_(f"model_id.is.null,model_id.eq.{scoped_model_id}")
+        else:
+            query = query.is_("model_id", "null")
         # Count records using select with count (use head=True to avoid fetching data)
-        response = table.select("id", count="exact").eq("user_id", query_user_id).limit(0).execute()
+        response = query.limit(0).execute()
         count = response.count if hasattr(response, 'count') and response.count is not None else (len(response.data) if response.data else 0)
         
         logger.info(f"[Try-On History] Count query returned {count} record(s) for user {user_id}")
@@ -328,7 +345,13 @@ def count_tryon_history(user_id: str, user_token: Optional[str] = None) -> int:
         return 0
 
 
-def list_tryon_history(user_id: str, user_token: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> List[Dict[str, Any]]:
+def list_tryon_history(
+    user_id: str,
+    user_token: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    model_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     List try-on history for a user with pagination support.
     Expired records are cleaned up by periodic cleanup task.
@@ -381,6 +404,11 @@ def list_tryon_history(user_id: str, user_token: Optional[str] = None, limit: Op
         
         # Build query
         query = table.select("*").eq("user_id", query_user_id).order("created_at", desc=True)
+        scoped_model_id = str(model_id).strip() if model_id else ""
+        if scoped_model_id:
+            query = query.or_(f"model_id.is.null,model_id.eq.{scoped_model_id}")
+        else:
+            query = query.is_("model_id", "null")
         
         # Apply pagination if limit is provided
         if limit is not None:

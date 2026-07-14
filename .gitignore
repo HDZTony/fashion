@@ -20,6 +20,7 @@ yarn-error.log*
 *.swo
 
 # Project specific
+fashion_rec/backend/data/
 chroma_db/
 chroma_data/
 storage/
@@ -33,3 +34,6 @@ Thumbs.db
 **/.wrangler/tmp/
 cloudflare-blog/.wrangler/
 fashion_rec/backend/subscription-service/.wrangler/
+fashion_rec/frontend/frontend-dev.err.log
+fashion_rec/frontend/frontend-dev.log
+fashion_rec/.npmrc

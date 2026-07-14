@@ -10,6 +10,7 @@ import type { Item, PendingItem, ItemFeatures } from '../types'
 import { apiClient, uploadApiClient, longUploadApiClient } from '../lib/api-client'
 import { useStudioStore } from '../stores/studio'
 import { API_URL } from '../config/api'
+import { withModelScopeParams } from '@/lib/model-scope'
 
 const { t } = useI18n()
 import {
@@ -71,7 +72,7 @@ const isImporting = ref(false)
 const GENDER_WOMENS = "Women's"
 const GENDER_MENS = "Man's"
 
-// Persistent selection for outfit generation (synced with Studio.vue via Pinia)
+// Persistent selection for outfit generation (synced with AI Chat Studio via Pinia)
 const selectedItemIds = computed({
   get: () => studioStore.selectedItemIds,
   set: (value) => studioStore.setSelectedItemIds(value),
@@ -167,6 +168,7 @@ const loadUserItems = async () => {
     }
     
     const response = await apiClient.get<{ items: any[] }>('/items', {
+      params: withModelScopeParams(undefined, studioStore.activeModelId),
       timeout: 30000, // 30 seconds timeout
     })
     if (!response.data || !response.data.items) {
@@ -564,7 +566,9 @@ const confirmAddItems = async () => {
   try {
     isConfirming.value = true
     // Use uploadApiClient for batch operations as they may take longer
-    await uploadApiClient.post<{ items: Item[] }>('/items/batch', [selectedItem])
+    await uploadApiClient.post<{ items: Item[] }>('/items/batch', [selectedItem], {
+      params: withModelScopeParams(undefined, studioStore.activeModelId),
+    })
     
     // Refresh data to ensure consistency
     await loadUserItems()
@@ -593,6 +597,7 @@ const importExampleItems = async (gender: string) => {
   try {
     const formData = new FormData()
     formData.append('gender', gender)
+    formData.append('model_id', studioStore.activeModelId || '')
     
     await apiClient.post<{ message: string; imported_count: number; skipped_count: number }>(
       '/items/import-examples',
@@ -985,6 +990,12 @@ watch(() => route.name, (newName) => {
     loadOutfitSelection()
     console.log('[Wardrobe watch route] Reloaded outfit selection from Pinia')
   }
+})
+
+watch(() => studioStore.activeModelId, () => {
+  hasLoadedItems.value = false
+  selectedForOutfitIds.value = new Set()
+  void loadUserItems()
 })
 
 onUnmounted(() => {

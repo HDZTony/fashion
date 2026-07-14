@@ -1,6 +1,6 @@
 import { createMemoryHistory, createRouter, createWebHistory, type Router, type RouteRecordRaw } from 'vue-router'
 import Home from '../views/Home.vue'
-import Studio from '../views/Studio.vue'
+import StudioChat from '../views/StudioChat.vue'
 import Login from '../views/Login.vue'
 import Callback from '../views/Callback.vue'
 import ResetPassword from '../views/ResetPassword.vue'
@@ -12,14 +12,13 @@ import PrivacyPolicy from '../views/PrivacyPolicy.vue'
 import TermsOfService from '../views/TermsOfService.vue'
 import Pricing from '../views/Pricing.vue'
 import Profile from '../views/Profile.vue'
-import AppLayout from '../layouts/AppLayout.vue'
-import HomeLayout from '../layouts/HomeLayout.vue'
+import RootShellLayout from '../layouts/RootShellLayout.vue'
 import { useAuthStore } from '../stores/auth'
 
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: HomeLayout,
+    component: RootShellLayout,
     children: [
       {
         path: '',
@@ -36,11 +35,7 @@ export const routes: RouteRecordRaw[] = [
         name: 'blog',
         component: () => import('../views/BlogList.vue')
       },
-      {
-        path: 'blog/:id',
-        name: 'blog-detail',
-        component: () => import('../views/BlogDetail.vue')
-      },
+      // 静态子路径必须在 blog/:id 之前，避免 create / edit 被当成动态 id
       {
         path: 'blog/create',
         name: 'blog-create',
@@ -52,17 +47,20 @@ export const routes: RouteRecordRaw[] = [
         name: 'blog-edit',
         component: () => import('../views/BlogCreate.vue'),
         meta: { requiresAuth: true }
-      }
-    ]
-  },
-  {
-    path: '/',
-    component: AppLayout,
-    children: [
+      },
+      {
+        path: 'blog/:id',
+        name: 'blog-detail',
+        component: () => import('../views/BlogDetail.vue')
+      },
+      {
+        path: 'studio/chat',
+        name: 'studio-chat',
+        component: StudioChat,
+      },
       {
         path: 'studio',
-        name: 'studio',
-        component: Studio
+        redirect: { path: '/studio/chat' },
       },
       {
         path: 'wardrobe',
@@ -125,6 +123,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'my-blog',
         component: () => import('../views/MyBlog.vue'),
         meta: { requiresAuth: true }
+      },
+      {
+        path: 'settings/model',
+        name: 'settings-model',
+        component: () => import('../views/SettingsModel.vue'),
+        meta: { requiresAuth: true }
       }
     ]
   },
@@ -146,7 +150,7 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 export const setupRouterGuards = (router: Router) => {
-  router.beforeEach(async (to, from, next) => {
+  router.beforeEach(async (to, _from, next) => {
     // Skip auth check in SSR (server-side rendering)
     // SSR should only render public pages, authenticated pages are rendered on client
     if (typeof window === 'undefined') {
@@ -156,14 +160,16 @@ export const setupRouterGuards = (router: Router) => {
       return
     }
 
-    // Mark route navigation (not page refresh) for Studio page
-    // This helps Studio.vue distinguish between route navigation and page refresh
-    if (to.name === 'studio' && from.name) {
-      // Only set marker if navigating from another route (not initial load)
-      sessionStorage.setItem('studio-route-navigation', 'true')
-    }
-
     const authStore = useAuthStore()
+
+    // Handle OAuth code that landed on the wrong page (e.g. Supabase redirected to '/' instead of '/callback')
+    if (to.query.code && to.name !== 'callback') {
+      await authStore.loadSession()
+      if (authStore.isAuthenticated) {
+        next({ name: 'studio-chat', replace: true })
+        return
+      }
+    }
 
     // Wait for initial session load if still loading
     if (authStore.isLoading) {

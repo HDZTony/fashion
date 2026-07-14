@@ -1,31 +1,36 @@
 import os
 import json
-from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Dict, Any, List, Literal
+
 from dotenv import load_dotenv
+
+from services.dashscope_openai_client import dashscope_chat_completions_text
 
 load_dotenv()
 
-# Initialize Qwen-VL model
-# Using Singapore endpoint, so must use Singapore API key
-SINGAPORE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-api_key = os.getenv("DASHSCOPE_API_KEY_SG")
-if not api_key:
-    raise RuntimeError(
-        "DASHSCOPE_API_KEY_SG must be set in environment variables for Singapore endpoint. "
-        "Please set this environment variable in Fly.io using: "
-        "fly secrets set DASHSCOPE_API_KEY_SG=your_singapore_key_here"
-    )
+# Qwen（DashScope 新加坡端点）仅在调用 analyze_image / dashscope_chat_completions_text 时懒加载；
+# 未配置 DASHSCOPE_API_KEY_SG 时仍可启动 API，便于本地只测非图像识别接口。
 
-print("[Qwen-VL] Using Singapore endpoint with Singapore API key")
+# 穿搭生成在 outfit_agent 中选 Grok 时使用；可用 OUTFIT_GROK_MODEL 覆盖。
+OUTFIT_GROK_MODEL = (os.getenv("OUTFIT_GROK_MODEL") or "grok-imagine-image").strip()
 
-llm = ChatOpenAI(
-    model="qwen3-vl-plus",
-    api_key=api_key,
-    base_url=SINGAPORE_BASE_URL,  # Singapore endpoint
-    temperature=0.1,
-)
+
+def get_llm(model_name: str = "qwen") -> Literal["qwen", "grok"]:
+    """
+    Return which backend ``outfit_agent`` should use.
+
+    Legacy name kept for callers: ``'qwen'`` or ``'grok'`` (not an LLM instance).
+    """
+    if model_name == "grok":
+        if not (os.getenv("XAI_API_KEY") or "").strip():
+            raise RuntimeError(
+                "XAI_API_KEY must be set in environment variables to use Grok. "
+                "Get your API key from https://console.x.ai and set it: "
+                "fly secrets set XAI_API_KEY=your_xai_key_here"
+            )
+        print("[Grok] xAI Grok vision (Responses API) selected for outfit generation")
+        return "grok"
+    return "qwen"
 
 SYSTEM_PROMPT = """
 You are a fashion expert AI. Your task is to analyze clothing images and extract structured data.
@@ -180,16 +185,25 @@ async def analyze_image(image_url: str) -> List[Dict[str, Any]]:
             pass
 
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=[
-            {"type": "text", "text": "Analyze all clothing items in this image. Identify each distinct item and extract their features."},
-            {"type": "image_url", "image_url": {"url": final_url}}
-        ])
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Analyze all clothing items in this image. Identify each distinct item and extract their features.",
+                },
+                {"type": "image_url", "image_url": {"url": final_url}},
+            ],
+        },
     ]
 
     try:
-        response = await llm.ainvoke(messages)
-        content = response.content.strip()
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=messages,
+            temperature=0.1,
+        )
         
         # Clean up potential markdown code blocks if the model ignores instructions
         if content.startswith("```json"):
@@ -235,11 +249,14 @@ async def generate_compatibility_queries(item_features: Dict[str, Any], occasion
     Example: ["Blue denim jeans", "White sneakers", "Black leather belt"]
     """
     
-    messages = [HumanMessage(content=prompt)]
-    
+    messages = [{"role": "user", "content": prompt}]
+
     try:
-        response = await llm.ainvoke(messages)
-        content = response.content.strip()
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=messages,
+            temperature=0.1,
+        )
         if content.startswith("```json"):
             content = content[7:]
         if content.endswith("```"):
@@ -262,11 +279,14 @@ async def generate_outfit_queries(occasion: str) -> List[str]:
     Example: ["White linen shirt", "Beige chinos", "Brown loafers", "Silver watch"]
     """
     
-    messages = [HumanMessage(content=prompt)]
-    
+    messages = [{"role": "user", "content": prompt}]
+
     try:
-        response = await llm.ainvoke(messages)
-        content = response.content.strip()
+        content = await dashscope_chat_completions_text(
+            model="qwen3-vl-plus",
+            messages=messages,
+            temperature=0.1,
+        )
         if content.startswith("```json"):
             content = content[7:]
         if content.endswith("```"):

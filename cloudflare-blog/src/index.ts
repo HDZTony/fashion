@@ -155,6 +155,19 @@ export default {
       })
     }
 
+    if (!env.SUPABASE_URL?.trim() || !env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      return new Response(
+        JSON.stringify({
+          error:
+            'Blog Worker missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Create cloudflare-blog/.dev.vars from .dev.vars.example.',
+        }),
+        {
+          status: 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
+        },
+      )
+    }
+
     // Create Supabase client
     const supabase = createSupabaseClient(env)
 

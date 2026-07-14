@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { supabase } from '../lib/supabase'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { subscriptionClient, apiClient } from '../lib/api-client'
 import { useAuthStore } from '../stores/auth'
 import { useStudioStore } from '../stores/studio'
@@ -700,10 +701,9 @@ onMounted(async () => {
           </div>
           <div class="rounded-xl border border-pink-200 bg-pink-50/60 p-4 space-y-3">
             <div class="flex flex-col gap-3 sm:flex-row">
-              <input
+              <Input
                 v-model="cardKeyCode"
-                type="text"
-                class="flex-1 px-4 py-2 border border-pink-200 rounded-lg bg-white focus:ring-2 focus:ring-pink-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-60"
+                class="bg-white"
                 :placeholder="$t('profile.cardKeyPlaceholder')"
                 :disabled="isRedeemingCardKey"
                 autocomplete="off"

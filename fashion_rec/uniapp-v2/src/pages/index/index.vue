@@ -1,7 +1,7 @@
 <template>
-  <view class="flex h-screen bg-gray-100" :style="{ height: pageHeightStyle }">
+  <view class="flex h-screen bg-gray-100" :style="rootContainerStyle">
     <!-- 侧边栏：对齐前端 Sidebar + SidebarNavUser。Android 上用 style 控制显隐，避免 :class 触发 classList.remove 报错 -->
-    <view class="sidebar-wrap" :style="sidebarWrapStyle">
+    <view class="sidebar-wrap" :style="sidebarWrapStyle" @touchmove.stop>
       <view class="flex flex-col h-full px-[10px]">
         <view class="p-4 border-b border-pink-100 flex items-center justify-center gap-2">
           <text class="text-xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">Fashion Rec</text>
@@ -145,8 +145,8 @@
         </view>
       </view>
     </view>
-    <!-- 移动端遮罩：用 v-show 避免 v-if 在 Android 上移除节点时触发 remove 报错 -->
-    <view v-show="sidebarVisible && isMobile" class="fixed inset-0 bg-black/40 z-[99]" @click="sidebarVisible = false" />
+    <!-- 移动端遮罩：用 v-show 避免 v-if 在 Android 上移除节点时触发 remove 报错；@touchmove.stop.prevent 阻止背后内容滚动 -->
+    <view v-show="sidebarVisible && isMobile" class="fixed inset-0 bg-black/40 z-[99]" @click="sidebarVisible = false" @touchmove.stop.prevent />
     <!-- 自定义 TabBar -->
     <CustomTabBar current-tab="index" />
   </view>
@@ -195,12 +195,25 @@ const pageHeightStyle = computed(() => {
   return `${Math.max(0, winH - tabBarH - safeBottom)}px`
 })
 
+/** 根容器样式：侧边栏打开时锁定背后内容滚动 */
+const rootContainerStyle = computed(() => {
+  const base: Record<string, string> = { height: pageHeightStyle.value }
+  if (isMobile.value && sidebarVisible.value) {
+    base.overflow = 'hidden'
+  }
+  return base
+})
+
 /** 侧边栏容器样式：移动端隐藏时用 transform 代替 :class，避免 Android 上 classList.remove 报错 */
 const sidebarWrapStyle = computed(() => {
-  if (isMobile.value && !sidebarVisible.value) {
-    return { transform: 'translateX(-100%)' }
+  if (!isMobile.value) return {}
+  // 侧边栏顶部对齐 wd-navbar 底部，避免被 navbar 遮挡
+  const statusBarH = sysInfo.value?.statusBarHeight ?? 0
+  const top = `${statusBarH + 44}px`
+  if (!sidebarVisible.value) {
+    return { top, transform: 'translateX(-100%)' }
   }
-  return {}
+  return { top }
 })
 const mainScrollHeightFallback = computed(() => {
   const s = sysInfo.value

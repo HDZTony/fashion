@@ -1,15 +1,13 @@
 <script setup lang="ts">
+import type { CarouselEmits, CarouselProps } from './interface'
 import type { HTMLAttributes } from 'vue'
-import useEmblaCarousel from 'embla-carousel-vue'
-import { ref, watch, provide, computed } from 'vue'
+import { provide } from 'vue'
 import { cn } from '@/lib/utils'
 import CarouselPrevious from './CarouselPrevious.vue'
 import CarouselNext from './CarouselNext.vue'
+import { useProvideCarousel } from './useCarousel'
 
-interface Props {
-  opts?: Record<string, unknown>
-  plugins?: unknown[]
-  orientation?: 'horizontal' | 'vertical'
+interface Props extends CarouselProps {
   class?: HTMLAttributes['class']
 }
 
@@ -19,44 +17,20 @@ const props = withDefaults(defineProps<Props>(), {
   orientation: 'horizontal',
 })
 
-const emblaOpts = computed(() => ({
-  ...props.opts,
-  axis: props.orientation === 'horizontal' ? 'x' as const : 'y' as const,
-}))
+const emits = defineEmits<CarouselEmits>()
+const carousel = useProvideCarousel(props, emits)
 
-const [emblaRef, emblaApi] = useEmblaCarousel(emblaOpts, props.plugins as Parameters<typeof useEmblaCarousel>[1])
-
-const canScrollPrev = ref(false)
-const canScrollNext = ref(false)
-
-const updateScrollState = () => {
-  const api = emblaApi.value
-  if (!api) return
-  canScrollPrev.value = api.canScrollPrev()
-  canScrollNext.value = api.canScrollNext()
-}
-
-watch(emblaApi, (api) => {
-  if (!api) return
-  updateScrollState()
-  api.on('select', updateScrollState)
-  api.on('reInit', updateScrollState)
-}, { immediate: true })
-
-const scrollPrev = () => emblaApi.value?.scrollPrev()
-const scrollNext = () => emblaApi.value?.scrollNext()
-
-provide('carouselApi', emblaApi)
-provide('carouselRef', emblaRef)
-provide('canScrollPrev', canScrollPrev)
-provide('canScrollNext', canScrollNext)
-provide('scrollPrev', scrollPrev)
-provide('scrollNext', scrollNext)
+provide('carouselApi', carousel.carouselApi)
+provide('carouselRef', carousel.carouselRef)
+provide('canScrollPrev', carousel.canScrollPrev)
+provide('canScrollNext', carousel.canScrollNext)
+provide('scrollPrev', carousel.scrollPrev)
+provide('scrollNext', carousel.scrollNext)
 </script>
 
 <template>
   <div :class="cn('relative w-full', props.class)">
-    <div ref="emblaRef" class="overflow-hidden">
+    <div ref="carousel.carouselRef" class="overflow-hidden">
       <slot />
     </div>
     <CarouselPrevious />
