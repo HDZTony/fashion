@@ -1,4 +1,6 @@
 __pycache__
+.venv
+venv
 node_modules
 subscription-service
 *.pyc
@@ -19,6 +21,8 @@ uv.lock
 *.log
 chroma_db
 uploads
+data
+*.db
 *.json
 *.sqlite3
 .DS_Store
