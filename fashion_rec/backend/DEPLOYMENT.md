@@ -169,3 +169,15 @@ Wormhole 各节点 `network.json`：
 
 验收：`curl -I https://fashion-rec-backend.fly.dev:3340/`
 
+## 为何不用 Cloudflare Containers 替代 Fly
+
+Cloudflare Containers 是 Workers 旁的按需 Linux 容器，不是 Fly 这类常驻 Docker 主机。对本后端不适用整机迁移：
+
+| 需求 | Fly（当前） | Cloudflare Containers |
+|------|-------------|------------------------|
+| FastAPI HTTP | `http_service` → 8000，可常驻 | Worker → Container 可行，但默认空闲 sleep、冷启动、磁盘 ephemeral |
+| iroh relay :3340 | 同机 `[[services]]` 直连 | **不可行**：入站须经 Worker，终端用户不能对 Container 发非 HTTP TCP/UDP |
+| `min_machines_running = 1` | `auto_stop_machines = 'off'` | 需 `sleepAfter` / `renewActivityTimeout` 硬撑，成本与复杂度通常不如 Fly |
+
+结论：继续用 Fly 跑 FastAPI + relay；国内 relay 用京东云。仅当新负载是可休眠、纯 HTTP、状态外置（R2/D1）且已接 Workers 时，再考虑 Containers。详见 [Containers lifecycle](https://developers.cloudflare.com/containers/platform-details/architecture/)。
+
